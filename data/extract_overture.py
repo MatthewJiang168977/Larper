@@ -4,50 +4,33 @@ Usage:
     python data/extract_overture.py --out data/nyc.parquet            # NYC (default bbox)
     python data/extract_overture.py --bbox -74.01 40.70 -73.97 40.74 --out data/lower_mn.parquet
 
-Reads the public Overture release straight from S3 (anonymous, no AWS account needed),
-using the bbox struct columns so DuckDB only downloads row groups that overlap.
-Only open places are kept; everything else in the output is CDLA-Permissive data we may store.
+Reads the public Overture release straight from S3 (anonymous, no AWS account needed).
+The query lives in workers/internal/places/overture_extract.sql, shared with the
+ingest-worker that loads single areas on demand, so both produce identical rows.
 """
 import argparse
+import pathlib
+import re
 import duckdb
 
 RELEASE = "2026-09-23.1"
 NYC_BBOX = (-74.26, 40.49, -73.70, 40.92)  # xmin, ymin, xmax, ymax: the five boroughs
+SQL = pathlib.Path(__file__).resolve().parent.parent / "workers/internal/places/overture_extract.sql"
+
+
+def render(bbox, release, out):
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}\.\d+", release):
+        raise ValueError(f"bad Overture release {release!r}")
+    xmin, ymin, xmax, ymax = (f"{float(v):.7f}" for v in bbox)
+    subs = {"release": release, "out": out.replace("'", "''"),
+            "xmin": xmin, "xmax": xmax, "ymin": ymin, "ymax": ymax}
+    return re.sub(r"\$\{(\w+)\}", lambda m: subs[m.group(1)], SQL.read_text(encoding="utf-8"))
 
 
 def extract(bbox, out, release=RELEASE):
-    xmin, ymin, xmax, ymax = bbox
-    src = f"s3://overturemaps-us-west-2/release/{release}/theme=places/type=place/*.parquet"
     con = duckdb.connect()
     con.sql("INSTALL httpfs; LOAD httpfs; INSTALL spatial; LOAD spatial; SET s3_region='us-west-2';")
-    con.execute(
-        f"""
-        COPY (
-          SELECT id                      AS overture_id,
-                 names."primary"         AS name,
-                 ST_X(geometry)          AS lng,
-                 ST_Y(geometry)          AS lat,
-                 confidence,
-                 basic_category,
-                 taxonomy.hierarchy      AS hierarchy,
-                 taxonomy.alternates     AS alternates,
-                 brand.names."primary"   AS brand,
-                 brand.wikidata          AS brand_wikidata,
-                 -- Contact links for the quest card. Overture mixes social profiles into
-                 -- websites, so pick them apart here.
-                 list_filter(coalesce(websites, []),
-                   x -> NOT regexp_matches(x, '(facebook|instagram)[.]com', 'i'))[1] AS website,
-                 list_filter(coalesce(socials, []) || coalesce(websites, []),
-                   x -> regexp_matches(x, 'instagram[.]com/[^/?#]+', 'i'))[1]   AS instagram,
-                 phones[1]               AS phone
-          FROM read_parquet('{src}')
-          WHERE bbox.xmin BETWEEN ? AND ? AND bbox.ymin BETWEEN ? AND ?
-            AND coalesce(operating_status, 'open') = 'open'
-            AND names."primary" IS NOT NULL
-        ) TO '{out}' (FORMAT parquet, COMPRESSION zstd)
-        """,
-        [xmin, xmax, ymin, ymax],
-    )
+    con.execute(render(bbox, release, out))
     n = con.execute(f"SELECT count(*) FROM '{out}'").fetchone()[0]
     print(f"wrote {n} places to {out}")
 

@@ -23,11 +23,12 @@ stream, idempotent workers, Kubernetes) built to be explained, measured, and bro
 | Database | **PostgreSQL 17** + **PostGIS 3.6** + **pgvector 0.8**, run by **CloudNativePG** | Geo radius queries, vector similarity, and relational joins in one engine |
 | Cache | **Redis 7.4** (LRU, 128 MB) | Cache-aside for area stats and per-user ranked decks |
 | Event stream | **Redpanda 24.2** (Kafka API) | Ordered, replayable user events; keyed by user id |
+| Work queue | Postgres `jobs` table with **Azure Service Bus semantics** (peek-lock leases, delivery count, dead-lettering) | One-off jobs like "load this area"; Service Bus can replace it in the cloud behind the same interface |
 | Schemas | **Protobuf** with **buf**; generated for Go (`protoc-gen-go`) and TS (`protobuf-es`) | One contract for both languages, with lint and breaking-change rules |
-| Place data | **Overture Maps** Places (CDLA-permissive), extracted with **DuckDB** | Open data that may be stored and indexed, unlike Google Places |
+| Place data | **Overture Maps** Places (CDLA-permissive), extracted with **DuckDB** (Python for bulk loads, the DuckDB CLI in the ingest-worker) | Open data that may be stored and indexed, unlike Google Places |
 | Migrations | **golang-migrate**, run as a Helm hook Job | Same schema rollout locally and in the cloud |
 | Platform | **Docker**, **Kubernetes** (k3d/k3s locally), **Helm**, **Traefik** ingress, HPA | One chart for local and cloud; Traefik is the load balancer |
-| Planned | Azure Service Bus (work queue), AKS + Terraform, Prometheus/Grafana, k6 | See [roadmap](#status) |
+| Planned | Azure Service Bus (cloud queue), AKS + Terraform, Prometheus/Grafana, k6 | See [roadmap](#status) |
 
 ---
 
@@ -50,6 +51,7 @@ flowchart LR
     RELAY["outbox-relay<br/>(Go, 1 replica)"]
     KAFKA[["Redpanda<br/>user.events x6<br/>user.events.dlq"]]
     TASTE["taste-worker<br/>(Go, consumer group x2)"]
+    INGEST["ingest-worker<br/>(Go + DuckDB, x2)"]
   end
 
   OVERTURE[("Overture Maps<br/>S3 GeoParquet")]
@@ -66,7 +68,9 @@ flowchart LR
   RELAY -->|"produce, key = user id"| KAFKA
   KAFKA -->|"consume"| TASTE
   TASTE -->|"taste vector + processed_events<br/>(one transaction)"| PG
-  OVERTURE -.->|"DuckDB extract + load-places"| PG
+  API -->|"enqueue ingest-area<br/>(unmapped area)"| PG
+  INGEST -->|"lease job, load places,<br/>recompute stats"| PG
+  OVERTURE -->|"S3 range reads"| INGEST
 ```
 
 ### Request path: `GET /quests/today?lat&lng`
@@ -114,6 +118,28 @@ flowchart LR
 5. **Feedback loop.** The taste update bumps `taste_profiles.updated_at`. The next
    `/quests/today` computes a new deck cache key and re-ranks with the new taste.
 
+### Ingest path: opening the app somewhere new
+
+1. **Survey.** `/quests/today` lists the geohash5 areas (~5 × 5 km) covering your radius. Any
+   area missing from `areas_ingested` gets an `ingest-area` job. A partial unique index allows only
+   one live job per area, so a crowd arriving in a new city still enqueues each area once.
+2. **Respond without blocking.** The response carries `surveying: { pending, failed }`. While
+   areas are pending, the API ranks **without caching** (a cached partial deck would hide the new
+   places for its whole TTL) and **holds the quest** (a better spot may be on its way). The web app
+   shows "Surveying the area…" and polls every 4 s.
+3. **Lease.** An `ingest-worker` claims the job (`FOR UPDATE SKIP LOCKED`), taking a 2-minute
+   **lease** that it renews while working, like Service Bus peek-lock and `RenewLock`.
+4. **Load.** The worker runs DuckDB against Overture's GeoParquet on S3. The bbox columns let it
+   read only the row groups that overlap the cell (a half-open box, so an edge place belongs to
+   exactly one cell). Then the shared `places` pipeline tags, upserts and recomputes stats.
+5. **Fail safely.**
+   - A worker that dies mid-job stops renewing. Its lease lapses and another replica re-claims
+     the job as the next attempt.
+   - Every outcome write is **fenced on the attempt number**, so a zombie worker's late "done" is
+     ignored.
+   - Transient errors retry with exponential backoff (5 s, 10 s, 20 s…). After 5 attempts, or
+     immediately for a malformed payload, the job is **dead**, the equivalent of a dead-letter queue.
+
 ### Niche scoring
 
 ```
@@ -149,6 +175,7 @@ Slots are append-only, so stored vectors never change meaning. Of 566k open NYC 
 | `users`, `taste_profiles` | Clerk id → user; `vec vector(160)` + `updated_at` (the cache version) |
 | `quests` | The quest log; state enum, frozen reasons, offer origin; partial unique index |
 | `outbox`, `processed_events` | Transactional outbox; per-consumer dedupe |
+| `jobs` | Work queue: status, attempts, `locked_until` lease, backoff `run_after`, last error |
 
 ### Patterns, and where they live
 
@@ -163,6 +190,8 @@ Slots are append-only, so stored vectors never change meaning. Of 566k open NYC 
 | Transactional outbox | [`events/outbox.ts`](apps/api/src/events/outbox.ts), [`cmd/outbox-relay`](workers/cmd/outbox-relay/main.go) |
 | Idempotent consumer, manual offset commits, DLQ | [`cmd/taste-worker`](workers/cmd/taste-worker/main.go) |
 | Partition key for per-entity ordering | outbox `key` = user id |
+| Competing consumers, leases, fencing tokens, backoff, dead-lettering | [`internal/queue`](workers/internal/queue/queue.go), [`cmd/ingest-worker`](workers/cmd/ingest-worker/main.go) |
+| Async request with a polling client (202-style "surveying") | [`areas.service.ts`](apps/api/src/quests/areas.service.ts), [`quest-home.tsx`](apps/web/components/quest/quest-home.tsx) |
 | Shared schemas across languages | [`proto/`](proto/larper/events/v1/events.proto) |
 | Schema migrations as a deploy hook | [`db/migrations`](db/migrations), [`templates/migrate.yaml`](infra/helm/larper/templates/migrate.yaml) |
 
@@ -184,6 +213,12 @@ Slots are append-only, so stored vectors never change meaning. Of 566k open NYC 
   Google Photorealistic 3D Tiles can replace it later. The cost: no opening hours or photos yet.
 - **No Google Places storage.** Place data is Overture (storable). Google's terms forbid storing
   Places content, so it would only ever be fetched on demand.
+- **Postgres queue locally, Service Bus in the cloud.** The jobs table copies Service Bus
+  semantics, so the interface (`JobQueue` in TS, `queue.Queue` in Go) can switch transports
+  without callers changing. Locally it saves running the Service Bus emulator and its SQL
+  Server dependency (about 2 GB of RAM).
+- **DuckDB CLI, not the Go binding.** The binding needs cgo. Shelling out keeps the Go binary
+  static and runs the exact same SQL file as the Python bulk loader.
 - **Lazy user creation.** Users are created on their first authenticated call. The Clerk webhook
   is deferred until it's needed (e.g. account deletion).
 
@@ -194,10 +229,10 @@ Slots are append-only, so stored vectors never change meaning. Of 566k open NYC 
 ```
 apps/web/        Next.js PWA: map (components/map), quest sheet, onboarding, journal
 apps/api/        NestJS API: auth, profile/onboarding, quests (scoring, cache, state machine), outbox
-workers/         Go: cmd/{load-places, outbox-relay, taste-worker}, internal/{taxonomy, taste, stats, platform}
+workers/         Go: cmd/{load-places, outbox-relay, taste-worker, ingest-worker}, internal/{places, queue, taxonomy, taste, stats, platform}
 proto/           Protobuf event schemas (generated into workers/gen and apps/api/src/gen)
 db/migrations/   SQL migrations (golang-migrate)
-data/            DuckDB extract of Overture places
+data/            Python bulk extract of Overture places (shares workers/internal/places/overture_extract.sql)
 infra/           k3d cluster config, Helm chart, Postgres image (PostGIS + pgvector)
 scripts/         up.sh / down.sh
 ```
@@ -242,6 +277,8 @@ http://localhost:3001/?at=40.7295,-73.9965                              # fake y
 kubectl -n larper exec redpanda-0 -- rpk group describe taste-worker    # partitions, members, lag
 kubectl -n larper logs -l app=taste-worker -f                           # applied / duplicate / dead-lettered
 pnpm proto:gen                                                          # regenerate event types (needs buf)
+kubectl -n larper logs -l app=ingest-worker -f                          # area ingests: leased, ingested, retries
+TEST_DATABASE_URL=postgres://... go test ./internal/queue/              # queue integration tests (in workers/)
 ```
 
 ---
@@ -254,5 +291,5 @@ pnpm proto:gen                                                          # regene
 - [x] **4. Scoring:** niche score + MMR, Redis cache-aside, quest state machine, zero-downtime rollouts.
 - [x] **5. Map UI:** field-journal 3D map (MapLibre + OpenFreeMap), quest sheet, journal page, PWA manifest.
 - [x] **6. Events:** transactional outbox, Go relay + idempotent taste-worker with DLQ, protobuf events, geofenced check-in.
-- [ ] **7. Async ingest:** unknown area → work queue → ingest-worker → stats refresh ("surveying the area…").
+- [x] **7. Async ingest:** unmapped area → leased work queue → ingest-worker (DuckDB) → stats refresh; "surveying the area…" in the app.
 - [ ] **8. Deploy + prove it:** Terraform AKS, Prometheus/Grafana, k6 load test showing the HPA scale out.

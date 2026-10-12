@@ -12,6 +12,7 @@ import { PG } from '../db/db.module';
 import { enqueueQuestEvent } from '../events/outbox';
 import { QuestAction as EventAction } from '../gen/larper/events/v1/events_pb';
 import { TagsService } from '../profile/tags.service';
+import { AreasService } from './areas.service';
 import { cellOf, cellsCovering, haversineM } from './geo';
 import { AreaStats, Candidate, mmr, Reasons, score, Scored, weightsFromEnv } from './scoring';
 import { QuestAction, QuestStatus, TRANSITIONS } from './transitions';
@@ -75,17 +76,24 @@ export class QuestsService {
     @Inject(PG) private readonly pg: Pool,
     private readonly cache: CacheService,
     private readonly tags: TagsService,
+    private readonly areas: AreasService,
   ) {}
 
   async today(userId: string, lat: number, lng: number, radiusM: number) {
     const center = cellOf(lat, lng);
     await this.expireStaleOffer(userId, lat, lng);
 
+    // Unseen areas get an ingest job. Until they land, the deck is partial: rank
+    // without caching (a cached partial deck would hide the new places for its whole
+    // TTL) and hold off on offering a quest (a better spot may be on its way).
+    const survey = await this.areas.survey(lat, lng, radiusM);
+    const surveyed = survey.pending.length === 0;
+
     const taste = await this.loadTaste(userId);
-    const deckKey = `deck:v3:${userId}:${taste.version}:${center.cell}:${radiusM}`;
-    const { value: ranked, hit } = await this.cache.getOrSet(deckKey, DECK_TTL_S, () =>
-      this.rank(userId, taste.vec, center.lat, center.lng, center.cell, radiusM),
-    );
+    const rank = () => this.rank(userId, taste.vec, center.lat, center.lng, center.cell, radiusM, surveyed);
+    const { value: ranked, hit } = surveyed
+      ? await this.cache.getOrSet(`deck:v3:${userId}:${taste.version}:${center.cell}:${radiusM}`, DECK_TTL_S, rank)
+      : { value: await rank(), hit: false };
 
     const excluded = await this.recentlyDone(userId);
     const deck = mmr(
@@ -94,7 +102,7 @@ export class QuestsService {
     );
 
     let quest = await this.active(userId, lat, lng);
-    if (!quest && deck.length) quest = await this.offer(userId, deck[0], lat, lng);
+    if (!quest && deck.length && surveyed) quest = await this.offer(userId, deck[0], lat, lng);
 
     return {
       quest,
@@ -103,6 +111,7 @@ export class QuestsService {
         .slice(0, DECK_SIZE - 1)
         .map((p) => ({ score: p.score, reasons: p.reasons, place: toPlaceView(p, lat, lng) })),
       cache: hit ? 'hit' : 'miss',
+      surveying: survey.pending.length || survey.failed.length ? survey : null,
     };
   }
 
@@ -182,10 +191,11 @@ export class QuestsService {
     lng: number,
     cell: string,
     radiusM: number,
+    cacheAreaStats: boolean,
   ): Promise<Scored[]> {
     await this.tags.ready();
     const [area, candidates] = await Promise.all([
-      this.areaStats(cell, lat, lng, radiusM),
+      this.areaStats(cell, lat, lng, radiusM, cacheAreaStats),
       this.candidates(userId, lat, lng, radiusM),
     ]);
     const weightOf = (tag: string) => {
@@ -201,8 +211,14 @@ export class QuestsService {
   }
 
   // Shared by every user in the cell, so cached separately from the per-user deck.
-  private async areaStats(cell: string, lat: number, lng: number, radiusM: number): Promise<AreaStats> {
-    const { value } = await this.cache.getOrSet(`area:v1:${cell}:${radiusM}`, AREA_TTL_S, async () => {
+  private async areaStats(
+    cell: string,
+    lat: number,
+    lng: number,
+    radiusM: number,
+    useCache: boolean,
+  ): Promise<AreaStats> {
+    const compute = async (): Promise<AreaStats> => {
       const cells = cellsCovering(lat, lng, radiusM);
       const [total, counts] = await Promise.all([
         this.pg.query<{ total: number }>(
@@ -218,8 +234,9 @@ export class QuestsService {
         total: total.rows[0].total,
         tagCounts: Object.fromEntries(counts.rows.map((r) => [r.tag, r.n])),
       };
-    });
-    return value;
+    };
+    if (!useCache) return compute();
+    return (await this.cache.getOrSet(`area:v1:${cell}:${radiusM}`, AREA_TTL_S, compute)).value;
   }
 
   // Places in the radius (GiST index), with taste similarity computed by pgvector

@@ -76,3 +76,34 @@ spec:
           command: ["/usr/local/bin/taste-worker"]
           env: {{- include "larper.workerEnv" . | nindent 12 }}
           resources: {{- toYaml .Values.workers.resources | nindent 12 }}
+---
+# Competing consumers on the ingest-area queue. Each job is one geohash5 area; a
+# replica holds a renewable lease while it extracts and loads it. Kill a replica
+# mid-job and the lease lapses, so the other one picks the job up.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingest-worker
+  labels: {{- include "larper.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.ingest.replicas }}
+  selector:
+    matchLabels: { app: ingest-worker }
+  template:
+    metadata:
+      labels:
+        app: ingest-worker
+        {{- include "larper.labels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: ingest-worker
+          image: {{ .Values.ingest.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          env:
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: pg-app, key: uri } }
+            - { name: OVERTURE_RELEASE, value: {{ .Values.ingest.overtureRelease | quote }} }
+            - { name: JOB_LEASE_SECONDS, value: {{ .Values.ingest.leaseSeconds | quote }} }
+            - { name: DUCKDB_MEMORY_LIMIT, value: {{ .Values.ingest.duckdbMemory | quote }} }
+            - { name: DUCKDB_THREADS, value: {{ .Values.ingest.duckdbThreads | quote }} }
+          resources: {{- toYaml .Values.ingest.resources | nindent 12 }}

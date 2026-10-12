@@ -8,6 +8,8 @@ import { useLocation } from "@/hooks/use-location";
 import { useApi, type Me, type Today } from "@/lib/api";
 import { QuestSheet, type QuestAction } from "./quest-sheet";
 
+const SURVEY_POLL_MS = 4000;
+
 // WebGL map: client only, and loaded after the shell so first paint isn't blocked on it.
 const QuestMap = dynamic(() => import("@/components/map/maplibre-quest-map"), { ssr: false });
 
@@ -45,6 +47,14 @@ export function QuestHome() {
       stale = true;
     };
   }, [api, loc, me?.onboarded, reloads]);
+
+  // While areas are being surveyed, check back until the ingest-worker finishes.
+  const surveying = (today?.surveying?.pending.length ?? 0) > 0;
+  useEffect(() => {
+    if (!surveying) return;
+    const t = setTimeout(() => setReloads((n) => n + 1), SURVEY_POLL_MS);
+    return () => clearTimeout(t);
+  }, [surveying, today]);
 
   // Keep fly-to centering above the sheet as its height changes.
   useEffect(() => {
@@ -108,6 +118,16 @@ export function QuestHome() {
         <p className="field-label absolute left-3 top-16 z-10 rounded bg-paper/90 px-2 py-1">{loc.note}</p>
       )}
 
+      {surveying && (
+        <p
+          role="status"
+          className="field-label absolute left-1/2 top-16 z-10 -translate-x-1/2 animate-pulse rounded border border-rule bg-paper/95 px-3 py-1.5"
+        >
+          Surveying the area… mapping {today!.surveying!.pending.length} new{" "}
+          {today!.surveying!.pending.length === 1 ? "district" : "districts"}
+        </p>
+      )}
+
       {error && (
         <p role="alert" className="absolute inset-x-3 top-24 z-20 rounded border border-oxblood bg-paper px-3 py-2 text-sm text-oxblood">
           {error}
@@ -118,6 +138,13 @@ export function QuestHome() {
         <p className="field-label absolute inset-x-0 bottom-8 z-10 text-center">
           {loc ? "Surveying the area…" : "Finding you…"}
         </p>
+      ) : surveying && !today.deck.length ? (
+        <div ref={sheetRef} className="absolute inset-x-0 bottom-0 z-10 mx-auto max-w-xl rounded-t-2xl bg-paper p-5 text-center">
+          <p className="field-label">Uncharted territory</p>
+          <p className="mt-1 text-ink-soft">
+            Nobody&apos;s mapped this area yet. Surveying it now; your quest appears here in a minute or so.
+          </p>
+        </div>
       ) : today.quest || today.deck.length ? (
         <QuestSheet
           ref={sheetRef}
@@ -132,7 +159,9 @@ export function QuestHome() {
         <div ref={sheetRef} className="absolute inset-x-0 bottom-0 z-10 mx-auto max-w-xl rounded-t-2xl bg-paper p-5 text-center">
           <p className="field-label">Uncharted</p>
           <p className="mt-1 text-ink-soft">
-            Nothing mapped around here yet. Larper only knows New York City so far.
+            {today.surveying?.failed.length
+              ? "Couldn't survey this area just now. Try again in a bit."
+              : "Nothing quest-worthy within reach here. Try somewhere livelier."}
           </p>
         </div>
       )}

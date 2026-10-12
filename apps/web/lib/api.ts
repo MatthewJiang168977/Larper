@@ -78,10 +78,19 @@ export interface DeckItem {
   place: PlaceView;
 }
 
+export interface Survey {
+  /** geohash5 areas whose places are being loaded right now. */
+  pending: string[];
+  /** Areas whose load failed recently. */
+  failed: string[];
+}
+
 export interface Today {
   quest: QuestView | null;
   deck: DeckItem[];
   cache: "hit" | "miss";
+  /** Set while nearby areas are being ingested (or failed to be). */
+  surveying: Survey | null;
 }
 
 export interface JournalEntry {

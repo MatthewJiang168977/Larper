@@ -10,12 +10,13 @@ export function cellOf(lat: number, lng: number) {
   return { cell, lat: latitude, lng: longitude };
 }
 
-// All geohash6 cells overlapping a circle's bounding box: the "neighbourhood"
-// rarity is measured over.
-export function cellsCovering(lat: number, lng: number, radiusM: number): string[] {
+// All geohash cells overlapping a circle's bounding box. Precision 6 (~1.2 km) is
+// the "neighbourhood" rarity is measured over; precision 5 (~5 km) is the unit of
+// on-demand ingest.
+export function cellsCovering(lat: number, lng: number, radiusM: number, precision = 6): string[] {
   const dLat = radiusM / M_PER_DEG_LAT;
   const dLng = radiusM / (M_PER_DEG_LAT * Math.cos((lat * Math.PI) / 180));
-  return ngeohash.bboxes(lat - dLat, lng - dLng, lat + dLat, lng + dLng, 6);
+  return ngeohash.bboxes(lat - dLat, lng - dLng, lat + dLat, lng + dLng, precision);
 }
 
 export function haversineM(lat1: number, lng1: number, lat2: number, lng2: number) {

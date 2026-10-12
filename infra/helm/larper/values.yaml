@@ -46,6 +46,19 @@ workers:
     requests: { cpu: 25m, memory: 32Mi }
     limits: { memory: 128Mi }
 
+ingest:
+  # Built from workers/Dockerfile --target ingest: ingest-worker + DuckDB CLI.
+  image: larper-registry:5111/larper-ingest:dev
+  replicas: 2
+  overtureRelease: "2026-09-23.1"
+  leaseSeconds: 120
+  # DuckDB's own cap, kept under the container limit so it spills instead of OOMing.
+  duckdbMemory: 512MB
+  duckdbThreads: 2
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 1Gi }
+
 redis:
   image: redis:7.4-alpine
 
