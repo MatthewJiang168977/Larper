@@ -6,6 +6,8 @@ export interface Located {
   lat: number;
   lng: number;
   source: "gps" | "override" | "demo";
+  /** GPS accuracy radius in meters, when the browser reports one. */
+  accuracyM?: number;
   note?: string;
 }
 
@@ -46,7 +48,7 @@ export function useLocation(): Located | null {
     if (forced || !hasGeo) return;
     const id = navigator.geolocation.watchPosition(
       (pos) => {
-        const next = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        const next = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracyM: pos.coords.accuracy };
         setGps((prev) =>
           prev?.source === "gps" && metersBetween(prev, next) < MIN_MOVE_M ? prev : { ...next, source: "gps" },
         );

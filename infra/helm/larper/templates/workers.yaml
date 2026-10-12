@@ -1,0 +1,78 @@
+# Kafka topics, created explicitly so partition counts are a decision, not a broker
+# default. user.events is keyed by user id: more partitions means more taste-worker
+# replicas can share the load, while each user's events stay in order.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-topics
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: rpk
+          image: {{ .Values.redpanda.image }}
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -e
+              create() { rpk topic create "$1" -p "$2" -r 1 -X brokers=redpanda:9092 || rpk topic describe "$1" -X brokers=redpanda:9092 >/dev/null; }
+              create user.events {{ .Values.workers.userEventsPartitions }}
+              create user.events.dlq 1
+---
+# Single replica on purpose: two relays could publish one user's consecutive events
+# in parallel and reorder them (see cmd/outbox-relay). Recreate, not RollingUpdate,
+# so an upgrade never runs old and new side by side.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: outbox-relay
+  labels: {{- include "larper.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: outbox-relay }
+  template:
+    metadata:
+      labels:
+        app: outbox-relay
+        {{- include "larper.labels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: outbox-relay
+          image: {{ .Values.workers.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/usr/local/bin/outbox-relay"]
+          env: {{- include "larper.workerEnv" . | nindent 12 }}
+          resources: {{- toYaml .Values.workers.resources | nindent 12 }}
+---
+# A consumer group: replicas split user.events' partitions between them, and Kafka
+# rebalances when one dies.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taste-worker
+  labels: {{- include "larper.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.workers.tasteReplicas }}
+  selector:
+    matchLabels: { app: taste-worker }
+  template:
+    metadata:
+      labels:
+        app: taste-worker
+        {{- include "larper.labels" . | nindent 8 }}
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: taste-worker
+          image: {{ .Values.workers.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/usr/local/bin/taste-worker"]
+          env: {{- include "larper.workerEnv" . | nindent 12 }}
+          resources: {{- toYaml .Values.workers.resources | nindent 12 }}

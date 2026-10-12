@@ -1,7 +1,16 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { Pool } from 'pg';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import { Pool, PoolClient } from 'pg';
 import { CacheService } from '../cache/cache.service';
 import { PG } from '../db/db.module';
+import { enqueueQuestEvent } from '../events/outbox';
+import { QuestAction as EventAction } from '../gen/larper/events/v1/events_pb';
 import { TagsService } from '../profile/tags.service';
 import { cellOf, cellsCovering, haversineM } from './geo';
 import { AreaStats, Candidate, mmr, Reasons, score, Scored, weightsFromEnv } from './scoring';
@@ -15,6 +24,20 @@ const AREA_TTL_S = 3600;
 const EXCLUDE_DAYS = 30; // don't re-offer a place skipped/completed this recently
 const OFFER_STALE_AFTER = '20 hours';
 const OFFER_STALE_METERS = 5000;
+const CHECKIN_RADIUS_M = 75;
+const MAX_ACCURACY_BONUS_M = 50;
+
+const EVENT_ACTION: Record<QuestAction, EventAction> = {
+  accept: EventAction.ACCEPTED,
+  skip: EventAction.SKIPPED,
+  complete: EventAction.COMPLETED,
+};
+
+export interface CheckInPosition {
+  lat: number;
+  lng: number;
+  accuracyM?: number;
+}
 
 export interface PlaceView {
   id: string;
@@ -83,22 +106,58 @@ export class QuestsService {
     };
   }
 
-  async act(userId: string, questId: string, action: QuestAction) {
+  // Moves a quest through its state machine and records the event, atomically:
+  // the UPDATE and the outbox INSERT share one transaction (see events/outbox.ts).
+  async act(userId: string, questId: string, action: QuestAction, at?: CheckInPosition) {
     const t = TRANSITIONS[action];
-    const { rows } = await this.pg.query<{ status: QuestStatus }>(
-      `UPDATE quests SET status = $4, updated_at = now()
-       WHERE id = $1 AND user_id = $2 AND status = ANY($3::quest_status[])
-       RETURNING status`,
-      [questId, userId, t.from, t.to],
-    );
-    if (rows.length) return { id: questId, status: rows[0].status };
+    const tx = await this.pg.connect();
+    try {
+      await tx.query('BEGIN');
+      if (action === 'complete') await this.checkGeofence(tx, userId, questId, at);
 
-    const cur = await this.pg.query<{ status: QuestStatus }>(
-      'SELECT status FROM quests WHERE id = $1 AND user_id = $2',
-      [questId, userId],
+      const { rows } = await tx.query<{ status: QuestStatus; placeId: string }>(
+        `UPDATE quests SET status = $4, updated_at = now()
+         WHERE id = $1 AND user_id = $2 AND status = ANY($3::quest_status[])
+         RETURNING status, place_id::text AS "placeId"`,
+        [questId, userId, t.from, t.to],
+      );
+      if (!rows.length) {
+        const cur = await tx.query<{ status: QuestStatus }>(
+          'SELECT status FROM quests WHERE id = $1 AND user_id = $2',
+          [questId, userId],
+        );
+        if (!cur.rows.length) throw new NotFoundException('no such quest');
+        throw new ConflictException(`cannot ${action} a quest that is ${cur.rows[0].status}`);
+      }
+
+      await enqueueQuestEvent(tx, { userId, questId, placeId: rows[0].placeId, action: EVENT_ACTION[action] });
+      await tx.query('COMMIT');
+      return { id: questId, status: rows[0].status };
+    } catch (err) {
+      await tx.query('ROLLBACK');
+      throw err;
+    } finally {
+      tx.release();
+    }
+  }
+
+  // A check-in counts only near the place. The allowance grows with the phone's
+  // reported GPS accuracy, capped so a vague fix can't check in from blocks away.
+  private async checkGeofence(tx: PoolClient, userId: string, questId: string, at?: CheckInPosition) {
+    if (!at) throw new BadRequestException('completing a quest needs your position (lat, lng)');
+    const { rows } = await tx.query<{ d: number }>(
+      `SELECT ST_Distance(p.geom, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography)::float8 AS d
+       FROM quests q JOIN places p ON p.id = q.place_id
+       WHERE q.id = $1 AND q.user_id = $2`,
+      [questId, userId, at.lng, at.lat],
     );
-    if (!cur.rows.length) throw new NotFoundException('no such quest');
-    throw new ConflictException(`cannot ${action} a quest that is ${cur.rows[0].status}`);
+    if (!rows.length) throw new NotFoundException('no such quest');
+    const allowed = CHECKIN_RADIUS_M + Math.min(at.accuracyM ?? 0, MAX_ACCURACY_BONUS_M);
+    if (rows[0].d > allowed) {
+      throw new UnprocessableEntityException(
+        `You're ${Math.round(rows[0].d)} m away. Check in when you're there.`,
+      );
+    }
   }
 
   // The journal: everything offered to this user, newest first.

@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthUser, ClerkAuthGuard, CurrentUser } from '../auth/auth.guard';
 import { QuestsService } from './quests.service';
 import { isAction } from './transitions';
@@ -38,10 +38,23 @@ export class QuestsController {
   }
 
   // POST /quests/:id/accept | skip | complete
+  // Body for complete: { lat, lng, accuracy? } (the geofenced check-in).
   @Post(':id/:action')
-  act(@CurrentUser() user: AuthUser, @Param('id') id: string, @Param('action') action: string) {
+  act(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('action') action: string,
+    @Body() body: { lat?: unknown; lng?: unknown; accuracy?: unknown } = {},
+  ) {
     if (!/^\d+$/.test(id)) throw new BadRequestException('bad quest id');
     if (!isAction(action)) throw new BadRequestException('action must be accept, skip, or complete');
-    return this.quests.act(user.id, id, action);
+    const lat = Number(body?.lat);
+    const lng = Number(body?.lng);
+    const accuracy = Number(body?.accuracy);
+    const at =
+      Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+        ? { lat, lng, accuracyM: Number.isFinite(accuracy) && accuracy >= 0 ? accuracy : undefined }
+        : undefined;
+    return this.quests.act(user.id, id, action, at);
   }
 }

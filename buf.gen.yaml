@@ -1,0 +1,12 @@
+# Generates event types for the Go workers and the TypeScript API. Output is
+# committed so builds don't need buf; regenerate with `pnpm proto:gen`.
+version: v2
+inputs:
+  - directory: proto
+plugins:
+  - local: protoc-gen-go
+    out: workers/gen
+    opt: paths=source_relative
+  - local: ["node", "apps/api/node_modules/@bufbuild/protoc-gen-es/bin/protoc-gen-es"]
+    out: apps/api/src/gen
+    opt: target=ts

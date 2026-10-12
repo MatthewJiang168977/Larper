@@ -59,7 +59,9 @@ export function QuestHome() {
     if (!today?.quest) return;
     setBusy(true);
     try {
-      await api(`/quests/${today.quest.id}/${action}`, { method: "POST" });
+      // Checking in sends where you are; the API only accepts it near the place.
+      const body = action === "complete" && loc ? { lat: loc.lat, lng: loc.lng, accuracy: loc.accuracyM } : undefined;
+      await api(`/quests/${today.quest.id}/${action}`, { method: "POST", body: body && JSON.stringify(body) });
       setReloads((n) => n + 1);
     } catch (e) {
       setError((e as Error).message);

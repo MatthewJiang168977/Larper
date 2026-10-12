@@ -100,6 +100,20 @@ func TestChainKey(t *testing.T) {
 	}
 }
 
+func TestParseVectorRoundTrip(t *testing.T) {
+	in := []float32{0, 0.25, -1, 0.333333}
+	out, err := ParseVector(VectorLiteral(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(in, out) {
+		t.Fatalf("round trip: %v -> %v", in, out)
+	}
+	if _, err := ParseVector("0.1,0.2"); err == nil {
+		t.Fatal("accepted a string without brackets")
+	}
+}
+
 func TestVectorLiteral(t *testing.T) {
 	if got := VectorLiteral([]float32{0, 0.5, 1}); got != "[0,0.5,1]" {
 		t.Fatalf("got %s", got)

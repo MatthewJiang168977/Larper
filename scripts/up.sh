@@ -17,12 +17,15 @@ docker push localhost:5111/larper-postgres:17
 docker build -t localhost:5111/larper-migrate:dev db
 docker push localhost:5111/larper-migrate:dev
 
+docker build -t localhost:5111/larper-workers:dev workers
+docker push localhost:5111/larper-workers:dev
+
 # Build the API image and push it to the cluster's local registry.
 docker build -f apps/api/Dockerfile -t localhost:5111/larper-api:dev .
 docker push localhost:5111/larper-api:dev
 
 helm upgrade --install larper infra/helm/larper -n larper --create-namespace
-kubectl -n larper rollout restart deploy/api
+kubectl -n larper rollout restart deploy/api deploy/outbox-relay deploy/taste-worker
 kubectl -n larper rollout status deploy/api --timeout=180s
 
 echo "Up. Try: for i in 1 2 3 4; do curl -s localhost:8080/healthz; echo; done"

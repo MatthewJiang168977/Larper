@@ -37,6 +37,15 @@ migrate:
   # Built from db/Dockerfile: golang-migrate + db/migrations.
   image: larper-registry:5111/larper-migrate:dev
 
+workers:
+  # Built from workers/Dockerfile: every Go command in one image.
+  image: larper-registry:5111/larper-workers:dev
+  userEventsPartitions: 6
+  tasteReplicas: 2
+  resources:
+    requests: { cpu: 25m, memory: 32Mi }
+    limits: { memory: 128Mi }
+
 redis:
   image: redis:7.4-alpine
 

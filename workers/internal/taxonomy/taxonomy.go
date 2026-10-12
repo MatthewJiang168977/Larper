@@ -221,3 +221,21 @@ func normalize(s string) string {
 	}
 	return strings.TrimSpace(b.String())
 }
+
+// ParseVector reads pgvector's text form ("[0.1,0,...]"), the inverse of VectorLiteral.
+func ParseVector(s string) ([]float32, error) {
+	s = strings.TrimSpace(s)
+	if len(s) < 2 || s[0] != '[' || s[len(s)-1] != ']' {
+		return nil, fmt.Errorf("not a vector literal: %.20q", s)
+	}
+	parts := strings.Split(s[1:len(s)-1], ",")
+	out := make([]float32, len(parts))
+	for i, p := range parts {
+		f, err := strconv.ParseFloat(strings.TrimSpace(p), 32)
+		if err != nil {
+			return nil, fmt.Errorf("vector element %d: %w", i, err)
+		}
+		out[i] = float32(f)
+	}
+	return out, nil
+}

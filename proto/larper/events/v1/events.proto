@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+// Events on the `user.events` topic. Producers: the API, via the transactional
+// outbox. Consumers: taste-worker (and later stats/analytics).
+//
+// Compatibility rules (buf breaking enforces them): never reuse or renumber a
+// field, only add new ones. Consumers must ignore unknown fields and enum values.
+package larper.events.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/MatthewJiang168977/larper/workers/gen/larper/events/v1;eventsv1";
+
+enum QuestAction {
+  QUEST_ACTION_UNSPECIFIED = 0;
+  QUEST_ACTION_ACCEPTED = 1;
+  QUEST_ACTION_SKIPPED = 2;
+  // A geofenced check-in: the user reported a position near the place.
+  QUEST_ACTION_COMPLETED = 3;
+}
+
+message QuestEvent {
+  // UUID. Consumers dedupe on it: delivery is at-least-once.
+  string event_id = 1;
+  // Kafka record key, so one user's events stay ordered within a partition.
+  string user_id = 2;
+  string quest_id = 3;
+  string place_id = 4;
+  QuestAction action = 5;
+  google.protobuf.Timestamp occurred_at = 6;
+}

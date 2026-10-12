@@ -6,6 +6,7 @@
     "web:dev": "pnpm --filter @larper/web dev",
     "api:dev": "pnpm --filter @larper/api start:dev",
     "api:build": "pnpm --filter @larper/api build",
-    "api:test": "pnpm --filter @larper/api test"
+    "api:test": "pnpm --filter @larper/api test",
+    "proto:gen": "buf lint proto && buf generate"
   }
 }
