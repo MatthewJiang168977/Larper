@@ -9,3 +9,6 @@ dist/
 *.tfstate*
 data/*.parquet
 data/*.duckdb
+
+# Local secrets loaded into k8s Secrets (never committed)
+infra/secrets/
