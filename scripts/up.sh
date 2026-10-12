@@ -14,6 +14,9 @@ helm upgrade --install cnpg cnpg/cloudnative-pg -n cnpg-system --create-namespac
 docker build -t localhost:5111/larper-postgres:17 infra/postgres
 docker push localhost:5111/larper-postgres:17
 
+docker build -t localhost:5111/larper-migrate:dev db
+docker push localhost:5111/larper-migrate:dev
+
 # Build the API image and push it to the cluster's local registry.
 docker build -f apps/api/Dockerfile -t localhost:5111/larper-api:dev .
 docker push localhost:5111/larper-api:dev

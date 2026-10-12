@@ -1,0 +1,23 @@
+# Applies db/migrations after every install/upgrade. Post-hook (not pre) because on a
+# fresh install the Postgres cluster is created by this same release; the Job's
+# retries cover the window until it accepts connections. golang-migrate takes an
+# advisory lock, so concurrent runs are safe.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: {{ .Values.migrate.image }}
+          args: ["-path", "/migrations", "-database", "$(DATABASE_URL)", "up"]
+          env:
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: pg-app, key: uri } }

@@ -21,6 +21,10 @@ postgres:
   instances: 1
   storage: 2Gi
 
+migrate:
+  # Built from db/Dockerfile: golang-migrate + db/migrations.
+  image: larper-registry:5111/larper-migrate:dev
+
 redis:
   image: redis:7.4-alpine
 

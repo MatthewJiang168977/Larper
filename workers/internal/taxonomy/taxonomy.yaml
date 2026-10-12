@@ -1,0 +1,184 @@
+# Larper niche taxonomy.
+#
+# Every place gets a vector of `dims` floats. Each tag owns one fixed slot (`id`).
+# Slot ids are append-only: never renumber or reuse one, because stored place and
+# taste vectors would silently change meaning. Free slots: 150..159.
+#
+# A tag fires when:
+#   - any level of the place's Overture taxonomy hierarchy is in `categories`, or
+#   - the place name contains one of `keywords` (case-insensitive, whole words).
+# `weight` (default 1.0) scales the slot; the vector is L2-normalized afterwards.
+# Places that fire no tag are not quest material and are not loaded.
+version: 1
+dims: 160
+
+# Keyword rules only apply under these Overture roots, so "Matcha Dental" stays out.
+roots: [food_and_drink, shopping, arts_and_entertainment, sports_and_recreation,
+        lifestyle_services, cultural_and_historic, lodging, travel_and_transportation]
+
+tags:
+  # --- sips & sweets ---
+  - { id: 0,   tag: matcha,            keywords: [matcha], weight: 1.5 }
+  - { id: 1,   tag: hojicha,           keywords: [hojicha, houjicha], weight: 1.5 }
+  - { id: 2,   tag: bubble-tea,        categories: [bubble_tea_shop], keywords: [boba, bubble tea] }
+  - { id: 3,   tag: thai-tea,          keywords: [thai tea, cha yen] }
+  - { id: 4,   tag: tea-house,         categories: [tea_room, coffee_and_tea_supplies], keywords: [teahouse, tea house, tea bar] }
+  - { id: 5,   tag: specialty-coffee,  categories: [coffee_roastery], keywords: [roasters, roastery, roasting co, espresso bar] }
+  - { id: 6,   tag: cafe,              categories: [coffee_shop, cafe], weight: 0.6 }
+  - { id: 7,   tag: hk-cafe,           categories: [hong_kong_style_cafe], keywords: [cha chaan teng] }
+  - { id: 8,   tag: juice-bar,         categories: [smoothie_juice_bar, acai_bowls] }
+  - { id: 9,   tag: bakery,            categories: [bakery, patisserie_cake_shop, pie_shop], keywords: [patisserie, boulangerie] }
+  - { id: 10,  tag: mochi,             keywords: [mochi, daifuku] }
+  - { id: 11,  tag: donut,             categories: [donut_shop], keywords: [donut, doughnut] }
+  - { id: 12,  tag: ube,               keywords: [ube], weight: 1.5 }
+  - { id: 13,  tag: black-sesame,      keywords: [black sesame], weight: 1.5 }
+  - { id: 14,  tag: soft-serve,        keywords: [soft serve, softserve, soft-serve] }
+  - { id: 15,  tag: ice-cream,         categories: [ice_cream_shop, gelato_shop, frozen_yogurt_shop], keywords: [gelato, creamery] }
+  - { id: 16,  tag: shaved-ice,        categories: [shaved_ice_shop], keywords: [bingsu, kakigori, shaved ice] }
+  - { id: 17,  tag: dessert,           categories: [dessert_shop, cupcake_shop, macaron_shop, custom_cakes_shop] }
+  - { id: 18,  tag: chocolate,         categories: [chocolatier], keywords: [chocolatier] }
+  - { id: 19,  tag: candy,             categories: [candy_store], keywords: [candy, sweets] }
+  - { id: 20,  tag: bagel,             categories: [bagel_shop] }
+
+  # --- eats ---
+  - { id: 21,  tag: dumplings,         categories: [dumpling_restaurant, dim_sum_restaurant], keywords: [dumpling, dumplings, xiao long bao, momo, pierogi, mandu, gyoza] }
+  - { id: 22,  tag: hand-pulled-noodles, keywords: [hand pulled, hand-pulled, lanzhou, biang], weight: 1.5 }
+  - { id: 23,  tag: ramen,             categories: [ramen_restaurant], keywords: [ramen] }
+  - { id: 24,  tag: noodles,           keywords: [noodle, noodles, pho, udon, soba] }
+  - { id: 25,  tag: omakase-counter,   keywords: [omakase], weight: 1.5 }
+  - { id: 26,  tag: sushi,             categories: [sushi_restaurant, poke_restaurant] }
+  - { id: 27,  tag: izakaya,           keywords: [izakaya, yakitori] }
+  - { id: 28,  tag: korean,            categories: [korean_restaurant] }
+  - { id: 29,  tag: japanese,          categories: [japanese_restaurant] }
+  - { id: 30,  tag: chinese-regional,  categories: [cantonese_restaurant, shanghainese_restaurant, taiwanese_restaurant], keywords: [sichuan, szechuan, hunan, yunnan, xinjiang, fujian, dongbei, xi'an] }
+  - { id: 31,  tag: chinese,           categories: [chinese_restaurant], weight: 0.6 }
+  - { id: 32,  tag: southeast-asian,   categories: [vietnamese_restaurant, thai_restaurant, malaysian_restaurant, indonesian_restaurant, filipino_restaurant, burmese_restaurant] }
+  - { id: 33,  tag: south-asian,       categories: [indian_restaurant, pakistani_restaurant, bangladeshi_restaurant, nepalese_restaurant, sri_lankan_restaurant] }
+  - { id: 34,  tag: middle-eastern,    categories: [middle_eastern_restaurant, lebanese_restaurant, persian_restaurant, turkish_restaurant, israeli_restaurant, syrian_restaurant, falafel_restaurant, doner_kebab_restaurant, afghani_restaurant, egyptian_restaurant] }
+  - { id: 35,  tag: caucasus-central-asian, categories: [uzbek_restaurant, georgian_restaurant, armenian_restaurant], keywords: [khachapuri, plov] }
+  - { id: 36,  tag: african,           categories: [african_restaurant, ethiopian_restaurant, west_african_restaurant, nigerian_restaurant, moroccan_restaurant] }
+  - { id: 37,  tag: caribbean,         categories: [caribbean_restaurant, jamaican_restaurant, haitian_restaurant, trinidadian_restaurant, puerto_rican_restaurant, cuban_restaurant, dominican_restaurant] }
+  - { id: 38,  tag: latin-american,    categories: [latin_american_restaurant, peruvian_restaurant, colombian_restaurant, ecuadorian_restaurant, salvadoran_restaurant, honduran_restaurant, guatemalan_restaurant, venezuelan_restaurant, argentine_restaurant, brazilian_restaurant, empanada_restaurant], keywords: [pupuseria, arepa, arepas] }
+  - { id: 39,  tag: tacos,             categories: [mexican_restaurant, taco_restaurant, texmex_restaurant], keywords: [taqueria, tacos] }
+  - { id: 40,  tag: eastern-european,  categories: [eastern_european_restaurant, russian_restaurant, polish_restaurant, ukrainian_restaurant] }
+  - { id: 41,  tag: european,          categories: [french_restaurant, spanish_restaurant, portuguese_restaurant, german_restaurant, austrian_restaurant, belgian_restaurant, scandinavian_restaurant, british_restaurant, irish_restaurant, european_restaurant, greek_restaurant, mediterranean_restaurant, bistro, tapas_bar] }
+  - { id: 42,  tag: italian,           categories: [italian_restaurant] }
+  - { id: 43,  tag: pizza-slice,       categories: [pizza_restaurant] }
+  - { id: 44,  tag: deli,              categories: [delicatessen, sandwich_shop, cheesesteak_restaurant], keywords: [bodega, appetizing] }
+  - { id: 45,  tag: diner,             categories: [diner], keywords: [diner, luncheonette] }
+  - { id: 46,  tag: bbq-southern,      categories: [barbecue_restaurant, southern_american_restaurant, soul_food, cajun_and_creole_restaurant] }
+  - { id: 47,  tag: vegan,             categories: [vegan_restaurant, vegetarian_restaurant] }
+  - { id: 48,  tag: food-hall,         categories: [food_court], keywords: [food hall, market hall] }
+  - { id: 49,  tag: street-food,       categories: [food_truck_stand, street_vendor], keywords: [food cart, food truck] }
+  - { id: 50,  tag: brunch,            categories: [breakfast_and_brunch_restaurant, pancake_house] }
+  - { id: 51,  tag: seafood,           categories: [seafood_restaurant, fish_and_chips_restaurant], keywords: [oyster, oysters, raw bar] }
+  - { id: 52,  tag: halal,             categories: [halal_restaurant] }
+  - { id: 53,  tag: kosher,            categories: [kosher_restaurant] }
+  - { id: 54,  tag: hot-pot,           keywords: [hot pot, hotpot, shabu] }
+  - { id: 55,  tag: korean-bbq,        keywords: [korean bbq, kbbq] }
+  - { id: 56,  tag: theme-restaurant,  categories: [theme_restaurant] }
+  - { id: 57,  tag: fresh-pasta,       categories: [pasta_store] }
+  - { id: 58,  tag: specialty-grocery, categories: [asian_grocery_store, international_grocery_store, mexican_grocery_store, indian_grocery_store, kosher_grocery_store, imported_food_store, specialty_foods_store, herb_and_spice_store] }
+  - { id: 59,  tag: cheese,            categories: [cheese_shop], keywords: [fromagerie] }
+  - { id: 60,  tag: market,            categories: [farmers_market, public_market, market], keywords: [greenmarket] }
+
+  # --- drinks & nightlife ---
+  - { id: 61,  tag: speakeasy,         categories: [speakeasy], keywords: [speakeasy], weight: 1.5 }
+  - { id: 62,  tag: cocktail-bar,      categories: [cocktail_bar] }
+  - { id: 63,  tag: dive-bar,          categories: [dive_bar] }
+  - { id: 64,  tag: wine-bar,          categories: [wine_bar, winery] }
+  - { id: 65,  tag: beer,              categories: [brewery, beer_bar, beer_garden], keywords: [taproom, brewing] }
+  - { id: 66,  tag: whiskey,           categories: [whiskey_bar, distillery] }
+  - { id: 67,  tag: sake,              categories: [sake_bar], keywords: [sake] }
+  - { id: 68,  tag: tiki,              categories: [tiki_bar], keywords: [tiki] }
+  - { id: 69,  tag: pub,               categories: [pub, irish_pub, gastropub] }
+  - { id: 70,  tag: hookah,            categories: [hookah_bar] }
+  - { id: 71,  tag: cigar,             categories: [cigar_bar] }
+  - { id: 72,  tag: rooftop,           keywords: [rooftop] }
+  - { id: 73,  tag: hotel-bar,         categories: [hotel_bar] }
+  - { id: 74,  tag: queer-bar,         categories: [gay_bar] }
+  - { id: 75,  tag: sports-bar,        categories: [sports_bar], weight: 0.6 }
+  - { id: 76,  tag: lounge,            categories: [lounge], weight: 0.6 }
+  - { id: 77,  tag: karaoke,           categories: [karaoke_venue], keywords: [karaoke] }
+  - { id: 78,  tag: dancing,           categories: [dance_club, salsa_club] }
+
+  # --- do something ---
+  - { id: 79,  tag: jazz,              categories: [jazz_and_blues_venue], keywords: [jazz] }
+  - { id: 80,  tag: live-music,        categories: [music_venue] }
+  - { id: 81,  tag: comedy,            categories: [comedy_club], keywords: [comedy] }
+  - { id: 82,  tag: theater,           categories: [theatre_venue, performing_arts_venue, opera_and_ballet] }
+  - { id: 83,  tag: cinema,            categories: [movie_theater, drive_in_theater], keywords: [cinema, film forum, microcinema] }
+  - { id: 84,  tag: arcade,            categories: [arcade], keywords: [arcade, barcade] }
+  - { id: 85,  tag: photobooth,        keywords: [photobooth, photo booth, photomatica], weight: 1.5 }
+  - { id: 86,  tag: escape-room,       categories: [escape_room] }
+  - { id: 87,  tag: board-games,       keywords: [board game, board games, boardgame, game cafe] }
+  - { id: 88,  tag: bowling,           categories: [bowling_alley], keywords: [bowl, bowling] }
+  - { id: 89,  tag: billiards,         categories: [pool_billiards, pool_hall], keywords: [billiards] }
+  - { id: 90,  tag: mini-golf,         categories: [miniature_golf_course], keywords: [mini golf, putt] }
+  - { id: 91,  tag: skating,           categories: [ice_skating_rink, roller_skating_rink, skating_rink] }
+  - { id: 92,  tag: climbing,          categories: [rock_climbing_spot], keywords: [bouldering, climbing] }
+  - { id: 93,  tag: target-sports,     categories: [batting_cage, archery_range, shooting_range], keywords: [axe throwing] }
+  - { id: 94,  tag: spooky,            categories: [haunted_house], keywords: [haunted, oddities] }
+  - { id: 95,  tag: mystic,            categories: [psychic_advising, astrological_advising, spiritual_advising], keywords: [tarot] }
+  - { id: 96,  tag: circus,            categories: [circus_venue], keywords: [circus, trapeze] }
+  - { id: 97,  tag: gallery,           categories: [art_gallery, artist_studio] }
+  - { id: 98,  tag: museum,            categories: [museum, history_museum, art_museum, contemporary_art_museum, science_museum, childrens_museum] }
+  - { id: 99,  tag: creatures,         categories: [planetarium, aquarium, zoo, wildlife_sanctuary] }
+  - { id: 100, tag: public-art,        categories: [street_art, sculpture_statue], keywords: [mural] }
+  - { id: 101, tag: historic,          categories: [historic_site, monument, fort, lighthouse, historic_mission], weight: 0.7 }
+  - { id: 102, tag: cemetery,          categories: [cemetery, memorial_park] }
+  - { id: 103, tag: social-club,       categories: [social_club] }
+
+  # --- dig through stuff ---
+  - { id: 104, tag: used-books,        categories: [used_bookstore], keywords: [used books, rare books] }
+  - { id: 105, tag: bookstore,         categories: [bookstore, academic_bookstore] }
+  - { id: 106, tag: comics,            categories: [comic_books_store], keywords: [comics] }
+  - { id: 107, tag: vinyl,             categories: [vinyl_record_store, music_and_dvd_store], keywords: [records, vinyl] }
+  - { id: 108, tag: video-games,       categories: [video_game_store, video_and_video_game_rental], keywords: [retro games] }
+  - { id: 109, tag: thrift,            categories: [second_hand_store, second_hand_clothing_store], keywords: [thrift, vintage] }
+  - { id: 110, tag: antiques,          categories: [antique_store, auction_house], keywords: [antiques] }
+  - { id: 111, tag: flea-market,       categories: [flea_market], keywords: [flea] }
+  - { id: 112, tag: stationery,        categories: [cards_and_stationery_store], keywords: [stationery, stationary, paper goods] }
+  - { id: 113, tag: art-supply,        categories: [art_supply_store, arts_crafts_and_hobby_store, craft_store, knitting_supply_store, embroidery_and_crochet_store], keywords: [yarn] }
+  - { id: 114, tag: hobby-shop,        categories: [hobby_shop, toy_store, toys_and_games_store], keywords: [hobby, gunpla, model kits] }
+  - { id: 115, tag: plants,            categories: [nursery_and_gardening_store, florist], keywords: [plant shop, plants] }
+  - { id: 116, tag: crystals,          categories: [gemstone_and_mineral_store, religious_and_spiritual_goods_store], keywords: [crystals, botanica] }
+  - { id: 117, tag: film-camera,       categories: [camera_and_photography_store], keywords: [film lab, film photo] }
+  - { id: 118, tag: instruments,       categories: [musical_instrument_store, guitar_store, piano_store] }
+  - { id: 119, tag: skate-surf,        categories: [skate_store, surf_store], keywords: [skate shop, skateshop] }
+  - { id: 120, tag: boutique,          categories: [fashion_boutique, designer_clothing], weight: 0.6 }
+  - { id: 121, tag: sneakers,          keywords: [sneaker, sneakers, kicks] }
+  - { id: 122, tag: fragrance,         categories: [cosmetics_and_fragrance_store], keywords: [perfume, perfumery, fragrance, apothecary] }
+  - { id: 123, tag: home-goods,        categories: [candle_store, home_decor_store] }
+  - { id: 124, tag: souvenirs,         categories: [souvenir_store, gift_shop], weight: 0.6 }
+  - { id: 125, tag: zines,             categories: [newspaper_and_magazines_store], keywords: [zine, zines] }
+  - { id: 126, tag: costume,           categories: [costume_store] }
+
+  # --- outside ---
+  - { id: 127, tag: park,              categories: [park], weight: 0.7 }
+  - { id: 128, tag: botanical,         keywords: [botanical, botanic, conservatory, community garden] }
+  - { id: 129, tag: waterfront,        categories: [beach], keywords: [pier, waterfront, boardwalk] }
+  - { id: 130, tag: dog-park,          categories: [dog_park] }
+  - { id: 131, tag: trail,             categories: [hiking_trail, national_park, mountain_bike_trail] }
+  - { id: 132, tag: on-the-water,      categories: [boat_rental_and_training, canoe_and_kayak_hire_service, sailing_club], keywords: [kayak, boathouse] }
+  - { id: 133, tag: bike,              categories: [bike_rental], weight: 0.5 }
+
+  # --- body & mind ---
+  - { id: 134, tag: bathhouse,         categories: [public_bath_house, sauna], keywords: [banya, bathhouse, bath house, hammam] }
+  - { id: 135, tag: tattoo,            categories: [tattoo_and_piercing, tattoo, piercing] }
+  - { id: 136, tag: meditation,        categories: [meditation_center, tai_chi_studio] }
+  - { id: 137, tag: dance-class,       categories: [dance_studio] }
+  - { id: 138, tag: combat-sports,     categories: [martial_arts_club, fencing_club, boxing_gym, kickboxing_club], weight: 0.6 }
+
+  # --- vibes ---
+  - { id: 139, tag: underground,       keywords: [basement, underground, cellar, downstairs] }
+  - { id: 140, tag: mall,              categories: [shopping_mall], weight: 0.5 }
+  - { id: 141, tag: late-night,        keywords: [24 hour, 24 hours, 24/7, late night, after hours] }
+  - { id: 142, tag: internet-cafe,     categories: [internet_cafe], keywords: [pc bang, lan center] }
+  - { id: 143, tag: library,           categories: [library] }
+  - { id: 144, tag: cultural-center,   categories: [cultural_center] }
+  - { id: 145, tag: temple,            categories: [buddhist_place_of_worship, hindu_place_of_worship, sikh_place_of_worship], weight: 0.5 }
+  - { id: 146, tag: cat-cafe,          keywords: [cat cafe, cat café, meow parlour], weight: 1.5 }
+  - { id: 147, tag: listening-bar,     keywords: [listening bar, hi-fi, hifi], weight: 1.5 }
+  - { id: 148, tag: natural-wine,      keywords: [natural wine, vin naturel] }
+  - { id: 149, tag: piano-bar,         keywords: [piano bar] }
