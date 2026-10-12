@@ -1,0 +1,15 @@
+# Local cluster: 1 server + 2 agents so pods actually spread across nodes.
+# k3s bundles Traefik (our ingress / load balancer) and metrics-server (needed by the HPA).
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: larper
+servers: 1
+agents: 2
+ports:
+  - port: 8080:80
+    nodeFilters: [loadbalancer]
+registries:
+  create:
+    name: larper-registry
+    hostPort: "5111"

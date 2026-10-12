@@ -1,0 +1,18 @@
+# Managed by the CloudNativePG operator (installed by scripts/bootstrap.sh).
+# CNPG creates the secret "pg-app" with the app user's connection URI.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: pg
+spec:
+  instances: {{ .Values.postgres.instances }}
+  imageName: {{ .Values.postgres.image }}
+  storage:
+    size: {{ .Values.postgres.storage }}
+  bootstrap:
+    initdb:
+      database: larper
+      owner: larper
+      postInitApplicationSQL:
+        - CREATE EXTENSION IF NOT EXISTS postgis;
+        - CREATE EXTENSION IF NOT EXISTS vector;

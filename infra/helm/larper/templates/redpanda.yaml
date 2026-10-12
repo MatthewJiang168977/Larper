@@ -1,0 +1,45 @@
+# Single-broker Kafka-compatible event log. Fine for dev and the demo cluster;
+# production would run 3 brokers with replication factor 3.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redpanda
+spec:
+  serviceName: redpanda
+  replicas: 1
+  selector:
+    matchLabels: { app: redpanda }
+  template:
+    metadata:
+      labels: { app: redpanda }
+    spec:
+      containers:
+        - name: redpanda
+          image: {{ .Values.redpanda.image }}
+          args:
+            - redpanda
+            - start
+            - --mode=dev-container
+            - --smp=1
+            - --memory=512M
+            - --overprovisioned
+            - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+            - --advertise-kafka-addr=PLAINTEXT://redpanda:9092
+          ports: [{ containerPort: 9092 }]
+          volumeMounts: [{ name: data, mountPath: /var/lib/redpanda/data }]
+          resources:
+            requests: { cpu: 100m, memory: 640Mi }
+            limits: { memory: 800Mi }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: {{ .Values.redpanda.storage }} } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redpanda
+spec:
+  selector: { app: redpanda }
+  ports: [{ port: 9092 }]

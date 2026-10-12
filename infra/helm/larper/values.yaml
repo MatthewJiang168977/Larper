@@ -1,0 +1,29 @@
+# Defaults target the local k3d cluster. values-aks.yaml overrides for Azure.
+api:
+  image: larper-registry:5111/larper-api:dev
+  replicas: 2
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPU: 70
+
+ingress:
+  className: traefik
+  host: ""   # empty = match any host (localhost:8080 locally)
+
+postgres:
+  # Built from infra/postgres/Dockerfile: CNPG standard image (pgvector) + PostGIS.
+  image: larper-registry:5111/larper-postgres:17
+  instances: 1
+  storage: 2Gi
+
+redis:
+  image: redis:7.4-alpine
+
+redpanda:
+  image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+  storage: 2Gi
