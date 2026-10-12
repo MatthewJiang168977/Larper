@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { RequireSignIn } from "@/components/require-sign-in";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApi, type Me, type VibeCard } from "@/lib/api";
 
@@ -8,7 +9,15 @@ const SWIPE_PX = 90;
 
 // One pass through the vibe cards: swipe right (or →) for "into it", left (or ←)
 // for "not really". The answers seed the taste vector the quest ranking uses.
-export default function Onboarding() {
+export default function OnboardingPage() {
+  return (
+    <RequireSignIn>
+      <Onboarding />
+    </RequireSignIn>
+  );
+}
+
+function Onboarding() {
   const api = useApi();
   const [cards, setCards] = useState<VibeCard[]>([]);
   const [index, setIndex] = useState(0);
@@ -66,20 +75,20 @@ export default function Onboarding() {
   if (error) {
     return (
       <Shell>
-        <p className="text-red-700">Something broke: {error}</p>
+        <p className="text-oxblood">Something broke: {error}</p>
         <button onClick={restart} className="underline">Try again</button>
       </Shell>
     );
   }
 
-  if (cards.length === 0) return <Shell><p className="text-neutral-500">Loading…</p></Shell>;
+  if (cards.length === 0) return <Shell><p className="text-ink-soft">Loading…</p></Shell>;
 
   if (done) {
     if (liked.length === 0) {
       return (
         <Shell>
           <p>You passed on everything. Pick at least one so we know where to start.</p>
-          <button onClick={restart} className="rounded-md bg-neutral-900 px-4 py-2 text-white">Go again</button>
+          <button onClick={restart} className="stamp-btn rounded-md bg-oxblood px-4 py-2 text-paper">Go again</button>
         </Shell>
       );
     }
@@ -88,16 +97,16 @@ export default function Onboarding() {
         {result ? (
           <>
             <h2 className="text-2xl font-semibold">Your quest log is open.</h2>
-            <p className="text-neutral-500">Leaning toward:</p>
+            <p className="text-ink-soft">Leaning toward:</p>
             <ul className="flex flex-wrap justify-center gap-2">
               {result.topTags.map((t) => (
-                <li key={t} className="rounded-full border border-neutral-300 px-3 py-1 text-sm">{t}</li>
+                <li key={t} className="rounded-full border border-ink-faint px-3 py-1 font-mono text-xs">{t}</li>
               ))}
             </ul>
             <Link href="/" className="underline">Back home</Link>
           </>
         ) : (
-          <p className="text-neutral-500">Saving…</p>
+          <p className="text-ink-soft">Saving…</p>
         )}
       </Shell>
     );
@@ -107,11 +116,11 @@ export default function Onboarding() {
   const tilt = dragX / 12;
   return (
     <Shell>
-      <p className="text-sm text-neutral-500">
-        {index + 1} / {cards.length}
+      <p className="field-label">
+        Vibe {index + 1} of {cards.length}
       </p>
       <div
-        className="w-full max-w-sm cursor-grab touch-none select-none rounded-xl border border-neutral-300 bg-white p-8 shadow-sm active:cursor-grabbing"
+        className="w-full max-w-sm cursor-grab touch-none select-none rounded-xl border border-paper-edge bg-paper-deep p-8 shadow-[3px_4px_0_var(--ink)] active:cursor-grabbing"
         style={{
           transform: `translateX(${dragX}px) rotate(${tilt}deg)`,
           transition: dragging ? "none" : "transform 150ms",
@@ -131,14 +140,14 @@ export default function Onboarding() {
           else setDragX(0);
         }}
       >
-        <h2 className="text-xl font-semibold">{card.title}</h2>
-        <p className="mt-2 text-neutral-600">{card.blurb}</p>
+        <h2 className="text-2xl font-semibold leading-snug">{card.title}</h2>
+        <p className="mt-2 text-ink-soft">{card.blurb}</p>
       </div>
       <div className="flex gap-3">
-        <button onClick={() => answer(false)} className="rounded-md border border-neutral-300 px-4 py-2">
+        <button onClick={() => answer(false)} className="stamp-btn rounded-md bg-paper px-4 py-2">
           ← Not really
         </button>
-        <button onClick={() => answer(true)} className="rounded-md bg-neutral-900 px-4 py-2 text-white">
+        <button onClick={() => answer(true)} className="stamp-btn rounded-md bg-oxblood px-4 py-2 text-paper">
           Into it →
         </button>
       </div>

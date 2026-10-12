@@ -1,33 +1,38 @@
 import { ClerkProvider } from "@clerk/nextjs";
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Fraunces, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
   subsets: ["latin"],
+  axes: ["opsz", "SOFT"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const jetbrains = JetBrains_Mono({
+  variable: "--font-jetbrains",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
   title: "Larper",
   description: "The most niche thing to do near you.",
+  applicationName: "Larper",
+  appleWebApp: { capable: true, title: "Larper", statusBarStyle: "default" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#f2ead8",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">
-        <ClerkProvider>
-          {children}
-        </ClerkProvider>
+    <html lang="en" className={`${fraunces.variable} ${jetbrains.variable} h-full antialiased`}>
+      <body className="flex min-h-full flex-col">
+        <ClerkProvider>{children}</ClerkProvider>
       </body>
     </html>
   );

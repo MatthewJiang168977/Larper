@@ -32,7 +32,14 @@ def extract(bbox, out, release=RELEASE):
                  taxonomy.hierarchy      AS hierarchy,
                  taxonomy.alternates     AS alternates,
                  brand.names."primary"   AS brand,
-                 brand.wikidata          AS brand_wikidata
+                 brand.wikidata          AS brand_wikidata,
+                 -- Contact links for the quest card. Overture mixes social profiles into
+                 -- websites, so pick them apart here.
+                 list_filter(coalesce(websites, []),
+                   x -> NOT regexp_matches(x, '(facebook|instagram)[.]com', 'i'))[1] AS website,
+                 list_filter(coalesce(socials, []) || coalesce(websites, []),
+                   x -> regexp_matches(x, 'instagram[.]com/[^/?#]+', 'i'))[1]   AS instagram,
+                 phones[1]               AS phone
           FROM read_parquet('{src}')
           WHERE bbox.xmin BETWEEN ? AND ? AND bbox.ymin BETWEEN ? AND ?
             AND coalesce(operating_status, 'open') = 'open'

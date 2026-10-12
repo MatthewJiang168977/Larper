@@ -33,11 +33,22 @@ type overtureRow struct {
 	Hierarchy  []string `parquet:"hierarchy,list"`
 	Alternates []string `parquet:"alternates,list"`
 	Brand      *string  `parquet:"brand"`
+	Website    *string  `parquet:"website"`
+	Instagram  *string  `parquet:"instagram"`
+	Phone      *string  `parquet:"phone"`
 }
 
 func str(p *string) string {
 	if p == nil {
 		return ""
+	}
+	return *p
+}
+
+// orNull keeps NULLs NULL in the COPY instead of turning them into "".
+func orNull(p *string) any {
+	if p == nil || *p == "" {
+		return nil
 	}
 	return *p
 }
@@ -118,14 +129,11 @@ func tagFile(path string, tx *taxonomy.Taxonomy, minConf float64) ([][]any, int,
 			if res.Vec == nil {
 				continue
 			}
-			var brand any
-			if p.Brand != nil {
-				brand = *p.Brand
-			}
 			out = append(out, []any{
-				p.OvertureID, *p.Name, *p.Lng, *p.Lat, p.Hierarchy, brand,
+				p.OvertureID, *p.Name, *p.Lng, *p.Lat, p.Hierarchy, orNull(p.Brand),
 				taxonomy.ChainKey(*p.Name, str(p.Brand)),
 				res.Tags, taxonomy.VectorLiteral(res.Vec), float32(*p.Confidence),
+				orNull(p.Website), orNull(p.Instagram), orNull(p.Phone),
 			})
 		}
 		if err == io.EOF {
@@ -166,22 +174,26 @@ func upsert(ctx context.Context, pool *pgxpool.Pool, rows [][]any, release strin
 
 	if _, err := tx.Exec(ctx, `CREATE TEMP TABLE stage (
 		overture_id text, name text, lng float8, lat float8, categories text[], brand text,
-		chain_key text, tags text[], tag_vec text, confidence real) ON COMMIT DROP`); err != nil {
+		chain_key text, tags text[], tag_vec text, confidence real,
+		website text, instagram text, phone text) ON COMMIT DROP`); err != nil {
 		return nil, err
 	}
-	cols := []string{"overture_id", "name", "lng", "lat", "categories", "brand", "chain_key", "tags", "tag_vec", "confidence"}
+	cols := []string{"overture_id", "name", "lng", "lat", "categories", "brand", "chain_key", "tags", "tag_vec", "confidence",
+		"website", "instagram", "phone"}
 	if _, err := tx.CopyFrom(ctx, pgx.Identifier{"stage"}, cols, pgx.CopyFromRows(rows)); err != nil {
 		return nil, fmt.Errorf("copy: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO places (overture_id, name, geom, categories, brand, chain_key, tags, tag_vec, confidence)
+		INSERT INTO places (overture_id, name, geom, categories, brand, chain_key, tags, tag_vec, confidence,
+		                    website, instagram, phone)
 		SELECT overture_id, name, ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography,
-		       categories, brand, chain_key, tags, tag_vec::vector, confidence
+		       categories, brand, chain_key, tags, tag_vec::vector, confidence, website, instagram, phone
 		FROM stage
 		ON CONFLICT (overture_id) DO UPDATE SET
 		  name = EXCLUDED.name, geom = EXCLUDED.geom, categories = EXCLUDED.categories,
 		  brand = EXCLUDED.brand, chain_key = EXCLUDED.chain_key, tags = EXCLUDED.tags,
-		  tag_vec = EXCLUDED.tag_vec, confidence = EXCLUDED.confidence, updated_at = now()`); err != nil {
+		  tag_vec = EXCLUDED.tag_vec, confidence = EXCLUDED.confidence, website = EXCLUDED.website,
+		  instagram = EXCLUDED.instagram, phone = EXCLUDED.phone, updated_at = now()`); err != nil {
 		return nil, fmt.Errorf("merge: %w", err)
 	}
 

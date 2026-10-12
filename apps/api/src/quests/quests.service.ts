@@ -24,6 +24,9 @@ export interface PlaceView {
   category: string;
   tags: string[];
   distanceM: number;
+  website: string | null;
+  instagram: string | null;
+  phone: string | null;
 }
 
 export interface QuestView {
@@ -56,7 +59,7 @@ export class QuestsService {
     await this.expireStaleOffer(userId, lat, lng);
 
     const taste = await this.loadTaste(userId);
-    const deckKey = `deck:v2:${userId}:${taste.version}:${center.cell}:${radiusM}`;
+    const deckKey = `deck:v3:${userId}:${taste.version}:${center.cell}:${radiusM}`;
     const { value: ranked, hit } = await this.cache.getOrSet(deckKey, DECK_TTL_S, () =>
       this.rank(userId, taste.vec, center.lat, center.lng, center.cell, radiusM),
     );
@@ -171,7 +174,8 @@ export class QuestsService {
               coalesce(1 - (p.tag_vec <=> t.vec), 0)::float8 AS taste,
               coalesce(c.locations, 1) AS "chainLocations",
               p.confidence::float8 AS confidence,
-              ST_Distance(p.geom, o.g)::float8 AS "distanceM"
+              ST_Distance(p.geom, o.g)::float8 AS "distanceM",
+              p.website, p.instagram, p.phone
        FROM places p
        CROSS JOIN o
        LEFT JOIN taste_profiles t ON t.user_id = $1
@@ -243,7 +247,8 @@ export class QuestsService {
 const QUEST_SELECT = `
   SELECT q.id::text, q.status, q.score::float8 AS score, q.reasons, q.created_at AS "createdAt",
          p.id::text AS "placeId", p.name, ST_Y(p.geom::geometry) AS lat, ST_X(p.geom::geometry) AS lng,
-         p.categories[array_length(p.categories, 1)] AS category, p.tags
+         p.categories[array_length(p.categories, 1)] AS category, p.tags,
+         p.website, p.instagram, p.phone
   FROM quests q JOIN places p ON p.id = q.place_id`;
 
 interface QuestRow {
@@ -258,6 +263,9 @@ interface QuestRow {
   lng: number;
   category: string;
   tags: string[];
+  website: string | null;
+  instagram: string | null;
+  phone: string | null;
 }
 
 function toQuestView(r: QuestRow, lat: number, lng: number): QuestView {
@@ -273,7 +281,7 @@ function toQuestView(r: QuestRow, lat: number, lng: number): QuestView {
 
 // Distances in the cached deck are from the cell center; report them from the user.
 function toPlaceView(
-  p: { id: string; name: string; lat: number; lng: number; category: string; tags: string[] },
+  p: Omit<PlaceView, 'distanceM'>,
   lat: number,
   lng: number,
 ): PlaceView {
@@ -285,5 +293,8 @@ function toPlaceView(
     category: p.category,
     tags: p.tags,
     distanceM: Math.round(haversineM(lat, lng, p.lat, p.lng)),
+    website: p.website,
+    instagram: p.instagram,
+    phone: p.phone,
   };
 }

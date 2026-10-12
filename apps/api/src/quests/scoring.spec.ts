@@ -4,7 +4,8 @@ const area = { total: 1000, tagCounts: { cafe: 200, matcha: 2, hojicha: 1 } };
 
 const cand = (over: Partial<Candidate> = {}): Candidate => ({
   id: '1', name: 'x', lat: 0, lng: 0, category: 'cafe', tags: ['cafe'],
-  taste: 0.5, chainLocations: 1, confidence: 0.9, distanceM: 0, ...over,
+  taste: 0.5, chainLocations: 1, confidence: 0.9, distanceM: 0,
+  website: null, instagram: null, phone: null, ...over,
 });
 
 describe('rarity', () => {

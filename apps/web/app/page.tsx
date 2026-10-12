@@ -1,33 +1,42 @@
-import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
-import { MeStatus } from "./me-status";
+import { Show, SignInButton, SignUpButton } from "@clerk/nextjs";
+import { Suspense } from "react";
+import { QuestHome } from "@/components/quest/quest-home";
 
-// Placeholder landing until the 3D map lands (milestone 5). Plain on purpose:
-// the field-journal styling comes with the real UI.
 export default function Home() {
+  // Show reads the auth cookie, which is request-time data: with cacheComponents it
+  // must sit inside Suspense so the static shell can still be prerendered.
   return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-8 px-4 text-center">
-      <div className="space-y-2">
-        <h1 className="text-4xl font-semibold tracking-tight">Larper</h1>
-        <p className="text-neutral-500">The most niche thing to do near you.</p>
-      </div>
-
+    <Suspense fallback={<main className="flex-1" />}>
       <Show when="signed-out">
-        <div className="flex gap-3">
-          <SignInButton>
-            <button className="rounded-md border border-neutral-300 px-4 py-2">Sign in</button>
-          </SignInButton>
-          <SignUpButton>
-            <button className="rounded-md bg-neutral-900 px-4 py-2 text-white">Start a quest log</button>
-          </SignUpButton>
-        </div>
+        <main className="flex flex-1 flex-col items-center justify-center gap-8 px-4 text-center">
+          <div className="space-y-3">
+            <p className="field-label">A field journal for side quests</p>
+            <h1 className="text-6xl font-semibold tracking-tight [font-variation-settings:'opsz'_144,'SOFT'_50]">
+              Larper
+            </h1>
+            <p className="mx-auto max-w-sm text-lg text-ink-soft">
+              One quest a day: the most niche spot near you that fits your taste.
+            </p>
+          </div>
+          <ul className="space-y-1 border-l-2 border-rule pl-3 text-left font-mono text-sm text-ink-soft">
+            <li>Hojicha soft serve in a mall basement.</li>
+            <li>A photobooth bar.</li>
+            <li>The dumpling counter with no sign.</li>
+          </ul>
+          <div className="flex gap-3">
+            <SignInButton>
+              <button className="stamp-btn rounded-md bg-paper px-4 py-2">Sign in</button>
+            </SignInButton>
+            <SignUpButton>
+              <button className="stamp-btn rounded-md bg-oxblood px-4 py-2 text-paper">Start a quest log</button>
+            </SignUpButton>
+          </div>
+        </main>
       </Show>
 
       <Show when="signed-in">
-        <div className="flex flex-col items-center gap-4">
-          <UserButton />
-          <MeStatus />
-        </div>
+        <QuestHome />
       </Show>
-    </main>
+    </Suspense>
   );
 }

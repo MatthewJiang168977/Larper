@@ -52,9 +52,17 @@ Tune with `QUEST_WEIGHTS='{"taste":0.8}'`. Redis caches area stats (shared, 1h) 
 scored deck (10 min; the key includes the taste version, so taste changes never serve stale decks).
 `POST /quests/:id/accept|skip|complete` moves the quest through its state machine.
 
+## Map
+`apps/web/components/map/` renders the quest map with MapLibre over OpenFreeMap (OpenStreetMap
+vector tiles, free, no key) in a hand-written field-journal style with 3D buildings. Renderers
+implement `QuestMapProps` (`quest-map.ts`), so Google Photorealistic 3D Tiles can replace it later.
+Test from a desktop with `http://localhost:3001/?at=40.7295,-73.9965`; without GPS the app falls
+back to Washington Square.
+
 ## Status
 - [x] Milestone 1: skeleton. k3d cluster with 2 API replicas behind Traefik, autoscaler, Postgres (PostGIS 3.6 + pgvector 0.8), Redis, Redpanda.
 - [x] Milestone 2: Overture extract (DuckDB), niche taxonomy + tag vectors, PostGIS load, area/chain stats.
 - [x] Milestone 3: Clerk sign-in, JWKS-verified API guard, vibe-swipe onboarding seeding the taste vector.
 - [x] Milestone 4: niche scoring + MMR, Redis cache-aside, quest state machine, zero-downtime rollouts.
-- [ ] Milestone 5: 3D map UI (Photorealistic 3D Tiles), quest card, Google Places details
+- [x] Milestone 5: field-journal 3D map (MapLibre + OpenFreeMap), quest sheet with reasons and links, journal page, PWA manifest. Google 3D Tiles/Places deferred (no billing).
+- [ ] Milestone 6: outbox -> Kafka events, taste-worker, geofenced check-in

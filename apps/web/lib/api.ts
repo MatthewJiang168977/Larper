@@ -39,3 +39,57 @@ export function useApi() {
     [getToken],
   );
 }
+
+// --- quests (shapes mirror apps/api/src/quests/quests.service.ts) -----------
+
+export interface PlaceView {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  category: string;
+  tags: string[];
+  distanceM: number;
+  website: string | null;
+  instagram: string | null;
+  phone: string | null;
+}
+
+export interface Reasons {
+  liked: string[];
+  rarest: { tag: string; nearby: number } | null;
+  indie: boolean;
+}
+
+export type QuestStatus = "offered" | "accepted" | "completed" | "skipped" | "expired";
+
+export interface QuestView {
+  id: string;
+  status: QuestStatus;
+  score: number;
+  reasons: Reasons;
+  createdAt: string;
+  place: PlaceView;
+}
+
+export interface DeckItem {
+  score: number;
+  reasons: Reasons;
+  place: PlaceView;
+}
+
+export interface Today {
+  quest: QuestView | null;
+  deck: DeckItem[];
+  cache: "hit" | "miss";
+}
+
+export interface JournalEntry {
+  id: string;
+  status: QuestStatus;
+  createdAt: string;
+  updatedAt: string;
+  name: string;
+  category: string;
+  reasons: Reasons;
+}

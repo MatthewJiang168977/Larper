@@ -46,6 +46,9 @@ export interface Candidate {
   chainLocations: number;
   confidence: number;
   distanceM: number;
+  website: string | null;
+  instagram: string | null;
+  phone: string | null;
 }
 
 export interface Reasons {
