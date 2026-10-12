@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS quests;
+DROP TYPE IF EXISTS quest_status;

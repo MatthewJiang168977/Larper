@@ -32,6 +32,12 @@ spec:
             - { name: CLERK_AUTHORIZED_PARTIES, value: {{ .Values.clerk.authorizedParties | quote }} }
             - name: DATABASE_URL
               valueFrom: { secretKeyRef: { name: pg-app, key: uri } }
+          # On delete, SIGTERM and endpoint removal happen concurrently; without this
+          # pause the ingress can still route to a pod that already closed its server
+          # (seen as a 504 during rollouts).
+          lifecycle:
+            preStop:
+              exec: { command: ["sleep", "5"] }
           readinessProbe:
             httpGet: { path: /readyz, port: 3000 }
             periodSeconds: 5
