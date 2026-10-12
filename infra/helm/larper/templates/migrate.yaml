@@ -17,6 +17,7 @@ spec:
       containers:
         - name: migrate
           image: {{ .Values.migrate.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
           args: ["-path", "/migrations", "-database", "$(DATABASE_URL)", "up"]
           env:
             - name: DATABASE_URL

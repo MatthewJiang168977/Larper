@@ -3,6 +3,7 @@
   "private": true,
   "packageManager": "pnpm@10.33.2",
   "scripts": {
+    "web:dev": "pnpm --filter @larper/web dev",
     "api:dev": "pnpm --filter @larper/api start:dev",
     "api:build": "pnpm --filter @larper/api build",
     "api:test": "pnpm --filter @larper/api test"

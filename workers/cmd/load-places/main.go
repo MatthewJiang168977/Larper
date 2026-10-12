@@ -76,6 +76,9 @@ func run(ctx context.Context, path, release string, minConf float64) error {
 	}
 	defer pool.Close()
 
+	if err := syncTags(ctx, pool, tx); err != nil {
+		return err
+	}
 	areas, err := upsert(ctx, pool, rows, release)
 	if err != nil {
 		return err
@@ -132,6 +135,24 @@ func tagFile(path string, tx *taxonomy.Taxonomy, minConf float64) ([][]any, int,
 			return nil, read, err
 		}
 	}
+}
+
+// syncTags publishes the slot -> tag mapping so the API can build taste vectors
+// with the same layout as place vectors.
+func syncTags(ctx context.Context, pool *pgxpool.Pool, tx *taxonomy.Taxonomy) error {
+	var slots []int32
+	var names []string
+	for _, s := range tx.Slots() {
+		slots = append(slots, int32(s))
+		names = append(names, tx.TagName(s))
+	}
+	_, err := pool.Exec(ctx, `
+		INSERT INTO tags (slot, tag) SELECT * FROM unnest($1::int[], $2::text[])
+		ON CONFLICT (slot) DO UPDATE SET tag = EXCLUDED.tag`, slots, names)
+	if err != nil {
+		return fmt.Errorf("tags: %w", err)
+	}
+	return nil
 }
 
 // upsert COPYs rows into a temp table and merges them into places in one

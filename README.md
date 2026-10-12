@@ -16,8 +16,9 @@ winget install k3d.k3d Helm.Helm Kubernetes.kubectl GoLang.Go
 ## Run locally
 ```bash
 pnpm install
-pnpm api:dev                 # API alone on :3000
 ./scripts/up.sh              # full stack on k3d (Git Bash)
+pnpm web:dev                 # web app on :3001, /api/* proxied to the cluster (:8080)
+pnpm api:dev                 # API alone on :3000, if you want it outside the cluster
 for i in 1 2 3 4; do curl -s localhost:8080/healthz; echo; done   # pod name changes = load balancing works
 ./scripts/down.sh
 ```
@@ -34,7 +35,13 @@ cd workers && DATABASE_URL="postgres://larper:$PW@127.0.0.1:55432/larper?sslmode
 ```
 Tags come from `workers/internal/taxonomy/taxonomy.yaml` (150 niche tags, fixed vector slots).
 
+## Auth
+Clerk handles sign-in in `apps/web` (keys in `apps/web/.env.local`, written by `clerk init`, gitignored).
+The API only needs the public publishable key (`infra/helm/larper/values.yaml`): it verifies
+session JWTs against the Clerk instance's JWKS and checks `azp`. Users are created on first call.
+
 ## Status
 - [x] Milestone 1: skeleton. k3d cluster with 2 API replicas behind Traefik, autoscaler, Postgres (PostGIS 3.6 + pgvector 0.8), Redis, Redpanda.
 - [x] Milestone 2: Overture extract (DuckDB), niche taxonomy + tag vectors, PostGIS load, area/chain stats.
-- [ ] Milestone 3: Clerk auth, onboarding, initial taste vector
+- [x] Milestone 3: Clerk sign-in, JWKS-verified API guard, vibe-swipe onboarding seeding the taste vector.
+- [ ] Milestone 4: scoring + `GET /quests/today`

@@ -1,4 +1,9 @@
 # Defaults target the local k3d cluster. values-aks.yaml overrides for Azure.
+
+# Our own images (api, migrate) are rebuilt under the same :dev tag locally, so the
+# node must re-pull every time. With immutable per-commit tags (AKS) use IfNotPresent.
+imagePullPolicy: Always
+
 api:
   image: larper-registry:5111/larper-api:dev
   replicas: 2
@@ -10,6 +15,13 @@ api:
     minReplicas: 2
     maxReplicas: 6
     targetCPU: 70
+
+clerk:
+  # Public by design (it ships to every browser). The API derives the JWKS URL from it,
+  # so no Clerk secret lives in the cluster.
+  publishableKey: pk_test_bmF0aW9uYWwtcmVkZmlzaC04MTA0LmNsZXJrLmFjY291bnRzLmRldiQ
+  # Origins allowed in a token's azp claim (comma-separated).
+  authorizedParties: http://localhost:3001
 
 ingress:
   className: traefik

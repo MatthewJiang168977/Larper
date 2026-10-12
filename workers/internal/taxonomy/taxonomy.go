@@ -161,6 +161,16 @@ func (t *Taxonomy) Tag(p Place) Result {
 // TagName returns the tag that owns a slot ("" if the slot is free).
 func (t *Taxonomy) TagName(slot int) string { return t.names[slot] }
 
+// Slots returns the used slot ids in ascending order.
+func (t *Taxonomy) Slots() []int {
+	slots := make([]int, 0, len(t.names))
+	for s := range t.names {
+		slots = append(slots, s)
+	}
+	sort.Ints(slots)
+	return slots
+}
+
 // ChainKey identifies "the same business" across locations so the indie score can
 // count them. Brand and name share one key space, because Overture only fills
 // brand on some locations of a chain ("Dunkin'" with a brand and without must
