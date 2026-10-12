@@ -38,7 +38,7 @@ export const QuestSheet = forwardRef<HTMLDivElement, Props>(function QuestSheet(
       <div aria-hidden className="mx-auto mb-3 h-1 w-10 rounded-full bg-rule" />
 
       {deck.length > 0 && (
-        <nav aria-label="Leads" className="-mx-5 mb-3 flex gap-2 overflow-x-auto px-5 pb-1">
+        <nav aria-label="Leads" className="-mx-5 mb-3 flex gap-2 overflow-x-auto px-5 pb-2 [scrollbar-color:var(--rule)_transparent] [scrollbar-width:thin]">
           {quest && (
             <Tab active={focusedIsQuest} onClick={() => onSelect(quest.place.id)} seal>
               Quest

@@ -8,6 +8,7 @@ import type { QuestMapProps } from "./quest-map";
 
 const PITCH = 55;
 const BEARING = -20;
+const MIN_FRAME_ZOOM = 14.8;
 
 // MapLibre markers own the root element's transform for positioning, so each pin is
 // an inner element inside a plain wrapper; the inner one can scale freely.
@@ -36,10 +37,15 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
   const libRef = useRef<typeof import("maplibre-gl") | null>(null);
   const onSelectRef = useRef(onSelect);
   const [ready, setReady] = useState(false);
+  // Latest position without making camera moves depend on GPS updates (a jittery fix
+  // shouldn't yank the camera), and which quest has had its establishing shot.
+  const meRef = useRef(me);
+  const framedQuestRef = useRef<string | null>(null);
 
   useEffect(() => {
     onSelectRef.current = onSelect;
-  }, [onSelect]);
+    meRef.current = me;
+  }, [onSelect, me]);
 
   // Create the map once. maplibre-gl touches window, so it's imported client-side only.
   useEffect(() => {
@@ -110,12 +116,42 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
     const map = mapRef.current;
     const target = [quest?.place, ...deck.map((d) => d.place)].find((p) => p?.id === selectedId);
     if (!ready || !map || !target) return;
+    // Keep pins clear of the sheet, but never give up more than 45% of the screen
+    // (on desktop the sheet is a narrow card, not a full-width panel).
+    const h = map.getContainer().clientHeight;
+    const padding = { top: 90, bottom: Math.min(bottomInset + 30, h * 0.45), left: 60, right: 60 };
+
+    // First look at a new quest: frame it together with "you are here" so the walk
+    // reads at a glance. Later taps fly straight to the chosen pin.
+    if (quest && target.id === quest.place.id && framedQuestRef.current !== quest.id) {
+      framedQuestRef.current = quest.id;
+      const lib = libRef.current!;
+      const { lat, lng } = meRef.current;
+      const bounds = new lib.LngLatBounds([lng, lat], [lng, lat]).extend([target.lng, target.lat]);
+      const cam = map.cameraForBounds(bounds, { padding, pitch: 50, bearing: BEARING });
+      const fits = cam?.zoom !== undefined && cam.zoom >= MIN_FRAME_ZOOM;
+      const camera = { pitch: 50, bearing: BEARING, duration: 1600, essential: false };
+      if (fits) {
+        // cameraForBounds already offsets its center for the padding.
+        map.flyTo({ ...camera, center: cam.center, zoom: Math.min(16.6, cam.zoom!) });
+      } else {
+        // Too far apart to show both at street scale (narrow phone, long walk): the
+        // destination wins. Center between the two, weighted toward the quest so it
+        // stays on screen while the view leans toward you.
+        const center: [number, number] = [
+          target.lng + (lng - target.lng) * 0.35,
+          target.lat + (lat - target.lat) * 0.35,
+        ];
+        map.flyTo({ ...camera, center, zoom: MIN_FRAME_ZOOM, padding });
+      }
+      return;
+    }
     map.flyTo({
       center: [target.lng, target.lat],
       zoom: 16.6,
       pitch: 50,
       bearing: BEARING,
-      padding: { top: 40, bottom: bottomInset, left: 0, right: 0 },
+      padding,
       duration: 1600,
       essential: false, // respects prefers-reduced-motion
     });
