@@ -13,7 +13,7 @@
 #   sed "s/ACCOUNT_ID/$(aws sts get-caller-identity --query Account --output text)/" deployer-policy.json
 #
 # Needs ../aws applied first: the SQS queues live there, because they outlive this
-# cluster (and serve the AKS/OKE targets through a static key).
+# cluster (and serve the AKS/OCI k3s targets through a static key).
 
 terraform {
   required_version = ">= 1.6"

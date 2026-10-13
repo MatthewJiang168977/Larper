@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build and push all five images for amd64 + arm64 (one manifest list per image), so
-# the same tag runs on x86 nodes (AKS, EKS, k3d) and ARM nodes (OKE Ampere A1).
+# the same tag runs on x86 nodes (AKS, EKS, k3d) and ARM nodes (OCI Ampere A1 k3s).
 #
 #   REGISTRY=localhost:5111 scripts/build-images.sh            # k3d registry, tag = git commit
 #   REGISTRY=myacr.azurecr.io TAG=v1 scripts/build-images.sh
