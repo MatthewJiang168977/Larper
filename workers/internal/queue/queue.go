@@ -1,7 +1,7 @@
-// Package queue is a work queue with Azure Service Bus semantics (peek-lock
-// leases, delivery count, dead-lettering), backed by the Postgres jobs table.
-// Workers depend on the Queue interface, so a Service Bus implementation can
-// replace Postgres in the cloud without touching them.
+// Package queue is a work queue with peek-lock semantics (leases, delivery count,
+// dead-lettering). Postgres backs it locally; in the cloud SQS delivers the jobs
+// and the Postgres table stays as the ledger (see sqs.go). Workers depend only on
+// the Queue interface.
 package queue
 
 import (
@@ -25,6 +25,8 @@ type Job struct {
 	Payload     json.RawMessage
 	Attempt     int // 1 on first delivery; also the fencing token for Complete/Fail
 	MaxAttempts int
+
+	receipt string // SQS receipt handle; empty for the Postgres queue
 }
 
 type Queue interface {

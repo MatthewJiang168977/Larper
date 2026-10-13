@@ -1,0 +1,37 @@
+# Overrides for the on-demand EKS cluster (infra/terraform/eks): one t4g.large node
+# (Graviton, 2 vCPU / 8 GiB). Image repositories and tags are set by
+# scripts/eks-up.sh from the ECR registry and the git commit.
+
+# Per-commit tags, so a cached image is always the right one.
+imagePullPolicy: IfNotPresent
+
+ingress:
+  # Traefik from its Helm chart (eks-up.sh), behind an AWS Network Load Balancer.
+  className: traefik
+
+api:
+  # One node: extra replicas show the HPA control loop, not extra cores.
+  hpa:
+    minReplicas: 2
+    maxReplicas: 6
+
+postgres:
+  storage: 4Gi # gp3 (eks-up.sh makes it the default StorageClass)
+
+redpanda:
+  storage: 4Gi
+
+workers:
+  tasteReplicas: 1
+
+ingest:
+  replicas: 1
+
+queue:
+  backend: sqs
+  # The ingest-worker ServiceAccount assumes an IAM role through EKS Pod Identity:
+  # no static key in the cluster.
+  awsAuth: podIdentity
+
+monitoring:
+  enabled: true

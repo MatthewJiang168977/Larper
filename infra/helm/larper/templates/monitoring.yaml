@@ -1,0 +1,27 @@
+{{- if .Values.monitoring.enabled }}
+# Picked up by kube-prometheus-stack (infra/monitoring): Prometheus scrapes every api
+# pod's metrics port, and Grafana's sidecar loads any ConfigMap labeled
+# grafana_dashboard.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: api
+  labels: {{- include "larper.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels: { app: api }
+  endpoints:
+    - port: metrics
+      interval: 15s
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: larper-dashboard
+  labels:
+    grafana_dashboard: "1"
+    {{- include "larper.labels" . | nindent 4 }}
+data:
+  larper-api.json: |-
+{{ .Files.Get "dashboards/api.json" | indent 4 }}
+{{- end }}

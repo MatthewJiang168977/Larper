@@ -59,9 +59,25 @@ ingest:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { memory: 1Gi }
 
+queue:
+  # postgres: the jobs table is the whole queue (local, $0).
+  # sqs: Amazon SQS delivers jobs and the jobs table is the ledger (cloud).
+  backend: postgres
+  sqsPrefix: larper-
+  awsRegion: us-east-1
+  # How the ingest-worker gets AWS credentials when backend is sqs:
+  #   secret       static key from the aws-sqs Secret (AKS, OKE: clusters outside AWS)
+  #   podIdentity  EKS Pod Identity, short-lived credentials, nothing stored
+  awsAuth: secret
+
 redis:
   image: redis:7.4-alpine
 
 redpanda:
   image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
   storage: 2Gi
+
+monitoring:
+  # Needs kube-prometheus-stack's CRDs (scripts/monitoring.sh). Adds the api
+  # ServiceMonitor and the "Larper API" Grafana dashboard.
+  enabled: false

@@ -1,0 +1,41 @@
+# Overrides for the AKS demo cluster (infra/terraform/azure): one Standard_B2as_v2
+# node, 2 vCPU / 8 GiB. Image repositories and tags are set by scripts/aks-up.sh
+# from the ACR login server and the git commit, e.g.
+#   --set api.image=larperab12cd.azurecr.io/larper-api:3f9c2e1
+
+# Per-commit tags are immutable, so a cached image is always the right one.
+imagePullPolicy: IfNotPresent
+
+ingress:
+  # Traefik installed from its Helm chart (aks-up.sh), so the same ingress class as
+  # k3s. Its LoadBalancer Service gets the cluster's one public IP.
+  className: traefik
+
+api:
+  # Scaling out on one node can't add CPU beyond the node's 2 cores. The demo
+  # shows the HPA control loop (scale on load, back down after the cooldown); a
+  # second node would turn the extra replicas into extra throughput.
+  hpa:
+    minReplicas: 2
+    maxReplicas: 6
+
+postgres:
+  # Rounds up to the smallest Azure disk (P1, 4 GiB, about $0.60/mo while it exists).
+  storage: 4Gi
+
+redpanda:
+  storage: 4Gi
+
+workers:
+  tasteReplicas: 1
+
+ingest:
+  replicas: 1
+
+queue:
+  # Jobs are delivered by Amazon SQS (infra/terraform/aws); the jobs table stays the
+  # ledger. Needs the aws-sqs Secret (aks-up.sh creates it).
+  backend: sqs
+
+monitoring:
+  enabled: true

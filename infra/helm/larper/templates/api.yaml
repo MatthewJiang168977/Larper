@@ -23,9 +23,12 @@ spec:
         - name: api
           image: {{ .Values.api.image }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
-          ports: [{ containerPort: 3000 }]
+          ports:
+            - { name: http, containerPort: 3000 }
+            - { name: metrics, containerPort: 9464 }
           env:
             - { name: PORT, value: "3000" }
+            - { name: METRICS_PORT, value: "9464" }
             - { name: REDIS_URL, value: "redis://redis:6379" }
             - { name: KAFKA_BROKERS, value: "redpanda:9092" }
             - { name: CLERK_PUBLISHABLE_KEY, value: {{ .Values.clerk.publishableKey | quote }} }
@@ -50,9 +53,13 @@ apiVersion: v1
 kind: Service
 metadata:
   name: api
+  labels: { app: api }
 spec:
   selector: { app: api }
-  ports: [{ port: 80, targetPort: 3000 }]
+  # The ingress routes only to "http"; "metrics" is for in-cluster scrapes.
+  ports:
+    - { name: http, port: 80, targetPort: http }
+    - { name: metrics, port: 9464, targetPort: metrics }
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress

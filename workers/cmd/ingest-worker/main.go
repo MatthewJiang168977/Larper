@@ -67,9 +67,22 @@ func main() {
 	if err != nil {
 		platform.Fatal(log, "taxonomy", err)
 	}
+	// QUEUE_BACKEND=sqs in the cloud: SQS delivers, the jobs table stays the ledger.
 	var q queue.Queue = queue.Postgres{Pool: pool}
+	backend := platform.Env("QUEUE_BACKEND", "postgres")
+	if backend == "sqs" {
+		client, err := platform.SQS(ctx)
+		if err != nil {
+			platform.Fatal(log, "sqs", err)
+		}
+		sq := &queue.SQS{Pool: pool, Client: client, Prefix: platform.Env("SQS_QUEUE_PREFIX", "larper-"), Wait: 20 * time.Second}
+		q = sq
+		// Every replica dispatches; SKIP LOCKED keeps them off each other's rows.
+		go dispatch(ctx, log, sq)
+		cfg.idlePoll = 0 // Claim already long-polls
+	}
 
-	log.Info("waiting for jobs", "queue", queueName, "release", cfg.release, "lease", cfg.lease.String())
+	log.Info("waiting for jobs", "queue", queueName, "backend", backend, "release", cfg.release, "lease", cfg.lease.String())
 	for ctx.Err() == nil {
 		job, err := q.Claim(ctx, queueName, cfg.lease)
 		if err != nil {
@@ -88,6 +101,23 @@ func main() {
 		})
 	}
 	log.Info("stopped")
+}
+
+// dispatch moves new jobs from the ledger into SQS (the outbox step).
+func dispatch(ctx context.Context, log *slog.Logger, q *queue.SQS) {
+	for ctx.Err() == nil {
+		n, err := q.Dispatch(ctx, queueName)
+		switch {
+		case ctx.Err() != nil:
+		case err != nil:
+			log.Error("dispatch", "err", err)
+			sleep(ctx, 5*time.Second)
+		case n > 0:
+			log.Info("dispatched", "jobs", n)
+		default:
+			sleep(ctx, time.Second)
+		}
+	}
 }
 
 func runJob(ctx context.Context, log *slog.Logger, q queue.Queue, job *queue.Job, cfg config,

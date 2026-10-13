@@ -77,6 +77,14 @@ spec:
           env: {{- include "larper.workerEnv" . | nindent 12 }}
           resources: {{- toYaml .Values.workers.resources | nindent 12 }}
 ---
+# Its own identity: on EKS, a Pod Identity association maps this ServiceAccount to
+# an IAM role that can use the larper queues (infra/terraform/eks).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ingest-worker
+  labels: {{- include "larper.labels" . | nindent 4 }}
+---
 # Competing consumers on the ingest-area queue. Each job is one geohash5 area; a
 # replica holds a renewable lease while it extracts and loads it. Kill a replica
 # mid-job and the lease lapses, so the other one picks the job up.
@@ -95,6 +103,7 @@ spec:
         app: ingest-worker
         {{- include "larper.labels" . | nindent 8 }}
     spec:
+      serviceAccountName: ingest-worker
       containers:
         - name: ingest-worker
           image: {{ .Values.ingest.image }}
@@ -106,4 +115,18 @@ spec:
             - { name: JOB_LEASE_SECONDS, value: {{ .Values.ingest.leaseSeconds | quote }} }
             - { name: DUCKDB_MEMORY_LIMIT, value: {{ .Values.ingest.duckdbMemory | quote }} }
             - { name: DUCKDB_THREADS, value: {{ .Values.ingest.duckdbThreads | quote }} }
+            - { name: QUEUE_BACKEND, value: {{ .Values.queue.backend | quote }} }
+            {{- if eq .Values.queue.backend "sqs" }}
+            - { name: SQS_QUEUE_PREFIX, value: {{ .Values.queue.sqsPrefix | quote }} }
+            - { name: AWS_REGION, value: {{ .Values.queue.awsRegion | quote }} }
+            {{- if eq .Values.queue.awsAuth "secret" }}
+            # IAM user scoped to the larper queues only (infra/terraform/aws), for
+            # clusters outside AWS. Created by the deploy script; never committed.
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: { secretKeyRef: { name: aws-sqs, key: access_key_id } }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: aws-sqs, key: secret_access_key } }
+            {{- end }}
+            {{- /* podIdentity: the EKS agent injects short-lived credentials. */}}
+            {{- end }}
           resources: {{- toYaml .Values.ingest.resources | nindent 12 }}

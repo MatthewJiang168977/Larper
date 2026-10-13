@@ -23,12 +23,14 @@ stream, idempotent workers, Kubernetes) built to be explained, measured, and bro
 | Database | **PostgreSQL 17** + **PostGIS 3.6** + **pgvector 0.8**, run by **CloudNativePG** | Geo radius queries, vector similarity, and relational joins in one engine |
 | Cache | **Redis 7.4** (LRU, 128 MB) | Cache-aside for area stats and per-user ranked decks |
 | Event stream | **Redpanda 24.2** (Kafka API) | Ordered, replayable user events; keyed by user id |
-| Work queue | Postgres `jobs` table with **Azure Service Bus semantics** (peek-lock leases, delivery count, dead-lettering) | One-off jobs like "load this area"; Service Bus can replace it in the cloud behind the same interface |
+| Work queue | Postgres `jobs` table (leases, delivery count, dead-lettering) locally; **Amazon SQS** delivers jobs in the cloud with the table kept as the ledger | One-off jobs like "load this area"; same interface either way (`QUEUE_BACKEND`) |
 | Schemas | **Protobuf** with **buf**; generated for Go (`protoc-gen-go`) and TS (`protobuf-es`) | One contract for both languages, with lint and breaking-change rules |
 | Place data | **Overture Maps** Places (CDLA-permissive), extracted with **DuckDB** (Python for bulk loads, the DuckDB CLI in the ingest-worker) | Open data that may be stored and indexed, unlike Google Places |
 | Migrations | **golang-migrate**, run as a Helm hook Job | Same schema rollout locally and in the cloud |
 | Platform | **Docker**, **Kubernetes** (k3d/k3s locally), **Helm**, **Traefik** ingress, HPA | One chart for local and cloud; Traefik is the load balancer |
-| Planned | Azure Service Bus (cloud queue), AKS + Terraform, Prometheus/Grafana, k6 | See [roadmap](#status) |
+| Cloud | **AKS** (Free tier, 1 node) + **ACR**, **Terraform**; SQS on AWS | Destroyed between demos, so idle cost is $0 ([costs](#cloud-costs)) |
+| Observability | **Prometheus + Grafana** (kube-prometheus-stack), `prom-client` in the API | Latency histograms per route, HPA replicas, CPU per pod on one dashboard |
+| Load testing | **k6** with real Clerk session tokens | Exercises the full auth + ranking path, not a health check |
 
 ---
 
@@ -193,6 +195,7 @@ Slots are append-only, so stored vectors never change meaning. Of 566k open NYC 
 | Competing consumers, leases, fencing tokens, backoff, dead-lettering | [`internal/queue`](workers/internal/queue/queue.go), [`cmd/ingest-worker`](workers/cmd/ingest-worker/main.go) |
 | Async request with a polling client (202-style "surveying") | [`areas.service.ts`](apps/api/src/quests/areas.service.ts), [`quest-home.tsx`](apps/web/components/quest/quest-home.tsx) |
 | Shared schemas across languages | [`proto/`](proto/larper/events/v1/events.proto) |
+| Metrics: route-templated latency histogram, separate port | [`metrics/metrics.ts`](apps/api/src/metrics/metrics.ts), [`templates/monitoring.yaml`](infra/helm/larper/templates/monitoring.yaml) |
 | Schema migrations as a deploy hook | [`db/migrations`](db/migrations), [`templates/migrate.yaml`](infra/helm/larper/templates/migrate.yaml) |
 
 ### Trade-offs and decisions
@@ -213,10 +216,16 @@ Slots are append-only, so stored vectors never change meaning. Of 566k open NYC 
   Google Photorealistic 3D Tiles can replace it later. The cost: no opening hours or photos yet.
 - **No Google Places storage.** Place data is Overture (storable). Google's terms forbid storing
   Places content, so it would only ever be fetched on demand.
-- **Postgres queue locally, Service Bus in the cloud.** The jobs table copies Service Bus
-  semantics, so the interface (`JobQueue` in TS, `queue.Queue` in Go) can switch transports
-  without callers changing. Locally it saves running the Service Bus emulator and its SQL
-  Server dependency (about 2 GB of RAM).
+- **Postgres queue locally, SQS in the cloud.** The jobs table has queue semantics (leases,
+  delivery count, dead-lettering), so the interface (`JobQueue` in TS, `queue.Queue` in Go) can
+  switch transports without callers changing. In the cloud the table stays the ledger and an
+  outbox (`dispatched_at`) hands jobs to SQS. SQS over Azure Service Bus because SQS has an
+  always-free tier; only the ingest-worker talks to AWS, through an IAM user scoped to its queues.
+- **Multi-arch images.** Every image is published for amd64 and arm64, so one tag runs on x86
+  nodes (k3d, AKS, EKS) and ARM nodes (Oracle Ampere A1). Go and the API's TypeScript build
+  cross-compile natively; only the PostGIS and DuckDB layers build under emulation.
+- **Metrics on their own port.** `/metrics` listens on 9464, which the ingress never routes to,
+  so latency and runtime internals aren't public. Prometheus scrapes each pod directly.
 - **DuckDB CLI, not the Go binding.** The binding needs cgo. Shelling out keeps the Go binary
   static and runs the exact same SQL file as the Python bulk loader.
 - **Lazy user creation.** Users are created on their first authenticated call. The Clerk webhook
@@ -233,8 +242,9 @@ workers/         Go: cmd/{load-places, outbox-relay, taste-worker, ingest-worker
 proto/           Protobuf event schemas (generated into workers/gen and apps/api/src/gen)
 db/migrations/   SQL migrations (golang-migrate)
 data/            Python bulk extract of Overture places (shares workers/internal/places/overture_extract.sql)
-infra/           k3d cluster config, Helm chart, Postgres image (PostGIS + pgvector)
-scripts/         up.sh / down.sh
+infra/           k3d config, Helm chart (+ values-aks.yaml), Postgres image, Terraform (azure, aws), monitoring values
+loadtest/        k6 scripts
+scripts/         up.sh / down.sh (k3d), build-images.sh (amd64 + arm64), monitoring.sh, aks-up.sh
 ```
 
 ---
@@ -281,6 +291,54 @@ kubectl -n larper logs -l app=ingest-worker -f                          # area i
 TEST_DATABASE_URL=postgres://... go test ./internal/queue/              # queue integration tests (in workers/)
 ```
 
+### Load test and monitoring
+```bash
+./scripts/monitoring.sh                         # Prometheus + Grafana; prints the Grafana port-forward and login
+CLERK_SECRET_KEY=sk_test_... k6 run loadtest/quests.js      # 8 min ramp to 200 VUs (BASE_URL, USERS, PEAK_VUS)
+kubectl -n larper get hpa api -w                # watch the autoscaler react
+```
+The k6 script creates 10 `loadtest+N@example.com` users on the Clerk dev instance (once) and mints
+their session tokens itself. The secret key stays on the machine running k6.
+
+**Results on k3d** (laptop, k6 on the same machine, 2026-10-13):
+
+| Run | Requests | Errors | Throughput | p50 / p95 | Replicas |
+|---|---|---|---|---|---|
+| 1 | 35,917 | **2.7%** (500s) | 78 req/s | 331 ms / 5.44 s | 2 → 6 in ~30 s |
+| 2, after the fix | 50,243 | **0** | 108 req/s | 287 ms / 1.14 s | 2 → 6 in ~60 s |
+
+- **The load test found a race.** Run 1's errors were all `offer vanished`: a request lost the
+  "one active quest" insert to another replica, and a third request expired the winner's offer
+  before the loser could read it. `offer()` now retries the free slot.
+- **Still CPU-bound at the ceiling.** At 6 replicas every pod sits at its 500m limit, and p95
+  misses the 800 ms target. On a laptop, k6 and all 3 k3d nodes share the same cores, so more
+  pods can't add throughput. The AKS run measures the same thing on a dedicated node.
+
+---
+
+## Cloud costs
+
+Prices from the Azure retail prices API (eastus, pay-as-you-go, 2026-10-13), paid from the Azure
+for Students credit. The load balancer rate is from Azure's pricing page.
+
+| Resource | Rate | Per month if left running |
+|---|---|---|
+| 1× Standard_B2as_v2 node | $0.0752/h | $54.90 |
+| Standard load balancer (AKS outbound + Traefik) | $0.025/h | $18.25 |
+| 2 public IPs (outbound, Traefik) | $0.005/h each | $7.30 |
+| OS disk, P4 32 GB | | $5.28 |
+| ACR Basic | $0.167/day | $5.07 |
+| 2 PVC disks (Postgres, Redpanda), P1 4 GB | | $1.20 |
+| AKS control plane (Free tier) | | $0 |
+| Amazon SQS (always-free 1M requests/mo) | | $0 |
+| **Total** | **≈ $0.13/h** | **≈ $92** |
+
+- **Destroyed** (`terraform destroy` in `infra/terraform/azure`): $0. Only the budget alert in
+  `azure/budget` remains, and it's free.
+- **Stopped** (`az aks stop`) is not free: the load balancer, IPs, disks and registry keep billing
+  (about $37/mo).
+- A 2-hour demo costs under $1.
+
 ---
 
 ## Status
@@ -292,4 +350,4 @@ TEST_DATABASE_URL=postgres://... go test ./internal/queue/              # queue 
 - [x] **5. Map UI:** field-journal 3D map (MapLibre + OpenFreeMap), quest sheet, journal page, PWA manifest.
 - [x] **6. Events:** transactional outbox, Go relay + idempotent taste-worker with DLQ, protobuf events, geofenced check-in.
 - [x] **7. Async ingest:** unmapped area → leased work queue → ingest-worker (DuckDB) → stats refresh; "surveying the area…" in the app.
-- [ ] **8. Deploy + prove it:** Terraform AKS, Prometheus/Grafana, k6 load test showing the HPA scale out.
+- [ ] **8. Deploy + prove it:** ~~Prometheus/Grafana~~, ~~k6 load test showing the HPA scale out (k3d)~~, ~~SQS queue~~, Terraform AKS (written and validated, not yet applied).

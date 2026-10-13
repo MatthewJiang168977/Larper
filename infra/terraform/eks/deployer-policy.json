@@ -1,0 +1,59 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EksLarperOnly",
+      "Effect": "Allow",
+      "Action": "eks:*",
+      "Resource": [
+        "arn:aws:eks:us-east-1:ACCOUNT_ID:cluster/larper",
+        "arn:aws:eks:us-east-1:ACCOUNT_ID:*/larper/*"
+      ]
+    },
+    {
+      "Sid": "EksReadAndCreate",
+      "Effect": "Allow",
+      "Action": [
+        "eks:CreateCluster",
+        "eks:ListClusters",
+        "eks:DescribeAddonVersions",
+        "eks:DescribeAddonConfiguration",
+        "eks:DescribeClusterVersions"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "NetworkAndNodesUsEast1",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:Describe*",
+        "ec2:CreateVpc", "ec2:DeleteVpc", "ec2:ModifyVpcAttribute",
+        "ec2:CreateSubnet", "ec2:DeleteSubnet", "ec2:ModifySubnetAttribute",
+        "ec2:CreateInternetGateway", "ec2:DeleteInternetGateway",
+        "ec2:AttachInternetGateway", "ec2:DetachInternetGateway",
+        "ec2:CreateRouteTable", "ec2:DeleteRouteTable", "ec2:CreateRoute", "ec2:DeleteRoute",
+        "ec2:AssociateRouteTable", "ec2:DisassociateRouteTable",
+        "ec2:CreateSecurityGroup", "ec2:DeleteSecurityGroup",
+        "ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress",
+        "ec2:RevokeSecurityGroupIngress", "ec2:RevokeSecurityGroupEgress",
+        "ec2:CreateTags", "ec2:DeleteTags",
+        "ec2:DeleteNetworkInterface",
+        "elasticloadbalancing:Describe*"
+      ],
+      "Resource": "*",
+      "Condition": { "StringEquals": { "aws:RequestedRegion": "us-east-1" } }
+    },
+    {
+      "Sid": "EcrLarperRepos",
+      "Effect": "Allow",
+      "Action": "ecr:*",
+      "Resource": "arn:aws:ecr:us-east-1:ACCOUNT_ID:repository/larper-*"
+    },
+    {
+      "Sid": "EcrLoginAndList",
+      "Effect": "Allow",
+      "Action": ["ecr:GetAuthorizationToken", "ecr:DescribeRepositories"],
+      "Resource": "*"
+    }
+  ]
+}

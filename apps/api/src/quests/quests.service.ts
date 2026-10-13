@@ -307,16 +307,21 @@ export class QuestsService {
   }
 
   private async offer(userId: string, pick: Scored, lat: number, lng: number): Promise<QuestView> {
-    await this.pg.query(
-      `INSERT INTO quests (user_id, place_id, score, reasons, origin)
-       VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326)::geography)
-       ON CONFLICT (user_id) WHERE status IN ('offered', 'accepted') DO NOTHING`,
-      [userId, pick.id, pick.score, JSON.stringify(pick.reasons), lng, lat],
-    );
-    // Whether we inserted or lost a race to another replica, the active row is the answer.
-    const quest = await this.active(userId, lat, lng);
-    if (!quest) throw new Error('offer vanished');
-    return quest;
+    // Whether we inserted or lost a race to another replica, the active row is the
+    // answer. It can still be missing: a concurrent request from far away may expire
+    // the winner's offer between our INSERT and SELECT. Then the slot is free again,
+    // so try again (found by the k6 load test: 2.7% of requests failed here).
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await this.pg.query(
+        `INSERT INTO quests (user_id, place_id, score, reasons, origin)
+         VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326)::geography)
+         ON CONFLICT (user_id) WHERE status IN ('offered', 'accepted') DO NOTHING`,
+        [userId, pick.id, pick.score, JSON.stringify(pick.reasons), lng, lat],
+      );
+      const quest = await this.active(userId, lat, lng);
+      if (quest) return quest;
+    }
+    throw new Error('offer vanished');
   }
 }
 

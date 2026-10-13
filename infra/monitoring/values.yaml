@@ -1,0 +1,57 @@
+# kube-prometheus-stack, trimmed to fit next to the app on one 8 GiB node (AKS) or a
+# laptop (k3d). Installed by scripts/monitoring.sh.
+#
+# Kept: Prometheus, Grafana, kube-state-metrics (replica counts, HPA status) and the
+# kubelet/cAdvisor scrapes (container CPU). Dropped: Alertmanager and node-exporter
+# (nobody is paged for a demo), and the control-plane scrapes, which neither k3s nor
+# a managed AKS control plane exposes.
+
+alertmanager:
+  enabled: false
+nodeExporter:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+defaultRules:
+  create: false
+
+prometheus:
+  prometheusSpec:
+    # Find ServiceMonitors from any release (the larper chart's), not just this one.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    retention: 2d
+    # No PVC: on AKS a volume is a billed managed disk, and demo metrics can die
+    # with the pod.
+    storageSpec: {}
+    resources:
+      requests: { cpu: 100m, memory: 400Mi }
+      limits: { memory: 1Gi }
+
+prometheusOperator:
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { memory: 192Mi }
+
+kube-state-metrics:
+  resources:
+    requests: { cpu: 10m, memory: 48Mi }
+    limits: { memory: 128Mi }
+
+grafana:
+  # Reached with kubectl port-forward (scripts/monitoring.sh prints the command), so
+  # no public endpoint. The admin password is generated into a Secret.
+  resources:
+    requests: { cpu: 25m, memory: 128Mi }
+    limits: { memory: 256Mi }
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: ALL
