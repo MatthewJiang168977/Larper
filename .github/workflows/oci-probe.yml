@@ -1,0 +1,105 @@
+# Retries the Oracle A1 launch (scripts/oci-capacity-probe.sh, one attempt per run)
+# while the laptop is asleep. When the instance exists, or on an error that retrying
+# can't fix, it opens an issue (email) and disables itself.
+#
+# The repo is public, so:
+#   - only schedule and manual dispatch trigger it: no pull_request, so fork PRs never
+#     run it (and forks don't get these secrets anyway); the repository check below
+#     also stops it in forks that enable Actions
+#   - secrets reach the shell only through env, never through ${{ }} in a script,
+#     and are written to files under RUNNER_TEMP, never echoed
+#   - the probe redacts OCIDs, IPs and the tenancy's AD prefix from everything it
+#     prints, and never prints the instance's address
+#
+# Secrets (Settings -> Secrets and variables -> Actions; scripts/oci-ci-secrets.sh sets
+# them): OCI_USER_OCID, OCI_TENANCY_OCID, OCI_FINGERPRINT, OCI_API_KEY (PEM private
+# key), OCI_SSH_PUBLIC_KEY; optional NTFY_TOPIC.
+# Scheduled workflows run from the default branch only. GitHub may start them a few
+# minutes late, and pauses schedules in repos with no activity for 60 days.
+name: OCI capacity probe
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write  # the success / stopped issue
+  actions: write # disable this workflow when done
+
+concurrency:
+  group: oci-capacity-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    if: github.repository == 'MatthewJiang168977/Larper'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      OCI_REGION: us-sanjose-1
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/oci-capacity-probe.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Install the OCI CLI
+        run: pipx install oci-cli==3.95.0
+
+      - name: Write the OCI config
+        env:
+          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_API_KEY: ${{ secrets.OCI_API_KEY }}
+          OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
+        run: |
+          for v in OCI_USER_OCID OCI_TENANCY_OCID OCI_FINGERPRINT OCI_API_KEY OCI_SSH_PUBLIC_KEY; do
+            [[ -n "${!v}" ]] || { echo "::error::secret $v is not set"; exit 1; }
+          done
+          umask 077
+          dir="$RUNNER_TEMP/oci"
+          mkdir -p "$dir"
+          printf '%s\n' "$OCI_API_KEY" >"$dir/key.pem"
+          printf '%s\n' "$OCI_SSH_PUBLIC_KEY" >"$dir/ssh.pub"
+          printf '[DEFAULT]\nuser=%s\nfingerprint=%s\ntenancy=%s\nregion=%s\nkey_file=%s\n' \
+            "$OCI_USER_OCID" "$OCI_FINGERPRINT" "$OCI_TENANCY_OCID" "$OCI_REGION" "$dir/key.pem" >"$dir/config"
+          echo "OCI_CLI_CONFIG_FILE=$dir/config" >>"$GITHUB_ENV"
+          echo "SSH_PUB_FILE=$dir/ssh.pub" >>"$GITHUB_ENV"
+
+      - name: Try to launch
+        id: probe
+        env:
+          ONCE: '1'
+        run: bash scripts/oci-capacity-probe.sh
+
+      - name: Notify and stop the schedule
+        if: >-
+          always() && (steps.probe.outputs.result == 'launched' ||
+          steps.probe.outputs.result == 'exists' || steps.probe.outputs.result == 'fatal')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ steps.probe.outputs.result }}
+          SUMMARY: ${{ steps.probe.outputs.summary }}
+          OWNER: ${{ github.repository_owner }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          if [[ $RESULT == fatal ]]; then
+            title="Larper OCI probe stopped"
+            body=$(printf '@%s the scheduled probe hit an error that retrying will not fix, so it disabled itself.\n\n```\n%s\n```\n\nRun: %s\n\nFix the cause, then re-enable it: Actions -> OCI capacity probe -> Enable workflow.' "$OWNER" "$SUMMARY" "$RUN_URL")
+          else
+            title="Larper OCI instance is up"
+            body=$(printf '@%s the Always Free A1 instance larper-k3s (2 OCPU / 12 GB) is RUNNING (%s), so the scheduled probe disabled itself.\n\nOn the laptop, stop the local probe and run `scripts/oci-capacity-probe.sh` once: it finds the instance and saves its address to `~/larper-oci-instance.env`.\n\nRun: %s' "$OWNER" "$RESULT" "$RUN_URL")
+          fi
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq 'length')
+          if [[ $open == 0 ]]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body" --assignee "$OWNER"
+          fi
+          if [[ -n "$NTFY_TOPIC" ]]; then
+            curl -s -H "Title: $title" -d "See the GitHub issue in $GITHUB_REPOSITORY." "https://ntfy.sh/$NTFY_TOPIC" >/dev/null || true
+          fi
+          gh workflow disable oci-probe.yml --repo "$GITHUB_REPOSITORY"
