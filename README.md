@@ -325,21 +325,26 @@ their session tokens itself. The secret key stays on the machine running k6.
 - **Then it was CPU-bound at the ceiling,** every pod pinned at its 500m limit. That turned out
   to be the CPU limit and a wrong-sized request, not a real ceiling (see autoscaler sizing below).
 
-**Failure test** ([report](loadtest/results/chaos-20261013-121403/report.md)): 7 minutes of
-steady load while `chaos.sh` kills one component a minute.
+**Failure test:** 7 minutes of steady load (60 VUs) while `chaos.sh` kills one component a
+minute. [First run](loadtest/results/chaos-20261013-121403/report.md), then a
+[re-run](loadtest/results/chaos-20261013-230108/report.md) with the Postgres fix and the final
+autoscaler config.
 
-| Killed | Failed requests | Back after |
-|---|---|---|
-| API pod (force, then graceful) | 0 | 8 s / 11 s |
-| taste-worker, ingest-worker, outbox-relay | 0 | ≤ 1 s |
-| Redis | 0 | 4 s |
-| Postgres | **465** (503/502/500), over 11 s | 15 s |
+| Killed | Failed requests, first run | Failed requests, re-run | Back after (first run) |
+|---|---|---|---|
+| API pod (force, then graceful) | 0 | 0 | 8 s / 11 s |
+| taste-worker, ingest-worker, outbox-relay | 0 | 0 | ≤ 1 s |
+| Redis | 0 | 0 | 4 s |
+| Postgres | **465** (503/502/500) over 11 s, **all API pods crashed** | **165** (500) over 17 s, 0 API restarts | 15 s (re-run: 12 s) |
 
-After the load stopped, Kafka consumer lag was 0 within 1 s and the outbox was drained. The
-Postgres failures were worse than they should have been: **every API pod crashed**, because
-`node-postgres` emits an `error` event on idle clients when the server goes away, and nothing
-listened for it. The pool now logs it and times out connects after 5 s
-([`db.module.ts`](apps/api/src/db/db.module.ts)); the re-run is pending.
+After the load stopped, Kafka consumer lag was 0 within 1 s and the outbox was drained, both
+times. In the first run every API pod crashed when Postgres went away: `node-postgres` emits an
+`error` event on idle clients when the server disappears, and nothing listened for it, so
+Node treated it as an uncaught exception. The pool now logs it and times out connects after
+5 s ([`db.module.ts`](apps/api/src/db/db.module.ts)). In the re-run the API stayed up and
+answered 500 until Postgres was back; a 503 with `Retry-After` would be more accurate.
+(The re-run's recovery times for the non-Postgres kills were lost to a bug in the script's
+readiness check, since fixed; see its `NOTE.md`.)
 
 **Autoscaler sizing** ([decision record](docs/decisions/0001-hpa-cpu-request.md)). The HPA
 targeted 70% of a 100m request, i.e. scale out at **70m per pod**, while a pod actually uses

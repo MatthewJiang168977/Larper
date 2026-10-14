@@ -42,8 +42,7 @@ time_until() {
 replaced_ready() { # selector, deployment
   local want n
   want=$(kubectl -n "$NS" get deploy "$2" -o jsonpath='{.spec.replicas}')
-  n=$(kubectl -n "$NS" get pods -l "$1"         -o jsonpath='{range .items[*]}{.metadata.name} {.status.containerStatuses[0].ready}{"
-"}{end}' |
+  n=$(kubectl -n "$NS" get pods -l "$1" -o jsonpath='{range .items[*]}{.metadata.name} {.status.containerStatuses[0].ready}{"\n"}{end}' |
       awk -v k="$pod" '$1 != k && $2 == "true"' | wc -l)
   [[ -n "$want" ]] && (( n >= want ))
 }
