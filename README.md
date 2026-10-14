@@ -327,25 +327,26 @@ their session tokens itself. The secret key stays on the machine running k6.
   to be the CPU limit and a wrong-sized request, not a real ceiling (see autoscaler sizing below).
 
 **Failure test:** 7 minutes of steady load (60 VUs) while `chaos.sh` kills one component a
-minute. [First run](loadtest/results/chaos-20261013-121403/report.md), then a
-[re-run](loadtest/results/chaos-20261013-230108/report.md) with the Postgres fix and the final
-autoscaler config.
+minute. [First run](loadtest/results/chaos-20261013-121403/report.md), then the
+[final run](loadtest/results/chaos-20261014-131859/report.md) with the Postgres fix, the final
+autoscaler config and the profiling fixes.
 
-| Killed | Failed requests, first run | Failed requests, re-run | Back after (first run) |
-|---|---|---|---|
-| API pod (force, then graceful) | 0 | 0 | 8 s / 11 s |
-| taste-worker, ingest-worker, outbox-relay | 0 | 0 | ≤ 1 s |
-| Redis | 0 | 0 | 4 s |
-| Postgres | **465** (503/502/500) over 11 s, **all API pods crashed** | **165** (500) over 17 s, 0 API restarts | 15 s (re-run: 12 s) |
+| Killed | First run: failed / back after | Final run: failed / back after |
+|---|---|---|
+| API pod, force-killed | 0 / 8 s | 0 / 8 s |
+| API pod, graceful delete | 0 / 11 s | 0 / 8 s |
+| taste-worker, ingest-worker, outbox-relay | 0 / ≤ 1 s | 0 / 2–3 s |
+| Redis | 0 / 4 s | 0 / 4 s |
+| Postgres | **465** (503/502/500) over 11 s, **every API pod crashed** / 15 s | **143** (500) over 13 s, 0 API restarts / 13 s |
 
 After the load stopped, Kafka consumer lag was 0 within 1 s and the outbox was drained, both
 times. In the first run every API pod crashed when Postgres went away: `node-postgres` emits an
 `error` event on idle clients when the server disappears, and nothing listened for it, so
 Node treated it as an uncaught exception. The pool now logs it and times out connects after
-5 s ([`db.module.ts`](apps/api/src/db/db.module.ts)). In the re-run the API stayed up and
-answered 500 until Postgres was back; a 503 with `Retry-After` would be more accurate.
-(The re-run's recovery times for the non-Postgres kills were lost to a bug in the script's
-readiness check, since fixed; see its `NOTE.md`.)
+5 s ([`db.module.ts`](apps/api/src/db/db.module.ts)). Now the API stays up and answers 500
+until Postgres is back; a 503 with `Retry-After` would be more accurate. (An intermediate
+[re-run](loadtest/results/chaos-20261013-230108/report.md) confirmed the fix but lost its
+recovery times to a bug in the script's readiness check; see its `NOTE.md`.)
 
 **Autoscaler sizing** ([decision record](docs/decisions/0001-hpa-cpu-request.md)). The HPA
 targeted 70% of a 100m request, i.e. scale out at **70m per pod**, while a pod actually uses
@@ -382,8 +383,8 @@ All four had 0 errors. Shipped (c):
 a `cache_lookups_total{cache,result}` counter and a 60 s V8 profile of one pod.
 
 - **Deck cache: 98.9% hits over the run, ~100% once warm.** The test is cache-friendly (10 users
-  near 8 fixed spots, decks live 10 minutes), so this is an upper bound. It does mean the ~300m a
-  pod used here was spent almost entirely on the **hit path**, not on PostGIS ranking.
+  near 8 fixed spots, decks live 10 minutes), so this is an upper bound. It does mean the CPU a pod
+  used here was spent almost entirely on the **hit path**, not on PostGIS ranking.
 - **Where a hit's CPU goes** (main thread ≈ 160m of the pod's ~215m; the rest is GC and libuv
   threads): garbage collection 25%, re-running MMR diversification over the 200 cached candidates
   on every request 20% (`jaccard` alone 12%), `JSON.parse` of that 200-candidate deck 8%, the
@@ -391,11 +392,30 @@ a `cache_lookups_total{cache,result}` counter and a 60 s V8 profile of one pod.
 - **Debug logging was on in production:** Nest's default levels include `debug`, so every request
   wrote a coloured "hit deck:…" line to stdout, about 7% of the CPU (formatting plus `writev`).
 
-Not changed yet; candidates by expected payoff: log at `log`/`warn`/`error` only outside
-development; cache fewer candidates (MMR is O(deck size × candidates), so 200 → 50 cuts most of
-the `jaccard` and parse cost and the garbage behind it), or cache the post-MMR deck keyed with the
-user's exclusions. Each would move the 300m request, so they'd be re-measured with the same
-harness.
+**Fixed, and re-measured with the same harness**
+([profile](loadtest/results/profile-steady20-optimized-20261014-130004/report.md),
+[ramp](loadtest/results/hpa-after-ramp-c-optimized-20261014-130527/report.md)):
+
+- **MMR without the quadratic re-check.** Each of the 10 picks re-computed every candidate's
+  similarity to *all* earlier picks (~200 × 45 `jaccard` calls per request). Keeping each
+  candidate's running maximum and updating it against only the newest pick gives the same deck
+  with ~200 × 10 calls ([`scoring.ts`](apps/api/src/quests/scoring.ts); a test checks it picks
+  exactly what the old version picks on 50 random 200-candidate pools).
+- **No debug logs in the image** (`NODE_ENV=production`; `LOG_DEBUG=1` turns them back on).
+- The candidate count stays at 200: cutting it would change which places users can be offered,
+  and these two fixes don't.
+
+| | Before | After |
+|---|---|---|
+| Main-thread CPU at 9.6 req/s per pod (profile) | ~159m | ~135m |
+| Share of CPU in `scoring.js` | 19.5% | 4.8% |
+| 200-VU ramp: CPU per req/s | 21.6m | 17.5m (−19%) |
+| 200-VU ramp: p50 / p95 / p99 | 31 / 161 / 385 ms | 20 / 46 / 69 ms |
+| 200-VU ramp: throughput at peak | 183 req/s | 195 req/s |
+
+The 300m request stays: the drop is real, but at ~15–20% it's within the spread between sizing
+runs, and over-reserving a little costs less than throttling would. GC (21%) and parsing the
+cached deck (9%) are now the largest app-attributable costs.
 
 ---
 

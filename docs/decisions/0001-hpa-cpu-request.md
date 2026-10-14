@@ -180,6 +180,17 @@ confirmed by `eks-up.sh`'s per-node report):
 - **Helm gotcha:** with `--reuse-values`, `--set ...cpu=null` does not remove a limit that comes
   from the chart's defaults. A values file with `cpu: null` (without `--reuse-values`) does.
 
+## Follow-up: profiling (2026-10-14)
+
+A CPU profile at the sizing point (README, "Cache hit rate and CPU profile") showed the
+request's CPU went almost entirely to the cache-hit path: 20% to an MMR loop that was quadratic
+in deck size, and ~7% to debug logs written per request. Both were fixed without changing
+which deck a user gets. Re-running (c)'s ramp
+([report](../../loadtest/results/hpa-after-ramp-c-optimized-20261014-130527/report.md)):
+CPU per req/s 21.6m → 17.5m, whole-run p95 161 → 46 ms, 0 errors. The request stays at 300m,
+since a ~20% drop is within the spread between sizing runs; re-size if a later change moves it
+further.
+
 ## Caveats
 
 - k6 runs on the same machine as k3d, so absolute numbers include the laptop competing with

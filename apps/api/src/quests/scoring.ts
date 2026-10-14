@@ -124,19 +124,25 @@ const jaccard = (a: string[], b: string[]) => {
 // matcha bars. lambda=1 is pure score order; lower values diversify harder.
 export function mmr<T extends { score: number; tags: string[] }>(items: T[], k: number, lambda = 0.7): T[] {
   const pool = [...items].sort((a, b) => b.score - a.score);
+  // maxSim[i]: pool[i]'s highest similarity to anything picked so far. Updating it
+  // against only the newest pick gives the same values as re-checking every pick,
+  // with n·k jaccard calls per deck instead of n·k²/2 (profiled: ~20% of API CPU).
+  const maxSim = new Array<number>(pool.length).fill(0);
   const picked: T[] = [];
   while (picked.length < k && pool.length) {
+    const last = picked[picked.length - 1];
     let bestIdx = 0;
     let bestVal = -Infinity;
     for (let i = 0; i < pool.length; i++) {
-      const sim = picked.length ? Math.max(...picked.map((p) => jaccard(p.tags, pool[i].tags))) : 0;
-      const val = lambda * pool[i].score - (1 - lambda) * sim;
+      if (last) maxSim[i] = Math.max(maxSim[i], jaccard(last.tags, pool[i].tags));
+      const val = lambda * pool[i].score - (1 - lambda) * maxSim[i];
       if (val > bestVal) {
         bestVal = val;
         bestIdx = i;
       }
     }
     picked.push(pool.splice(bestIdx, 1)[0]);
+    maxSim.splice(bestIdx, 1);
   }
   return picked;
 }
