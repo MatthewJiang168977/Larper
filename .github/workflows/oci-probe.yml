@@ -46,10 +46,8 @@ jobs:
           sparse-checkout: scripts/oci-capacity-probe.sh
           sparse-checkout-cone-mode: false
 
-      - name: Install the OCI CLI
-        run: pipx install oci-cli==3.95.0
-
       - name: Write the OCI config
+        id: config
         env:
           OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
           OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
@@ -57,8 +55,14 @@ jobs:
           OCI_API_KEY: ${{ secrets.OCI_API_KEY }}
           OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
         run: |
+          # Not set up yet (scripts/oci-ci-secrets.sh): skip quietly rather than fail
+          # (and email) every 10 minutes.
           for v in OCI_USER_OCID OCI_TENANCY_OCID OCI_FINGERPRINT OCI_API_KEY OCI_SSH_PUBLIC_KEY; do
-            [[ -n "${!v}" ]] || { echo "::error::secret $v is not set"; exit 1; }
+            if [[ -z "${!v}" ]]; then
+              echo "::notice::secret $v is not set; skipping (run scripts/oci-ci-secrets.sh)"
+              echo "ready=false" >>"$GITHUB_OUTPUT"
+              exit 0
+            fi
           done
           umask 077
           dir="$RUNNER_TEMP/oci"
@@ -69,9 +73,15 @@ jobs:
             "$OCI_USER_OCID" "$OCI_FINGERPRINT" "$OCI_TENANCY_OCID" "$OCI_REGION" "$dir/key.pem" >"$dir/config"
           echo "OCI_CLI_CONFIG_FILE=$dir/config" >>"$GITHUB_ENV"
           echo "SSH_PUB_FILE=$dir/ssh.pub" >>"$GITHUB_ENV"
+          echo "ready=true" >>"$GITHUB_OUTPUT"
+
+      - name: Install the OCI CLI
+        if: steps.config.outputs.ready == 'true'
+        run: pipx install oci-cli==3.95.0
 
       - name: Try to launch
         id: probe
+        if: steps.config.outputs.ready == 'true'
         env:
           ONCE: '1'
         run: bash scripts/oci-capacity-probe.sh
