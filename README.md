@@ -251,7 +251,7 @@ proto/           Protobuf event schemas (generated into workers/gen and apps/api
 db/migrations/   SQL migrations (golang-migrate)
 data/            Python bulk extract of Overture places (shares workers/internal/places/overture_extract.sql)
 infra/           k3d config, Helm chart (+ values-aks/eks.yaml), Postgres image, Terraform (azure, aws, eks), monitoring values
-loadtest/        k6 script, failure test (chaos.sh), autoscaler runs (hpa-run.sh), reports in results/
+loadtest/        k6 script, failure test (chaos.sh), autoscaler runs (hpa-run.sh), cache + CPU profile (cache-profile.sh), reports in results/
 docs/decisions/  Decision records (0001: sizing the API's CPU request and autoscaler)
 scripts/         up.sh / down.sh (k3d), build-images.sh (amd64 + arm64), monitoring.sh, aks-up.sh, eks-up.sh / eks-down.sh
 ```
@@ -308,6 +308,7 @@ kubectl -n larper get hpa api -w                # watch the autoscaler react
 loadtest/hpa-run.sh <label>                     # k6 + autoscaler/CPU trace every 5 s -> results/hpa-<label>-*/report.md
 SCENARIO=steps loadtest/hpa-run.sh sizing       # HPA off: 20..100 VUs, finds req/s per pod where p95 degrades
 loadtest/chaos.sh                               # steady load while killing api, workers, Redis, Postgres in turn
+loadtest/cache-profile.sh <label>               # cache hit rate + 60 s CPU profile (needs --set api.cpuProfiling=true)
 ```
 The k6 script creates 10 `loadtest+N@example.com` users on the Clerk dev instance (once) and mints
 their session tokens itself. The secret key stays on the machine running k6.
@@ -375,6 +376,26 @@ All four had 0 errors. Shipped (c):
 - **Cost on EKS:** at 300m only about one API pod fits next to the stack on the first node, so
   replica 2 starts Karpenter's node (≈ +$0.074/h). A 100m request would have packed six pods
   that need ~4 cores onto one 2-vCPU node.
+
+**Cache hit rate and CPU profile** ([report](loadtest/results/profile-steady20-20261013-231701/report.md),
+`loadtest/cache-profile.sh`): 20 VUs on 2 fixed pods (~9.6 req/s per pod, the sizing point), with
+a `cache_lookups_total{cache,result}` counter and a 60 s V8 profile of one pod.
+
+- **Deck cache: 98.9% hits over the run, ~100% once warm.** The test is cache-friendly (10 users
+  near 8 fixed spots, decks live 10 minutes), so this is an upper bound. It does mean the ~300m a
+  pod used here was spent almost entirely on the **hit path**, not on PostGIS ranking.
+- **Where a hit's CPU goes** (main thread ≈ 160m of the pod's ~215m; the rest is GC and libuv
+  threads): garbage collection 25%, re-running MMR diversification over the 200 cached candidates
+  on every request 20% (`jaccard` alone 12%), `JSON.parse` of that 200-candidate deck 8%, the
+  `pg` driver 10%, Redis 4%, JWT verification 3%.
+- **Debug logging was on in production:** Nest's default levels include `debug`, so every request
+  wrote a coloured "hit deck:…" line to stdout, about 7% of the CPU (formatting plus `writev`).
+
+Not changed yet; candidates by expected payoff: log at `log`/`warn`/`error` only outside
+development; cache fewer candidates (MMR is O(deck size × candidates), so 200 → 50 cuts most of
+the `jaccard` and parse cost and the garbage behind it), or cache the post-MMR deck keyed with the
+user's exclusions. Each would move the 300m request, so they'd be re-measured with the same
+harness.
 
 ---
 

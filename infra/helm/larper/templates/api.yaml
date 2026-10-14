@@ -37,6 +37,10 @@ spec:
             - { name: KAFKA_BROKERS, value: "redpanda:9092" }
             - { name: CLERK_PUBLISHABLE_KEY, value: {{ .Values.clerk.publishableKey | quote }} }
             - { name: CLERK_AUTHORIZED_PARTIES, value: {{ .Values.clerk.authorizedParties | quote }} }
+            {{- if .Values.api.cpuProfiling }}
+            # GET :9464/debug/cpu-profile?seconds=30 (metrics port, never routed publicly).
+            - { name: CPU_PROFILING, value: "1" }
+            {{- end }}
             - name: DATABASE_URL
               valueFrom: { secretKeyRef: { name: pg-app, key: uri } }
           # On delete, SIGTERM and endpoint removal happen concurrently; without this

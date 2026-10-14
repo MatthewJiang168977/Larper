@@ -1,6 +1,7 @@
 import { createServer, type Server } from 'node:http';
+import { Session } from 'node:inspector/promises';
 import type { NextFunction, Request, Response } from 'express';
-import { collectDefaultMetrics, Histogram, Registry } from 'prom-client';
+import { collectDefaultMetrics, Counter, Histogram, Registry } from 'prom-client';
 
 // Prometheus metrics. Served on their own port (not through the ingress), so the
 // public internet can't read them; Prometheus scrapes each pod directly.
@@ -16,6 +17,15 @@ const httpDuration = new Histogram({
   registers: [registry],
 });
 
+// Cache-aside lookups by cache (the key prefix: deck, area) and result (hit, miss,
+// error). Hit rate = hit / (hit + miss + error).
+export const cacheLookups = new Counter({
+  name: 'cache_lookups_total',
+  help: 'Cache-aside lookups, by cache and result',
+  labelNames: ['cache', 'result'],
+  registers: [registry],
+});
+
 // Express middleware. The route is read when the response finishes, after the
 // router has matched it; unmatched paths share one label.
 export function httpMetrics(req: Request, res: Response, next: NextFunction) {
@@ -27,13 +37,37 @@ export function httpMetrics(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+// CPU profile of this process for N seconds (1-120), as a .cpuprofile that Chrome
+// DevTools or speedscope opens. Off unless CPU_PROFILING=1; even then it's only on
+// the metrics port, which the ingress never routes to.
+async function cpuProfile(seconds: number): Promise<string> {
+  const session = new Session();
+  session.connect();
+  try {
+    await session.post('Profiler.enable');
+    await session.post('Profiler.start');
+    await new Promise((r) => setTimeout(r, seconds * 1000));
+    const { profile } = await session.post('Profiler.stop');
+    return JSON.stringify(profile);
+  } finally {
+    session.disconnect();
+  }
+}
+
 export function serveMetrics(port: number): Server {
   return createServer(async (req, res) => {
-    if (req.url !== '/metrics') {
-      res.writeHead(404).end();
+    const url = new URL(req.url ?? '/', 'http://localhost');
+    if (url.pathname === '/metrics') {
+      res.writeHead(200, { 'Content-Type': registry.contentType });
+      res.end(await registry.metrics());
       return;
     }
-    res.writeHead(200, { 'Content-Type': registry.contentType });
-    res.end(await registry.metrics());
+    if (url.pathname === '/debug/cpu-profile' && process.env.CPU_PROFILING === '1') {
+      const seconds = Math.min(120, Math.max(1, Number(url.searchParams.get('seconds')) || 30));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(await cpuProfile(seconds));
+      return;
+    }
+    res.writeHead(404).end();
   }).listen(port, '0.0.0.0');
 }

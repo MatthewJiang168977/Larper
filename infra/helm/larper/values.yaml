@@ -7,6 +7,8 @@ imagePullPolicy: Always
 api:
   image: larper-registry:5111/larper-api:dev
   replicas: 2
+  # Enables the on-demand CPU profile endpoint on the metrics port.
+  cpuProfiling: false
   # Sized from load tests (docs/decisions/0001-hpa-cpu-request.md): a pod uses ~290m
   # at 9 req/s, where p95 is still flat. No CPU limit: CFS throttling at 500m caused
   # the p95 swings. The HPA target is a percentage of the request.
