@@ -49,14 +49,15 @@ const SCENARIOS = {
     ],
     gracefulRampDown: '10s',
   },
-  // Sizing: hold each load level for 2 min with the HPA off, to read CPU per pod
-  // at a known request rate (loadtest/hpa-run.sh sizing).
+  // Sizing: hold each load level with the HPA off, to read CPU per pod at a known
+  // request rate and find where p95 degrades (loadtest/hpa-run.sh sizing).
+  // STEPS=20,40,60 (VUs), STEP_HOLD=90s.
   steps: {
     executor: 'ramping-vus',
     startVUs: 0,
-    stages: [20, 40, 60, 80].flatMap((v) => [
+    stages: (__ENV.STEPS || '20,40,60,80,100').split(',').map(Number).flatMap((v) => [
       { duration: '10s', target: v },
-      { duration: '2m', target: v },
+      { duration: __ENV.STEP_HOLD || '90s', target: v },
     ]),
     gracefulRampDown: '10s',
   },

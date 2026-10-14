@@ -47,9 +47,13 @@ kube-state-metrics:
 grafana:
   # Reached with kubectl port-forward (scripts/monitoring.sh prints the command), so
   # no public endpoint. The admin password is generated into a Secret.
+  # Grafana 13 sits near 500Mi (more while starting): at a 256Mi limit it was
+  # OOM-killed in a loop, and with no CPU limit each restart burned ~9 cores next to
+  # the API and skewed load tests. The CPU limit keeps monitoring from ever
+  # competing with the app it measures.
   resources:
-    requests: { cpu: 25m, memory: 128Mi }
-    limits: { memory: 256Mi }
+    requests: { cpu: 25m, memory: 512Mi }
+    limits: { cpu: 500m, memory: 768Mi }
   sidecar:
     dashboards:
       enabled: true

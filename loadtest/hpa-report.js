@@ -35,9 +35,10 @@ async function main() {
     else if (m === 'http_req_failed') failed.push([t, v]);
   }
   const hpa = fs.readFileSync(path.join(dir, 'hpa.tsv'), 'utf8').trim().split('\n').map((l) => {
-    const [t, r, d, u, cpu] = l.split('\t');
+    const [t, r, d, u, cpu, pg, redis] = l.split('\t');
     const pods = (cpu || '').split(',').filter(Boolean).map(Number);
-    return { t: Number(t), replicas: Number(r), desired: Number(d), util: u === '' ? NaN : Number(u), pods };
+    return { t: Number(t), replicas: Number(r), desired: Number(d), util: u === '' ? NaN : Number(u), pods,
+      pg: pg === undefined ? NaN : Number(pg), redis: redis === undefined ? NaN : Number(redis) };
   });
   const res = JSON.parse(fs.readFileSync(path.join(dir, 'resources.json'), 'utf8') || '{}');
   const spec = (JSON.parse(fs.readFileSync(path.join(dir, 'hpa.json'), 'utf8')).spec) || null;
@@ -91,6 +92,54 @@ async function main() {
   out.push('|---|---|---|---|---|---|---|---|---|');
   for (const r of rows) {
     out.push(`| ${r.at} | ${r.vus} | ${r.rps.toFixed(1)} | ${f0(r.p95)} | ${(100 * r.err).toFixed(1)}% | ${f0(r.replicas)} | ${f0(r.podCpu)} | ${f0(r.totalCpu)} | ${r.rps > 1 ? (r.totalCpu / r.rps).toFixed(1) : '–'} |`);
+  }
+
+  // Load levels: stretches where the VU count holds for 45 s or more (the steps
+  // scenario, or a ramp's plateau), minus the first 15 s while things settle.
+  const levels = [];
+  for (let i = 0; i < vus.length;) {
+    let j = i;
+    while (j + 1 < vus.length && vus[j + 1][1] === vus[i][1]) j++;
+    if (vus[i][1] > 0 && vus[j][0] - vus[i][0] >= 45) levels.push({ vus: vus[i][1], a: vus[i][0] + 15, b: vus[j][0] });
+    i = j + 1;
+  }
+  if (levels.length) {
+    const lim = String(res.limits?.cpu || '');
+    const limitM = lim.endsWith('m') ? parseInt(lim, 10) : Number(lim) * 1000;
+    const mean = (xs) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : NaN);
+    const L = levels.map((l) => {
+      const d = inB(durs, l.a, l.b).map((x) => x[1]);
+      const fl = inB(failed, l.a, l.b);
+      const h = hpa.filter((x) => x.t >= l.a && x.t < l.b);
+      const replicas = mean(h.map((x) => x.replicas).filter(Number.isFinite));
+      const rps = d.length / (l.b - l.a);
+      const podCpu = mean(h.flatMap((x) => x.pods));
+      return {
+        ...l, rps, replicas, perPod: rps / replicas, p50: pct(d, 0.5), p95: pct(d, 0.95), p99: pct(d, 0.99),
+        err: fl.length ? fl.filter((x) => x[1] === 1).length / fl.length : 0, podCpu,
+        cpuPerRps: (podCpu * replicas) / rps,
+        pg: mean(h.map((x) => x.pg).filter(Number.isFinite)), redis: mean(h.map((x) => x.redis).filter(Number.isFinite)),
+      };
+    });
+    // Degraded: p95 more than twice the lightest level's.
+    const firstBad = L.findIndex((l) => l.p95 > 2 * L[0].p95);
+    out.push('');
+    out.push('## Load levels');
+    out.push('');
+    out.push('| VUs | req/s | replicas | req/s per pod | p50 (ms) | p95 (ms) | p99 (ms) | errors | CPU/pod (m) | CPU per req/s (m) | Postgres CPU (m) | Redis CPU (m) | |');
+    out.push('|---|---|---|---|---|---|---|---|---|---|---|---|---|');
+    L.forEach((l, i) => {
+      const notes = [];
+      if (limitM && l.podCpu >= 0.9 * limitM) notes.push('at CPU limit');
+      if (i === firstBad) notes.push('p95 degraded');
+      out.push(`| ${l.vus} | ${l.rps.toFixed(1)} | ${l.replicas.toFixed(1)} | ${l.perPod.toFixed(1)} | ${f0(l.p50)} | ${f0(l.p95)} | ${f0(l.p99)} | ${(100 * l.err).toFixed(1)}% | ${f0(l.podCpu)} | ${l.cpuPerRps.toFixed(1)} | ${f0(l.pg)} | ${f0(l.redis)} | ${notes.join(', ')} |`);
+    });
+    out.push('');
+    if (firstBad > 0) {
+      const ok = L[firstBad - 1]; const bad = L[firstBad];
+      out.push(`Saturation: p95 holds up to ~${ok.perPod.toFixed(1)} req/s per pod (p95 ${f0(ok.p95)} ms, ${f0(ok.podCpu)}m/pod) ` +
+        `and degrades by ~${bad.perPod.toFixed(1)} req/s per pod (p95 ${f0(bad.p95)} ms, ${f0(bad.podCpu)}m/pod).`);
+    } else if (firstBad === -1 && L.length > 1) out.push('Saturation: p95 never more than doubled; the highest level is still below saturation.');
   }
   console.log(out.join('\n'));
 }

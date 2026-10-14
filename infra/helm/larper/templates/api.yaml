@@ -4,7 +4,11 @@ metadata:
   name: api
   labels: {{- include "larper.labels" . | nindent 4 }}
 spec:
+  # With the HPA on, it owns replicas. Setting them here too makes Helm 4's
+  # server-side apply fail with a field conflict on every upgrade after a scale.
+  {{- if not .Values.api.hpa.enabled }}
   replicas: {{ .Values.api.replicas }}
+  {{- end }}
   selector:
     matchLabels: { app: api }
   template:
