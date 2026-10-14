@@ -96,4 +96,7 @@ spec:
       resource:
         name: cpu
         target: { type: Utilization, averageUtilization: {{ .Values.api.hpa.targetCPU }} }
+  {{- with .Values.api.hpa.behavior }}
+  behavior: {{- toYaml . | nindent 4 }}
+  {{- end }}
 {{- end }}

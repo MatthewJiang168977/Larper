@@ -10,7 +10,8 @@ ingress:
   className: traefik
 
 api:
-  # One node: extra replicas show the HPA control loop, not extra cores.
+  # At a 300m request about one API pod fits next to the stack on the first node, so
+  # the second replica already lands on Karpenter's node; max 6 fits on the two.
   hpa:
     minReplicas: 2
     maxReplicas: 6

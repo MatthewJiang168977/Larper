@@ -28,7 +28,7 @@ stream, idempotent workers, Kubernetes) built to be explained, measured, and bro
 | Place data | **Overture Maps** Places (CDLA-permissive), extracted with **DuckDB** (Python for bulk loads, the DuckDB CLI in the ingest-worker) | Open data that may be stored and indexed, unlike Google Places |
 | Migrations | **golang-migrate**, run as a Helm hook Job | Same schema rollout locally and in the cloud |
 | Platform | **Docker**, **Kubernetes** (k3d/k3s locally), **Helm**, **Traefik** ingress, HPA | One chart for local and cloud; Traefik is the load balancer |
-| Cloud | **AKS** (Free tier, 1 node) + **ACR**, **Terraform**; SQS on AWS | Destroyed between demos, so idle cost is $0 ([costs](#cloud-costs)) |
+| Cloud | **EKS** (1 Graviton node + **Karpenter**) + **ECR**, or **AKS** (Free tier) + **ACR**; **Terraform**; SQS on AWS | Brought up for a demo and destroyed after, so idle cost is $0 ([costs](#cloud-costs)) |
 | Observability | **Prometheus + Grafana** (kube-prometheus-stack), `prom-client` in the API | Latency histograms per route, HPA replicas, CPU per pod on one dashboard |
 | Load testing | **k6** with real Clerk session tokens | Exercises the full auth + ranking path, not a health check |
 
@@ -230,6 +230,14 @@ Slots are append-only, so stored vectors never change meaning. Of 566k open NYC 
   static and runs the exact same SQL file as the Python bulk loader.
 - **Lazy user creation.** Users are created on their first authenticated call. The Clerk webhook
   is deferred until it's needed (e.g. account deletion).
+- **Karpenter over Cluster Autoscaler on EKS.** Cluster Autoscaler had no release for Kubernetes
+  1.37 yet; Karpenter 1.15 supports it. Its NodePool is capped at one extra `t4g.large`
+  (`limits.cpu: 2`) and removes the node 30 s after it empties, so a demo can't run up a bill.
+- **EKS API reachable from one IP.** The public endpoint only accepts `api_allowed_cidrs` (no
+  default, and `0.0.0.0/0` is rejected), set in a gitignored `terraform.tfvars`.
+- **Monitoring has hard limits.** Grafana once crash-looped
+  (OOM at 256Mi) and, with no CPU limit, burned ~9 cores per restart on the node running Postgres,
+  which silently skewed two load tests. Monitoring now has hard CPU and memory limits.
 
 ---
 
@@ -242,9 +250,10 @@ workers/         Go: cmd/{load-places, outbox-relay, taste-worker, ingest-worker
 proto/           Protobuf event schemas (generated into workers/gen and apps/api/src/gen)
 db/migrations/   SQL migrations (golang-migrate)
 data/            Python bulk extract of Overture places (shares workers/internal/places/overture_extract.sql)
-infra/           k3d config, Helm chart (+ values-aks.yaml), Postgres image, Terraform (azure, aws), monitoring values
-loadtest/        k6 scripts
-scripts/         up.sh / down.sh (k3d), build-images.sh (amd64 + arm64), monitoring.sh, aks-up.sh
+infra/           k3d config, Helm chart (+ values-aks/eks.yaml), Postgres image, Terraform (azure, aws, eks), monitoring values
+loadtest/        k6 script, failure test (chaos.sh), autoscaler runs (hpa-run.sh), reports in results/
+docs/decisions/  Decision records (0001: sizing the API's CPU request and autoscaler)
+scripts/         up.sh / down.sh (k3d), build-images.sh (amd64 + arm64), monitoring.sh, aks-up.sh, eks-up.sh / eks-down.sh
 ```
 
 ---
@@ -296,6 +305,9 @@ TEST_DATABASE_URL=postgres://... go test ./internal/queue/              # queue 
 ./scripts/monitoring.sh                         # Prometheus + Grafana; prints the Grafana port-forward and login
 CLERK_SECRET_KEY=sk_test_... k6 run loadtest/quests.js      # 8 min ramp to 200 VUs (BASE_URL, USERS, PEAK_VUS)
 kubectl -n larper get hpa api -w                # watch the autoscaler react
+loadtest/hpa-run.sh <label>                     # k6 + autoscaler/CPU trace every 5 s -> results/hpa-<label>-*/report.md
+SCENARIO=steps loadtest/hpa-run.sh sizing       # HPA off: 20..100 VUs, finds req/s per pod where p95 degrades
+loadtest/chaos.sh                               # steady load while killing api, workers, Redis, Postgres in turn
 ```
 The k6 script creates 10 `loadtest+N@example.com` users on the Clerk dev instance (once) and mints
 their session tokens itself. The secret key stays on the machine running k6.
@@ -310,13 +322,80 @@ their session tokens itself. The secret key stays on the machine running k6.
 - **The load test found a race.** Run 1's errors were all `offer vanished`: a request lost the
   "one active quest" insert to another replica, and a third request expired the winner's offer
   before the loser could read it. `offer()` now retries the free slot.
-- **Still CPU-bound at the ceiling.** At 6 replicas every pod sits at its 500m limit, and p95
-  misses the 800 ms target. On a laptop, k6 and all 3 k3d nodes share the same cores, so more
-  pods can't add throughput. The AKS run measures the same thing on a dedicated node.
+- **Then it was CPU-bound at the ceiling,** every pod pinned at its 500m limit. That turned out
+  to be the CPU limit and a wrong-sized request, not a real ceiling (see autoscaler sizing below).
+
+**Failure test** ([report](loadtest/results/chaos-20261013-121403/report.md)): 7 minutes of
+steady load while `chaos.sh` kills one component a minute.
+
+| Killed | Failed requests | Back after |
+|---|---|---|
+| API pod (force, then graceful) | 0 | 8 s / 11 s |
+| taste-worker, ingest-worker, outbox-relay | 0 | ≤ 1 s |
+| Redis | 0 | 4 s |
+| Postgres | **465** (503/502/500), over 11 s | 15 s |
+
+After the load stopped, Kafka consumer lag was 0 within 1 s and the outbox was drained. The
+Postgres failures were worse than they should have been: **every API pod crashed**, because
+`node-postgres` emits an `error` event on idle clients when the server goes away, and nothing
+listened for it. The pool now logs it and times out connects after 5 s
+([`db.module.ts`](apps/api/src/db/db.module.ts)); the re-run is pending.
+
+**Autoscaler sizing** ([decision record](docs/decisions/0001-hpa-cpu-request.md)). The HPA
+targeted 70% of a 100m request, i.e. scale out at **70m per pod**, while a pod actually uses
+~290m at a comfortable 9 req/s. So it went 2 → 4 replicas at just 20 VUs and spent all 6 replicas
+on light load. A [sizing run](loadtest/results/hpa-sizing-20261013-211748/report.md) (HPA off,
+2 pods, 20 → 100 VUs) measured the need, then four identical 8-minute ramps to 200 VUs compared
+configs:
+
+| Config | Throughput at 200 VUs | p95 at 200 VUs | p50 / p95 / p99 (whole run) | p95 < 800 ms |
+|---|---|---|---|---|
+| [Baseline](loadtest/results/hpa-before-ramp-20261013-212721/report.md): 100m request, 500m limit, 70% | 105 req/s | 3.25 s | 360 ms / 2.44 s / 4.96 s | fail |
+| [(a)](loadtest/results/hpa-after-ramp-a-limit-20261013-215156/report.md): 300m request, 500m limit, 75% | 120 req/s | 2.62 s | 303 ms / 2.29 s / 4.07 s | fail |
+| [(b)](loadtest/results/hpa-after-ramp-b-nolimit-20261013-223117/report.md): 300m request, **no CPU limit**, 75% | 156 req/s | 507 ms | 87 ms / 484 ms / 1.43 s | pass |
+| [(c)](loadtest/results/hpa-after-ramp-c-fast60-20261013-224443/report.md): as (b), **60% target**, explicit fast scale-up | **183 req/s** | **164 ms** | **31 ms / 161 ms / 385 ms** | pass |
+
+All four had 0 errors. Shipped (c):
+
+- **Request = measured need (300m).** Fixing it alone (a) made the HPA scale for the right reason,
+  but peak latency stayed bad: pods still sat at the 500m limit.
+- **No CPU limit.** CFS quota pauses a pod for the rest of each 100 ms period once it uses its
+  share, so a bursty Node.js process stalls every request in flight. Removing it (b) cut peak p95
+  from 2.6 s to 0.5 s. The memory limit stays, and Postgres got requests (it was `BestEffort`)
+  so unlimited API pods can't starve it.
+- **60% target.** Metrics, the HPA loop and pod readiness add up to about a minute, and a ramp
+  outruns that at 75%. (c) had 3 pods at 30 s and 6 by 90 s; ramp p95 stayed under 140 ms.
+  The explicit scale-up policy is close to Kubernetes' default and isn't what made the
+  difference. At the 200-VU plateau (b) and (c) are the same system, so that gap is laptop noise.
+- **Cost on EKS:** at 300m only about one API pod fits next to the stack on the first node, so
+  replica 2 starts Karpenter's node (≈ +$0.074/h). A 100m request would have packed six pods
+  that need ~4 cores onto one 2-vCPU node.
 
 ---
 
 ## Cloud costs
+
+### EKS (us-east-1)
+
+Estimated from AWS on-demand list prices; not yet confirmed against a bill.
+
+| Resource | Rate |
+|---|---|
+| EKS control plane (standard support) | $0.10/h |
+| 1× t4g.large (Graviton, 2 vCPU / 8 GiB) | $0.067/h |
+| Network load balancer (Traefik) | ~$0.029/h |
+| 3 public IPv4 addresses | $0.015/h |
+| EBS gp3 (root + PVCs) | ~$0.003/h |
+| **Base** | **≈ $0.21/h** |
+| + 1 Karpenter node at peak (instance, disk, IP) | +$0.074/h → ≈ $0.29/h |
+
+- A 3-hour session with ~20 minutes at two nodes costs about **$0.67**.
+- `scripts/eks-down.sh` uninstalls what Kubernetes created in AWS (NLB, EBS volumes, Karpenter
+  nodes, launch templates, instance profile), waits for AWS to delete it, runs `terraform
+  destroy`, then checks that nothing billable is left, including any EC2 instance in the region.
+- The cluster version is pinned to one in standard support: extended support bills $0.60/h.
+
+### AKS (eastus)
 
 Prices from the Azure retail prices API (eastus, pay-as-you-go, 2026-10-13), paid from the Azure
 for Students credit. The load balancer rate is from Azure's pricing page.
@@ -350,4 +429,4 @@ for Students credit. The load balancer rate is from Azure's pricing page.
 - [x] **5. Map UI:** field-journal 3D map (MapLibre + OpenFreeMap), quest sheet, journal page, PWA manifest.
 - [x] **6. Events:** transactional outbox, Go relay + idempotent taste-worker with DLQ, protobuf events, geofenced check-in.
 - [x] **7. Async ingest:** unmapped area → leased work queue → ingest-worker (DuckDB) → stats refresh; "surveying the area…" in the app.
-- [ ] **8. Deploy + prove it:** ~~Prometheus/Grafana~~, ~~k6 load test showing the HPA scale out (k3d)~~, ~~SQS queue~~, Terraform AKS (written and validated, not yet applied).
+- [ ] **8. Deploy + prove it:** ~~Prometheus/Grafana~~, ~~k6 load test showing the HPA scale out (k3d)~~, ~~SQS queue~~, ~~failure test~~, ~~autoscaler sizing~~, Terraform EKS + Karpenter (written and planned, not yet applied), always-free k3s on Oracle Ampere A1 (waiting on capacity).

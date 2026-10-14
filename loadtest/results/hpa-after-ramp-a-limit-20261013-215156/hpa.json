@@ -1,0 +1,79 @@
+{
+    "apiVersion": "autoscaling/v2",
+    "kind": "HorizontalPodAutoscaler",
+    "metadata": {
+        "annotations": {
+            "meta.helm.sh/release-name": "larper",
+            "meta.helm.sh/release-namespace": "larper"
+        },
+        "creationTimestamp": "2026-10-14T01:27:10Z",
+        "labels": {
+            "app.kubernetes.io/managed-by": "Helm"
+        },
+        "name": "api",
+        "namespace": "larper",
+        "resourceVersion": "64746",
+        "uid": "82d2a0f2-584e-4a06-9595-8b99a4be77a8"
+    },
+    "spec": {
+        "maxReplicas": 6,
+        "metrics": [
+            {
+                "resource": {
+                    "name": "cpu",
+                    "target": {
+                        "averageUtilization": 75,
+                        "type": "Utilization"
+                    }
+                },
+                "type": "Resource"
+            }
+        ],
+        "minReplicas": 2,
+        "scaleTargetRef": {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "name": "api"
+        }
+    },
+    "status": {
+        "conditions": [
+            {
+                "lastTransitionTime": "2026-10-14T01:27:25Z",
+                "message": "the HPA controller was able to update the target scale to 2",
+                "reason": "SucceededRescale",
+                "status": "True",
+                "type": "AbleToScale"
+            },
+            {
+                "lastTransitionTime": "2026-10-14T01:47:12Z",
+                "message": "the HPA was able to successfully calculate a replica count from cpu resource utilization (percentage of request)",
+                "reason": "ValidMetricFound",
+                "status": "True",
+                "type": "ScalingActive"
+            },
+            {
+                "lastTransitionTime": "2026-10-14T01:51:43Z",
+                "message": "the desired replica count is less than the minimum replica count",
+                "reason": "TooFewReplicas",
+                "status": "True",
+                "type": "ScalingLimited"
+            }
+        ],
+        "currentMetrics": [
+            {
+                "resource": {
+                    "current": {
+                        "averageUtilization": 2,
+                        "averageValue": "7m"
+                    },
+                    "name": "cpu"
+                },
+                "type": "Resource"
+            }
+        ],
+        "currentReplicas": 6,
+        "desiredReplicas": 2,
+        "lastScaleTime": "2026-10-14T01:51:43Z"
+    }
+}

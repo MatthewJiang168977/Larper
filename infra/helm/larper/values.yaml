@@ -7,14 +7,24 @@ imagePullPolicy: Always
 api:
   image: larper-registry:5111/larper-api:dev
   replicas: 2
+  # Sized from load tests (docs/decisions/0001-hpa-cpu-request.md): a pod uses ~290m
+  # at 9 req/s, where p95 is still flat. No CPU limit: CFS throttling at 500m caused
+  # the p95 swings. The HPA target is a percentage of the request.
   resources:
-    requests: { cpu: 100m, memory: 128Mi }
-    limits: { cpu: 500m, memory: 256Mi }
+    requests: { cpu: 300m, memory: 128Mi }
+    limits: { memory: 256Mi }
   hpa:
     enabled: true
     minReplicas: 2
     maxReplicas: 6
-    targetCPU: 70
+    targetCPU: 60 # 180m per pod: scale out before the ~12-18 req/s per pod knee
+    behavior:
+      scaleUp:
+        stabilizationWindowSeconds: 0
+        selectPolicy: Max
+        policies:
+          - { type: Percent, value: 200, periodSeconds: 15 }
+          - { type: Pods, value: 4, periodSeconds: 15 }
 
 clerk:
   # Public by design (it ships to every browser). The API derives the JWKS URL from it,
@@ -32,6 +42,12 @@ postgres:
   image: larper-registry:5111/larper-postgres:17
   instances: 1
   storage: 2Gi
+  # Without requests Postgres was BestEffort: the first pod evicted under memory
+  # pressure, and nearly no CPU share next to API pods that have no CPU limit.
+  # ~230m at light load, ~650-800m at peak (loadtest/results/hpa-*).
+  resources:
+    requests: { cpu: 250m, memory: 256Mi }
+    limits: { memory: 1Gi }
 
 migrate:
   # Built from db/Dockerfile: golang-migrate + db/migrations.

@@ -9,6 +9,7 @@ spec:
   imageName: {{ .Values.postgres.image }}
   storage:
     size: {{ .Values.postgres.storage }}
+  resources: {{- toYaml .Values.postgres.resources | nindent 4 }}
   bootstrap:
     initdb:
       database: larper
