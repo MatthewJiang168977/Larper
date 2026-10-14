@@ -32,3 +32,6 @@ kubeconfig*
 credentials
 credentials.json
 *service-account*.json
+
+# Raw load-test output (reports are committed, CSVs are large)
+loadtest/results/**/*.csv

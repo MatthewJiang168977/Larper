@@ -37,6 +37,52 @@ helm repo update cnpg traefik metrics-server prometheus-community >/dev/null
 
 # The HPA reads CPU from metrics-server, which EKS doesn't install.
 helm upgrade --install metrics-server metrics-server/metrics-server -n kube-system --wait
+
+# Node scale-out: Karpenter (credentials via Pod Identity, see karpenter.tf) and a
+# NodePool capped at one extra t4g.large. It runs on the managed node, never on a
+# node it launched (the chart's default affinity).
+CLUSTER=$(terraform -chdir=$TF output -raw cluster_name)
+helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter --version 1.15.0 \
+  -n kube-system --wait \
+  --set settings.clusterName="$CLUSTER" \
+  --set replicas=1 \
+  --set controller.resources.requests.cpu=100m --set controller.resources.requests.memory=256Mi \
+  --set controller.resources.limits.memory=256Mi
+terraform -chdir=$TF output -json karpenter | node -e '
+let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
+  const k = JSON.parse(s);
+  console.log(`apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata: { name: default }
+spec:
+  role: ${k.node_role}
+  amiSelectorTerms: [{ alias: al2023@latest }]
+  subnetSelectorTerms: [${k.subnet_ids.map((id) => `{ id: ${id} }`).join(", ")}]
+  securityGroupSelectorTerms: [{ id: ${k.security_group_id} }]
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs: { volumeSize: 20Gi, volumeType: gp3, deleteOnTermination: true }
+  tags: { project: larper }
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata: { name: default }
+spec:
+  template:
+    spec:
+      nodeClassRef: { group: karpenter.k8s.aws, kind: EC2NodeClass, name: default }
+      requirements:
+        - { key: node.kubernetes.io/instance-type, operator: In, values: [${k.instance_type}] }
+        - { key: karpenter.sh/capacity-type, operator: In, values: [on-demand] }
+        - { key: kubernetes.io/arch, operator: In, values: [${k.arch}] }
+  # A t4g.large has exactly 2 vCPU, so a 2-CPU limit allows one extra node, never two.
+  limits: { cpu: "${k.max_extra_cpu}" }
+  disruption:
+    # Only remove nodes that are empty (no pods moved off busy nodes mid-demo), and
+    # quickly: 30 s after the last app pod leaves, the node is terminated.
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 30s`);
+});' | kubectl apply -f -
 helm upgrade --install cnpg cnpg/cloudnative-pg -n cnpg-system --create-namespace --wait
 # An NLB (not the legacy Classic LB) in the public subnets.
 helm upgrade --install traefik traefik/traefik -n traefik --create-namespace --wait \
@@ -54,6 +100,17 @@ helm upgrade --install larper infra/helm/larper -n larper --create-namespace \
   --set ingest.image="$REGISTRY/larper-ingest:$TAG" \
   --set api.image="$REGISTRY/larper-api:$TAG" \
   --wait --timeout 15m
+
+# A t4g.large takes 35 pods (ENI/IP limit, no prefix delegation). The stack needs
+# about 30 on one node at peak; warn before it gets tight.
+echo "==> pods per node (non-terminated / capacity)"
+kubectl get pods -A --field-selector=status.phase!=Succeeded,status.phase!=Failed \
+  -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}' | sort | uniq -c |
+  while read -r n node; do
+    cap=$(kubectl get node "$node" -o jsonpath='{.status.allocatable.pods}')
+    flag=""; (( n > cap - 4 )) && flag="  <-- within 3 of the limit"
+    echo "  $node: $n / $cap$flag"
+  done
 
 HOST=$(kubectl -n traefik get svc traefik -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 echo "Up at http://$HOST  (DNS can take a minute or two: curl http://$HOST/healthz)"

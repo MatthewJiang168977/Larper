@@ -37,6 +37,18 @@ variable "cluster_name" {
   default = "larper"
 }
 
+variable "api_allowed_cidrs" {
+  # Who can reach the Kubernetes API endpoint, e.g. ["203.0.113.7/32"]. No default,
+  # so it never silently opens to 0.0.0.0/0. Set it in terraform.tfvars (gitignored;
+  # see terraform.tfvars.example). If your IP changes, update it and re-apply before
+  # running eks-up.sh or eks-down.sh, or kubectl can't reach the cluster.
+  type = list(string)
+  validation {
+    condition     = length(var.api_allowed_cidrs) > 0 && !contains(var.api_allowed_cidrs, "0.0.0.0/0")
+    error_message = "List at least one CIDR, and not 0.0.0.0/0."
+  }
+}
+
 variable "kubernetes_version" {
   # Standard support until 2027-12-01. Never pick a version in extended support:
   # it bills $0.60/h instead of $0.10/h.
@@ -148,6 +160,7 @@ resource "aws_eks_cluster" "main" {
     subnet_ids              = aws_subnet.public[*].id
     endpoint_public_access  = true
     endpoint_private_access = true
+    public_access_cidrs     = var.api_allowed_cidrs
   }
 
   access_config {

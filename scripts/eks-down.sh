@@ -31,6 +31,13 @@ if aws eks describe-cluster --name "$CLUSTER" >/dev/null 2>&1; then
   echo "==> uninstalling releases on $CLUSTER"
   aws eks update-kubeconfig --name "$CLUSTER" --alias larper-eks >/dev/null
   kubectl config use-context larper-eks >/dev/null
+  # The API only accepts api_allowed_cidrs. If it's unreachable, every uninstall
+  # below would fail quietly and leave the NLB and volumes billing.
+  if ! kubectl version --request-timeout=15s >/dev/null 2>&1; then
+    echo "Can't reach the EKS API. If your IP changed, put $(curl -s https://checkip.amazonaws.com)/32" >&2
+    echo "in $TF/terraform.tfvars, run terraform -chdir=$TF apply, then re-run this." >&2
+    exit 1
+  fi
 
   helm uninstall larper -n larper --wait 2>/dev/null || true
   # StatefulSet PVCs (Redpanda) survive an uninstall; CNPG's go with its Cluster.
@@ -46,6 +53,26 @@ if aws eks describe-cluster --name "$CLUSTER" >/dev/null 2>&1; then
   echo "==> waiting for EBS volumes (PersistentVolumes) to be deleted"
   no_pvs() { [[ -z "$(kubectl get pv -o name 2>/dev/null)" ]]; }
   wait_for "PersistentVolumes" 600 no_pvs
+
+  # Karpenter's nodes, launch templates and instance profile aren't in Terraform.
+  # Deleting the NodePool drains and terminates its nodes; the EC2NodeClass
+  # finalizer removes the instance profile. Only then uninstall Karpenter.
+  if kubectl get crd nodepools.karpenter.sh >/dev/null 2>&1; then
+    echo "==> removing Karpenter nodes"
+    kubectl delete nodepools.karpenter.sh --all --wait=false 2>/dev/null || true
+    no_karpenter_nodes() { [[ -z "$(kubectl get nodes -l karpenter.sh/nodepool -o name 2>/dev/null)" ]]; }
+    wait_for "Karpenter nodes" 600 no_karpenter_nodes
+    # Node objects go first; the EC2 instances can still be shutting down (and their
+    # ENIs would block the VPC delete). Wait for AWS to report them terminated.
+    no_karpenter_instances() {
+      [[ -z "$(aws ec2 describe-instances --filters "Name=tag-key,Values=karpenter.sh/nodepool" \
+                 "Name=instance-state-name,Values=pending,running,shutting-down,stopping,stopped" \
+                 --query 'Reservations[].Instances[].InstanceId' --output text | tr -d '[:space:]')" ]]
+    }
+    wait_for "Karpenter EC2 instances to terminate" 600 no_karpenter_instances
+    kubectl delete ec2nodeclasses.karpenter.k8s.aws --all --wait=true --timeout=300s 2>/dev/null || true
+  fi
+  helm uninstall karpenter -n kube-system --wait 2>/dev/null || true
 
   if [[ -n "$VPC" ]]; then
     echo "==> waiting for load balancers in $VPC to be deleted"
@@ -76,6 +103,17 @@ check "EKS cluster" aws eks list-clusters --query "clusters[?@=='$CLUSTER']" --o
 check "EC2 instances" aws ec2 describe-instances \
   --filters "Name=tag:eks:cluster-name,Values=$CLUSTER" "Name=instance-state-name,Values=pending,running,stopping,stopped" \
   --query 'Reservations[].Instances[].InstanceId' --output text
+check "EC2 instances (Karpenter)" aws ec2 describe-instances \
+  --filters "Name=tag-key,Values=karpenter.sh/nodepool" "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+  --query 'Reservations[].Instances[].InstanceId' --output text
+check "Karpenter launch templates" aws ec2 describe-launch-templates \
+  --filters "Name=launch-template-name,Values=karpenter.k8s.aws/*" --query 'LaunchTemplates[].LaunchTemplateName' --output text
+check "Karpenter instance profiles" aws iam list-instance-profiles \
+  --query "InstanceProfiles[?starts_with(InstanceProfileName,'${CLUSTER}_')].InstanceProfileName" --output text
+# Broadest net: nothing in this region should be running at all after a demo.
+check "any EC2 instance in $REGION" aws ec2 describe-instances \
+  --filters "Name=instance-state-name,Values=pending,running,shutting-down,stopping,stopped" \
+  --query 'Reservations[].Instances[].[InstanceId,InstanceType]' --output text
 check "EBS volumes (CSI)" aws ec2 describe-volumes --filters "Name=tag:kubernetes.io/cluster/$CLUSTER,Values=owned" \
   --query 'Volumes[].VolumeId' --output text
 check "EBS volumes (project tag)" aws ec2 describe-volumes --filters "Name=tag:project,Values=larper" \

@@ -35,20 +35,41 @@ const SPOTS = [
   [40.8075, -73.9626], // Morningside
 ];
 
-export const options = {
-  scenarios: {
-    ramp: {
-      executor: 'ramping-vus',
-      startVUs: 0,
-      stages: [
-        { duration: '1m', target: PEAK / 4 },
-        { duration: '2m', target: PEAK },
-        { duration: '4m', target: PEAK }, // hold: the HPA reacts in ~15 s steps, pods need ~20 s to be ready
-        { duration: '1m', target: 0 },
-      ],
-      gracefulRampDown: '10s',
-    },
+// SCENARIO=ramp (default): scale-out test. SCENARIO=steady: constant load for the
+// failure test (loadtest/chaos.sh kills pods while it runs; VUS, DURATION).
+const SCENARIOS = {
+  ramp: {
+    executor: 'ramping-vus',
+    startVUs: 0,
+    stages: [
+      { duration: '1m', target: PEAK / 4 },
+      { duration: '2m', target: PEAK },
+      { duration: '4m', target: PEAK }, // hold: the HPA reacts in ~15 s steps, pods need ~20 s to be ready
+      { duration: '1m', target: 0 },
+    ],
+    gracefulRampDown: '10s',
   },
+  // Sizing: hold each load level for 2 min with the HPA off, to read CPU per pod
+  // at a known request rate (loadtest/hpa-run.sh sizing).
+  steps: {
+    executor: 'ramping-vus',
+    startVUs: 0,
+    stages: [20, 40, 60, 80].flatMap((v) => [
+      { duration: '10s', target: v },
+      { duration: '2m', target: v },
+    ]),
+    gracefulRampDown: '10s',
+  },
+  steady: {
+    executor: 'constant-vus',
+    vus: Number(__ENV.VUS || 60),
+    duration: __ENV.DURATION || '7m',
+  },
+};
+const SCENARIO = __ENV.SCENARIO || 'ramp';
+
+export const options = {
+  scenarios: { [SCENARIO]: SCENARIOS[SCENARIO] },
   thresholds: {
     'http_req_failed{name:today}': ['rate<0.01'],
     'http_req_duration{name:today}': ['p(95)<800'],
