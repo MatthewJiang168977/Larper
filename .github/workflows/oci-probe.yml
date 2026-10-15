@@ -14,8 +14,11 @@
 # Secrets (Settings -> Secrets and variables -> Actions; scripts/oci-ci-secrets.sh sets
 # them): OCI_USER_OCID, OCI_TENANCY_OCID, OCI_FINGERPRINT, OCI_API_KEY (PEM private
 # key), OCI_SSH_PUBLIC_KEY; optional NTFY_TOPIC.
-# Scheduled workflows run from the default branch only. GitHub may start them a few
-# minutes late, and pauses schedules in repos with no activity for 60 days.
+# Scheduled workflows run from the default branch only. In practice GitHub started
+# this */10 schedule only every ~5 hours, so an external scheduler (cron-job.org)
+# also triggers it every 10 min through the workflow_dispatch API, with a
+# fine-grained token limited to Actions on this repo. The schedule stays as a backup.
+# GitHub pauses schedules in repos with no activity for 60 days.
 name: OCI capacity probe
 
 on:
@@ -115,10 +118,10 @@ jobs:
           fi
           if [[ $RESULT == fatal || $RESULT == setup-error ]]; then
             title="Larper OCI probe stopped"
-            body=$(printf '@%s the scheduled probe hit an error that retrying did not fix (%s), so it disabled itself.\n\n```\n%s\n```\n\nRun: %s\n\nFix the cause, then re-enable it: Actions -> OCI capacity probe -> Enable workflow.' "$OWNER" "$RESULT" "$SUMMARY" "$RUN_URL")
+            body=$(printf '@%s the scheduled probe hit an error that retrying did not fix (%s), so it disabled itself.\n\n```\n%s\n```\n\nRun: %s\n\nPause the cron-job.org trigger meanwhile (its calls fail while the workflow is disabled). Fix the cause, then re-enable it: Actions -> OCI capacity probe -> Enable workflow.' "$OWNER" "$RESULT" "$SUMMARY" "$RUN_URL")
           else
             title="Larper OCI instance is up"
-            body=$(printf '@%s the Always Free A1 instance larper-k3s (2 OCPU / 12 GB) is RUNNING (%s), so the scheduled probe disabled itself.\n\nOn the laptop, stop the local probe and run `scripts/oci-capacity-probe.sh` once: it finds the instance and saves its address to `~/larper-oci-instance.env`.\n\nRun: %s' "$OWNER" "$RESULT" "$RUN_URL")
+            body=$(printf '@%s the Always Free A1 instance larper-k3s (2 OCPU / 12 GB) is RUNNING (%s), so the scheduled probe disabled itself.\n\nOn the laptop, stop the local probe and run `scripts/oci-capacity-probe.sh` once: it finds the instance and saves its address to `~/larper-oci-instance.env`.\n\nThen delete the cron-job.org job and revoke its GitHub token (Settings -> Developer settings -> Fine-grained tokens).\n\nRun: %s' "$OWNER" "$RESULT" "$RUN_URL")
           fi
           open=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq 'length')
           if [[ $open == 0 ]]; then
