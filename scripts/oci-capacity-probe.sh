@@ -27,10 +27,12 @@
 #   - auth / clock skew (401): transient only right after a long gap (> 15 min more
 #     than planned between attempts: the laptop slept); otherwise stop
 #   - anything else (config, permissions, quota, bad request): stop at once
+#   - a setup lookup (availability domain, image) that succeeds but finds nothing:
+#     retried SETUP_TRIES (3) times, then stop
 # Each error is logged in full: HTTP status, code, message, operation, request id.
 #
-# ONCE=1 makes one attempt and exits 0 unless the error is fatal, writing
-# result=launched|exists|no-capacity|transient|fatal (and summary=...) to
+# ONCE=1 makes one attempt and exits 0 unless the error is fatal or a setup error,
+# writing result=launched|exists|no-capacity|transient|setup-error|fatal (and summary=...) to
 # $GITHUB_OUTPUT when set. Under GitHub Actions, output is redacted (OCIDs, IPs,
 # the tenancy's AD prefix): the repo and its Actions logs are public.
 set -uo pipefail
@@ -39,6 +41,7 @@ export SUPPRESS_LABEL_WARNING=True
 INTERVAL=${INTERVAL:-600}
 RETRY_DELAY=${RETRY_DELAY:-60}
 MAX_TRANSIENT=${MAX_TRANSIENT:-5}
+SETUP_TRIES=${SETUP_TRIES:-3}
 LONG_GAP=${LONG_GAP:-900}
 OCPUS=${OCPUS:-2}
 MEMORY_GB=${MEMORY_GB:-12}
@@ -215,16 +218,21 @@ fi
 
 # Setup calls: same error handling as the launch, but no long retry loop.
 # Not called inside $(...), so die and exit stop this shell, not a subshell.
-try() { # description, command...: TRY_OUT = the output on success; die with the full error otherwise
-  local what=$1 out kind n
+# stdout and stderr are kept apart: on success the CLI can still print warnings on
+# stderr (e.g. "not all resources were returned"), which must not end up in the value.
+try() { # description, command...: TRY_OUT = stdout on success; die with the full error otherwise
+  local what=$1 out kind n errf
   shift
+  errf=$(mktemp)
   for n in $(seq 1 "$MAX_TRANSIENT"); do
-    if out=$("$@" 2>&1); then TRY_OUT=$out; return 0; fi
+    if TRY_OUT=$("$@" 2>"$errf"); then rm -f "$errf"; return 0; fi
+    out="$(cat "$errf")"$'\n'"$TRY_OUT"
     kind=$(classify "$out")
     [[ $kind == transient && $n -lt $MAX_TRANSIENT ]] || break
     log "$what: transient error ($n/$MAX_TRANSIENT), retrying in ${RETRY_DELAY}s: $(describe_error "$out")"
     sleep "$RETRY_DELAY"
   done
+  rm -f "$errf"
   if [[ $kind == transient && $ONCE == 1 ]]; then
     log "$what: $(describe_error "$out"); the next scheduled run retries"
     output result transient
@@ -234,14 +242,38 @@ try() { # description, command...: TRY_OUT = the output on success; die with the
   die "$what: $(describe_error "$out")"
 }
 
-try "list availability domains" oci iam availability-domain list --compartment-id "$TENANCY" \
-  --query 'data[0].name' --raw-output
+# A lookup that succeeds but finds nothing (or something unexpected) is retried a few
+# times before giving up. In ONCE mode it ends the run as result=setup-error, which
+# the workflow only treats as fatal after several runs in a row.
+lookup() { # description, ERE the value must match, command...: TRY_OUT = the value
+  local what=$1 want=$2 n
+  shift 2
+  for n in $(seq 1 "$SETUP_TRIES"); do
+    try "$what" "$@"
+    TRY_OUT=$(tr -d '\r' <<<"$TRY_OUT" | head -1)
+    [[ $TRY_OUT =~ $want ]] && return 0
+    log "$what: got \"$(cut -c1-120 <<<"$TRY_OUT")\" ($n/$SETUP_TRIES)"
+    (( n < SETUP_TRIES )) && sleep "$RETRY_DELAY"
+  done
+  if [[ $ONCE == 1 ]]; then
+    log "SETUP ERROR: $what: nothing found after $SETUP_TRIES tries"
+    output result setup-error
+    output summary "$what: nothing found after $SETUP_TRIES tries"
+    exit 1
+  fi
+  die "$what: nothing found after $SETUP_TRIES tries"
+}
+
+lookup "list availability domains" '^[A-Za-z0-9]+:[A-Z0-9-]+-AD-[0-9]+$' \
+  oci iam availability-domain list --compartment-id "$TENANCY" --all --query 'data[0].name' --raw-output
 AD=$TRY_OUT
-try "find the Ubuntu 24.04 aarch64 image" oci compute image list --compartment-id "$TENANCY" \
-  --operating-system "Canonical Ubuntu" --operating-system-version "24.04" --shape VM.Standard.A1.Flex \
-  --sort-by TIMECREATED --sort-order DESC --limit 1 --query 'data[0].id' --raw-output
+# Newest Ubuntu 24.04 image for the A1 shape (aarch64). --all: the list is paginated,
+# and sorting happens per page, so a partial list could miss the newest.
+lookup "find the Ubuntu 24.04 aarch64 image" '^ocid1\.image\.' \
+  oci compute image list --compartment-id "$TENANCY" --all \
+    --operating-system "Canonical Ubuntu" --operating-system-version "24.04" --shape VM.Standard.A1.Flex \
+    --sort-by TIMECREATED --sort-order DESC --query 'data[0].id' --raw-output
 IMAGE=$TRY_OUT
-[[ $IMAGE == ocid1.* ]] || die "no Ubuntu 24.04 aarch64 image found"
 
 # Public network: VCN -> internet gateway -> route table, SSH-only security list.
 VCN=$(first_id oci network vcn list --compartment-id "$TENANCY" --display-name "$NAME")
