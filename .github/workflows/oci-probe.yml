@@ -89,18 +89,33 @@ jobs:
       - name: Notify and stop the schedule
         if: >-
           always() && (steps.probe.outputs.result == 'launched' ||
-          steps.probe.outputs.result == 'exists' || steps.probe.outputs.result == 'fatal')
+          steps.probe.outputs.result == 'exists' || steps.probe.outputs.result == 'fatal' ||
+          steps.probe.outputs.result == 'setup-error')
         env:
           GH_TOKEN: ${{ github.token }}
           RESULT: ${{ steps.probe.outputs.result }}
           SUMMARY: ${{ steps.probe.outputs.summary }}
           OWNER: ${{ github.repository_owner }}
+          RUN_ID: ${{ github.run_id }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          SETUP_ERROR_RUNS: '3'
         run: |
-          if [[ $RESULT == fatal ]]; then
+          # A setup lookup that found nothing (e.g. no image) can be an OCI hiccup:
+          # fail this run (GitHub emails the failure) but only stop the schedule once
+          # it has happened SETUP_ERROR_RUNS runs in a row.
+          if [[ $RESULT == setup-error ]]; then
+            prev=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow oci-probe.yml --limit 20 \
+                     --json databaseId,status,conclusion \
+                     --jq "[.[] | select(.databaseId != $RUN_ID and .status == \"completed\")] | .[:$((SETUP_ERROR_RUNS - 1))] | map(select(.conclusion == \"failure\")) | length")
+            if (( prev < SETUP_ERROR_RUNS - 1 )); then
+              echo "::warning::setup error, run $((prev + 1)) of $SETUP_ERROR_RUNS in a row before the schedule stops: $SUMMARY"
+              exit 0
+            fi
+          fi
+          if [[ $RESULT == fatal || $RESULT == setup-error ]]; then
             title="Larper OCI probe stopped"
-            body=$(printf '@%s the scheduled probe hit an error that retrying will not fix, so it disabled itself.\n\n```\n%s\n```\n\nRun: %s\n\nFix the cause, then re-enable it: Actions -> OCI capacity probe -> Enable workflow.' "$OWNER" "$SUMMARY" "$RUN_URL")
+            body=$(printf '@%s the scheduled probe hit an error that retrying did not fix (%s), so it disabled itself.\n\n```\n%s\n```\n\nRun: %s\n\nFix the cause, then re-enable it: Actions -> OCI capacity probe -> Enable workflow.' "$OWNER" "$RESULT" "$SUMMARY" "$RUN_URL")
           else
             title="Larper OCI instance is up"
             body=$(printf '@%s the Always Free A1 instance larper-k3s (2 OCPU / 12 GB) is RUNNING (%s), so the scheduled probe disabled itself.\n\nOn the laptop, stop the local probe and run `scripts/oci-capacity-probe.sh` once: it finds the instance and saves its address to `~/larper-oci-instance.env`.\n\nRun: %s' "$OWNER" "$RESULT" "$RUN_URL")
