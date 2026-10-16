@@ -94,7 +94,7 @@ helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
 helm upgrade --install larper infra/helm/larper -n larper --create-namespace \
   -f infra/helm/larper/values-eks.yaml \
   --set queue.awsRegion="$REGION" \
-  --set postgres.image="$REGISTRY/larper-postgres:$TAG" \
+  --set postgres.image="$REGISTRY/larper-postgres:$(scripts/pg-tag.sh "$TAG")" \
   --set migrate.image="$REGISTRY/larper-migrate:$TAG" \
   --set workers.image="$REGISTRY/larper-workers:$TAG" \
   --set ingest.image="$REGISTRY/larper-ingest:$TAG" \

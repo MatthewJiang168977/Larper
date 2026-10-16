@@ -32,7 +32,7 @@ helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
   -f infra/monitoring/values.yaml --wait --timeout 10m
 
 helm upgrade --install larper infra/helm/larper -n larper -f infra/helm/larper/values-aks.yaml \
-  --set postgres.image="$ACR/larper-postgres:$TAG" \
+  --set postgres.image="$ACR/larper-postgres:$(scripts/pg-tag.sh "$TAG")" \
   --set migrate.image="$ACR/larper-migrate:$TAG" \
   --set workers.image="$ACR/larper-workers:$TAG" \
   --set ingest.image="$ACR/larper-ingest:$TAG" \

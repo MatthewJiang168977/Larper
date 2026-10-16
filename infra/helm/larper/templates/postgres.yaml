@@ -32,6 +32,10 @@ spec:
     # Rebuild from the object store instead of an empty database (infra/oci-k3s/README.md).
     recovery:
       source: origin
+      # Without these CNPG points the pg-app Secret at its default "app" database,
+      # not the restored one, and the app migrates an empty database.
+      database: larper
+      owner: larper
     {{- else }}
     initdb:
       database: larper

@@ -21,10 +21,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ENV_FILE=$HOME/larper-oci-instance.env
-SSH_KEY=$HOME/.ssh/larper_oci
-S3_ENV=$HOME/.oci/larper-pg-backup-s3.env # the CNPG backup key; needed again to restore
-KUBECONFIG_OCI=$HOME/.kube/larper-oci.yaml
+ENV_FILE=${OCI_ENV_FILE:-$HOME/larper-oci-instance.env}
+SSH_KEY=${SSH_KEY:-$HOME/.ssh/larper_oci}
+S3_ENV=${S3_ENV:-$HOME/.oci/larper-pg-backup-s3.env} # the CNPG backup key; needed again to restore
+KUBECONFIG_OCI=${KUBECONFIG_OCI:-$HOME/.kube/larper-oci.yaml}
 TUNNEL_PORT=${TUNNEL_PORT:-16443}
 REGION=${OCI_REGION:-us-sanjose-1}
 BUCKET=larper-pg-backups
@@ -33,6 +33,10 @@ BARMAN_CHART=0.8.1          # plugin-barman-cloud v0.15.1
 CERT_MANAGER_CHART=v1.21.1
 MONITORING_CHART=92.2.0
 OCI_CONFIG=${OCI_CLI_CONFIG_FILE:-$HOME/.oci/config}
+# Overrides for infra/oci-k3s/test/run.sh (a local stand-in VM); leave unset for Oracle.
+SSH_PORT=${SSH_PORT:-22}
+IMAGE_PLATFORM=${IMAGE_PLATFORM:-linux/arm64}
+BACKUP_ENDPOINT_URL=${BACKUP_ENDPOINT_URL:-} # set: skip Object Storage, use this S3 endpoint and $S3_ENV
 
 log() { echo "==> $*"; }
 [[ -f $ENV_FILE ]] || { echo "no $ENV_FILE: run scripts/oci-capacity-probe.sh (it saves the VM's address)" >&2; exit 1; }
@@ -40,7 +44,7 @@ log() { echo "==> $*"; }
 source "$ENV_FILE"
 [[ -n "${PUBLIC_IP:-}" ]] || { echo "no PUBLIC_IP in $ENV_FILE" >&2; exit 1; }
 HOST=ubuntu@$PUBLIC_IP
-SSH_OPTS=(-i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ConnectTimeout=15)
+SSH_OPTS=(-i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ConnectTimeout=15 -o Port="$SSH_PORT")
 vm() { ssh "${SSH_OPTS[@]}" "$HOST" "$@"; }
 
 # --- 1. bootstrap -----------------------------------------------------------------
@@ -60,51 +64,62 @@ chmod 600 "$KUBECONFIG_OCI"
 ssh "${SSH_OPTS[@]}" -N -o ExitOnForwardFailure=yes -L "$TUNNEL_PORT:127.0.0.1:6443" "$HOST" &
 TUNNEL=$!
 trap 'kill $TUNNEL 2>/dev/null' EXIT
-# kubectl and helm are Windows programs under Git Bash: give them Windows paths.
+# kubectl and helm are Windows programs under Git Bash: give them Windows paths, and
+# stop Git Bash rewriting arguments like /readyz into C:/Program Files/Git/readyz.
+export MSYS_NO_PATHCONV=1
 winpath() { cygpath -w "$1" 2>/dev/null || echo "$1"; }
 export KUBECONFIG=$(winpath "$KUBECONFIG_OCI")
 for _ in $(seq 1 20); do kubectl get --raw /readyz >/dev/null 2>&1 && break; sleep 2; done
 kubectl get --raw /readyz >/dev/null || { echo "k3s API not reachable through the tunnel" >&2; exit 1; }
+# The bootstrap's last act (the firewall) restarts k3s.
+kubectl wait node --all --for=condition=Ready --timeout=300s >/dev/null
 
 # --- 3. images --------------------------------------------------------------------
 TAG=$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo -dirty)
 REG=larper.local
 have=$(vm "sudo k3s ctr -n k8s.io images ls -q" || true)
-import() { # image name, docker build args...
-  local name=$1; shift
-  if grep -qx "$REG/$name:$TAG" <<<"$have" && [[ $TAG != *-dirty ]]; then
-    log "$name:$TAG already on the node"
+import() { # image name, tag, docker build args...
+  local name=$1 tag=$2; shift 2
+  if grep -qx "$REG/$name:$tag" <<<"$have" && [[ $tag != *-dirty ]]; then
+    log "$name:$tag already on the node"
     return
   fi
-  log "building $name:$TAG (arm64) and importing it into k3s"
-  docker buildx build --builder larper-multi --platform linux/arm64 --provenance=false \
-    -t "$REG/$name:$TAG" --output type=docker,dest=- "$@" \
+  log "building $name:$tag ($IMAGE_PLATFORM) and importing it into k3s"
+  docker buildx build --builder larper-multi --platform "$IMAGE_PLATFORM" --provenance=false \
+    -t "$REG/$name:$tag" --output type=docker,dest=- "$@" \
     | vm "sudo k3s ctr -n k8s.io images import -"
 }
-import larper-postgres infra/postgres
-import larper-migrate db
-import larper-workers --target static workers
-import larper-ingest --target ingest workers
-import larper-api -f apps/api/Dockerfile .
+PG_TAG=$(scripts/pg-tag.sh "$TAG")
+import larper-postgres "$PG_TAG" infra/postgres
+import larper-migrate "$TAG" db
+import larper-workers "$TAG" --target static workers
+import larper-ingest "$TAG" --target ingest workers
+import larper-api "$TAG" -f apps/api/Dockerfile .
 
 # --- 4. Object Storage for backups ------------------------------------------------
-TENANCY=$(awk -F' *= *' '/^\[DEFAULT\]/{d=1;next} /^\[/{d=0} d&&$1=="tenancy"{print $2}' "$OCI_CONFIG")
-OCI_USER=$(awk -F' *= *' '/^\[DEFAULT\]/{d=1;next} /^\[/{d=0} d&&$1=="user"{print $2}' "$OCI_CONFIG")
-NS=$(oci os ns get --query data --raw-output)
-if ! oci os bucket get --bucket-name "$BUCKET" >/dev/null 2>&1; then
-  log "creating private bucket $BUCKET (Standard tier)"
-  oci os bucket create --compartment-id "$TENANCY" --name "$BUCKET" \
-    --public-access-type NoPublicAccess --storage-tier Standard >/dev/null
-fi
-if [[ ! -s $S3_ENV ]]; then
-  # An S3-compatible key (OCI calls it a Customer Secret Key; 2 per user). The secret
-  # is shown once: it goes straight into $S3_ENV (mode 600), never to the terminal.
-  log "creating the S3 key for CNPG backups (saved to $S3_ENV)"
-  umask 077
-  oci iam customer-secret-key create --user-id "$OCI_USER" --display-name larper-pg-backup \
-    --query 'data.{id:id,key:key}' --output json \
-    | python -c 'import json, sys; d = json.load(sys.stdin); print("ACCESS_KEY_ID=" + d["id"]); print("ACCESS_SECRET_KEY=" + d["key"])' >"$S3_ENV"
-  echo "REGION=$REGION" >>"$S3_ENV"
+if [[ -n $BACKUP_ENDPOINT_URL ]]; then
+  [[ -s $S3_ENV ]] || { echo "BACKUP_ENDPOINT_URL is set but $S3_ENV is empty" >&2; exit 1; }
+  ENDPOINT=$BACKUP_ENDPOINT_URL
+else
+  TENANCY=$(awk -F' *= *' '/^\[DEFAULT\]/{d=1;next} /^\[/{d=0} d&&$1=="tenancy"{print $2}' "$OCI_CONFIG")
+  OCI_USER=$(awk -F' *= *' '/^\[DEFAULT\]/{d=1;next} /^\[/{d=0} d&&$1=="user"{print $2}' "$OCI_CONFIG")
+  NS=$(oci os ns get --query data --raw-output)
+  if ! oci os bucket get --bucket-name "$BUCKET" >/dev/null 2>&1; then
+    log "creating private bucket $BUCKET (Standard tier)"
+    oci os bucket create --compartment-id "$TENANCY" --name "$BUCKET" \
+      --public-access-type NoPublicAccess --storage-tier Standard >/dev/null
+  fi
+  if [[ ! -s $S3_ENV ]]; then
+    # An S3-compatible key (OCI calls it a Customer Secret Key; 2 per user). The secret
+    # is shown once: it goes straight into $S3_ENV (mode 600), never to the terminal.
+    log "creating the S3 key for CNPG backups (saved to $S3_ENV)"
+    umask 077
+    oci iam customer-secret-key create --user-id "$OCI_USER" --display-name larper-pg-backup \
+      --query 'data.{id:id,key:key}' --output json \
+      | python -c 'import json, sys; d = json.load(sys.stdin); print("ACCESS_KEY_ID=" + d["id"]); print("ACCESS_SECRET_KEY=" + d["key"])' >"$S3_ENV"
+    echo "REGION=$REGION" >>"$S3_ENV"
+  fi
+  ENDPOINT="https://$NS.compat.objectstorage.$REGION.oraclecloud.com"
 fi
 kubectl create namespace larper --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 kubectl -n larper create secret generic pg-backup-s3 --from-env-file="$(winpath "$S3_ENV")" \
@@ -149,12 +164,12 @@ fi
 
 log "larper"
 helm upgrade --install larper infra/helm/larper -n larper -f infra/helm/larper/values-oci.yaml \
-  --set postgres.image="$REG/larper-postgres:$TAG" \
+  --set postgres.image="$REG/larper-postgres:$PG_TAG" \
   --set migrate.image="$REG/larper-migrate:$TAG" \
   --set workers.image="$REG/larper-workers:$TAG" \
   --set ingest.image="$REG/larper-ingest:$TAG" \
   --set api.image="$REG/larper-api:$TAG" \
-  --set postgres.backup.endpointURL="https://$NS.compat.objectstorage.$REGION.oraclecloud.com" \
+  --set postgres.backup.endpointURL="$ENDPOINT" \
   --set postgres.backup.serverName="$SERVER_NAME" \
   "${restore[@]}" \
   --wait --timeout 20m

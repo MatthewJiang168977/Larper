@@ -26,13 +26,24 @@ makes that request fail instead.
     INPUT and FORWARD with REJECT, which also breaks k3s pod traffic. Bootstrap keeps
     Oracle's rules (including the 169.254.x instance-services rules, which keep
     non-root processes off the metadata service) and replaces those REJECTs with: accept
-    the pod network (10.42.0.0/16), then DROP. It refuses to write rules that drop SSH
-    or open any other port, validates them with `iptables-restore --test`, and arms a
-    3-minute automatic rollback that `oci-up.sh` cancels only after a *new* SSH
-    connection succeeds.
-  - Nothing else is reachable: the k3s API (6443) and Traefik (80/443) are closed;
-    kubectl and the app go through SSH tunnels. Public access comes later through a
-    Cloudflare Tunnel (outbound only), not by opening ports.
+    the pod network (10.42.0.0/16), then DROP.
+  - Those filter rules can't stop traffic Kubernetes forwards to a pod: k3s's service
+    load balancer (Traefik's 80/443), NodePorts and hostPorts are DNATed in
+    `nat PREROUTING`, and kube-router and kube-proxy ACCEPT that traffic in `FORWARD`
+    before our rules see it. So a guard in `mangle PREROUTING`, which runs before
+    both, drops every new TCP connection to the node from outside the pod network
+    except port 22, and all new inbound UDP. Whatever Kubernetes opens later stays
+    closed.
+  - Bootstrap refuses to write rules that drop SSH or open any other port, validates
+    them with `iptables-restore --test`, and arms a 3-minute automatic rollback that
+    `oci-up.sh` cancels only after a *new* SSH connection succeeds. The firewall is the
+    bootstrap's last step (after the k3s install), so the window only has to cover that
+    reconnect; the rollback restarts k3s too, since restoring the rules flushes its
+    chains.
+  - Nothing else is reachable: the k3s API (6443), the kubelet (10250), Traefik
+    (80/443) and NodePorts are closed; kubectl and the app go through SSH tunnels.
+    Public access comes later through a Cloudflare Tunnel (outbound only), not by
+    opening ports.
 - **SSH:** keys only (`~/.ssh/larper_oci`), no passwords, no root login, 3 auth tries.
 - **Updates:** everything at bootstrap, then `unattended-upgrades` installs security
   updates daily and reboots at 04:30 when a kernel update needs it. k3s and all pods
@@ -174,10 +185,37 @@ oci os object bulk-delete --bucket-name larper-pg-backups --prefix pg/ --dry-run
 oci os object bulk-delete --bucket-name larper-pg-backups --prefix pg/
 ```
 
+## Local rehearsal
+
+`test/run.sh` runs the real `scripts/oci-up.sh` against a stand-in VM: a privileged
+Ubuntu 24.04 container booting systemd, with Oracle's stock iptables rules and a
+cloud-init sshd drop-in that turns passwords on. SeaweedFS stands in for Object Storage,
+and jobs use the real SQS queue.
+
+```bash
+infra/oci-k3s/test/run.sh up        # stand-in VM + S3, oci-up.sh, then checks (~20 min)
+infra/oci-k3s/test/run.sh reboot    # restart the VM (as after an unattended-upgrades reboot), check again
+infra/oci-k3s/test/run.sh restore   # new VM, empty disks, restore Postgres from the last backup folder
+infra/oci-k3s/test/run.sh down      # remove it all (the VM may use up to 12 GB of memory)
+```
+
+The checks: sshd's effective config and a refused password login, the rollback
+disarmed, ports from a neighbour on the network (22 open; 6443, 10250, 80, 443 and
+Traefik's NodePorts closed), every pod running, the API's `/readyz` through Traefik,
+the base backup and WAL archiving, and after a restore the marker row written before
+the old VM was removed.
+
+Passed on 2026-10-16: fresh bootstrap, re-running `oci-up.sh`, a reboot, and a
+restore chain (`pg` → `pg-2` → `pg-3`). Along the way it found the Postgres image tag
+CloudNativePG rejects (now `17-<commit>`, `scripts/pg-tag.sh`), the open Traefik
+ports (the mangle guard), a restore that pointed the app at an empty database, and
+Git Bash rewriting `/readyz`-style arguments.
+
 ## Not verified yet
 
-Written before the VM exists; checked locally where possible (bootstrap in an Ubuntu
-24.04 container against Oracle's rule layout, the chart rendered in every mode, OCI CLI
-flags). Confirm on first deploy: k3s pod networking with the firewall (DNS, egress),
-the plugin's S3 access to Oracle's endpoint (path-style addressing), and the first
-backup and the restore drill.
+- Anything specific to the real VM: arm64 images on A1 (built and checked separately,
+  not deployed), Oracle's S3 endpoint (path-style addressing), and the VCN.
+- Restarting k3s on a busy node (a firewall change on a running cluster, a k3s
+  upgrade). An earlier stand-in shared the host's cgroup namespace and broke here; the
+  stand-in is fixed but this hasn't been re-run on it.
+- The restore drill above, on the real bucket.

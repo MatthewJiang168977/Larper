@@ -24,16 +24,17 @@ if ! docker buildx inspect larper-multi >/dev/null 2>&1; then
   rm -f "$cfg"
 fi
 
-build() { # image name, then docker build args
-  local name=$1; shift
-  echo "==> $REGISTRY/$name:$TAG ($PLATFORMS)"
+build() { # image name, tag, then docker build args
+  local name=$1 tag=$2; shift 2
+  echo "==> $REGISTRY/$name:$tag ($PLATFORMS)"
   docker buildx build --builder larper-multi --platform "$PLATFORMS" \
-    -t "$REGISTRY/$name:$TAG" --push "$@"
+    -t "$REGISTRY/$name:$tag" --push "$@"
 }
-build larper-postgres infra/postgres
-build larper-migrate db
-build larper-workers --target static workers
-build larper-ingest --target ingest workers
-build larper-api -f apps/api/Dockerfile .
+PG_TAG=$(scripts/pg-tag.sh "$TAG")
+build larper-postgres "$PG_TAG" infra/postgres
+build larper-migrate "$TAG" db
+build larper-workers "$TAG" --target static workers
+build larper-ingest "$TAG" --target ingest workers
+build larper-api "$TAG" -f apps/api/Dockerfile .
 
-echo "Pushed tag $TAG"
+echo "Pushed tag $TAG (Postgres: $PG_TAG)"
