@@ -10,10 +10,42 @@ spec:
   storage:
     size: {{ .Values.postgres.storage }}
   resources: {{- toYaml .Values.postgres.resources | nindent 4 }}
+  {{- with .Values.postgres.backup }}
+  {{- if .enabled }}
+  # WAL archiving and base backups through the Barman Cloud plugin (templates/backup.yaml).
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: pg-backups
+        serverName: {{ .serverName }}
+  postgresql:
+    parameters:
+      # A WAL segment is archived when full or after this long; each one is a few
+      # object-store requests, so an idle database at CNPG's 5 min default would use
+      # a good part of a 50k-requests/month free tier.
+      archive_timeout: {{ .archiveTimeout | quote }}
+  {{- end }}
+  {{- end }}
   bootstrap:
+    {{- if .Values.postgres.restore.enabled }}
+    # Rebuild from the object store instead of an empty database (infra/oci-k3s/README.md).
+    recovery:
+      source: origin
+    {{- else }}
     initdb:
       database: larper
       owner: larper
       postInitApplicationSQL:
         - CREATE EXTENSION IF NOT EXISTS postgis;
         - CREATE EXTENSION IF NOT EXISTS vector;
+    {{- end }}
+  {{- if .Values.postgres.restore.enabled }}
+  externalClusters:
+    - name: origin
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: pg-backups
+          serverName: {{ required "postgres.restore.fromServerName: the backup to restore" .Values.postgres.restore.fromServerName }}
+  {{- end }}

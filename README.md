@@ -250,10 +250,10 @@ workers/         Go: cmd/{load-places, outbox-relay, taste-worker, ingest-worker
 proto/           Protobuf event schemas (generated into workers/gen and apps/api/src/gen)
 db/migrations/   SQL migrations (golang-migrate)
 data/            Python bulk extract of Overture places (shares workers/internal/places/overture_extract.sql)
-infra/           k3d config, Helm chart (+ values-aks/eks.yaml), Postgres image, Terraform (azure, aws, eks), monitoring values
+infra/           k3d config, Helm chart (+ values-aks/eks/oci.yaml), Postgres image, Terraform (azure, aws, eks), oci-k3s (VM bootstrap + rebuild runbook), monitoring values
 loadtest/        k6 script, failure test (chaos.sh), autoscaler runs (hpa-run.sh), cache + CPU profile (cache-profile.sh), reports in results/
 docs/decisions/  Decision records (0001: sizing the API's CPU request and autoscaler)
-scripts/         up.sh / down.sh (k3d), build-images.sh (amd64 + arm64), monitoring.sh, aks-up.sh, eks-up.sh / eks-down.sh
+scripts/         up.sh / down.sh (k3d), build-images.sh (amd64 + arm64), monitoring.sh, aks-up.sh, eks-up.sh / eks-down.sh, oci-capacity-probe.sh / oci-up.sh
 ```
 
 ---
@@ -475,4 +475,4 @@ for Students credit. The load balancer rate is from Azure's pricing page.
 - [x] **5. Map UI:** field-journal 3D map (MapLibre + OpenFreeMap), quest sheet, journal page, PWA manifest.
 - [x] **6. Events:** transactional outbox, Go relay + idempotent taste-worker with DLQ, protobuf events, geofenced check-in.
 - [x] **7. Async ingest:** unmapped area → leased work queue → ingest-worker (DuckDB) → stats refresh; "surveying the area…" in the app.
-- [ ] **8. Deploy + prove it:** ~~Prometheus/Grafana~~, ~~k6 load test showing the HPA scale out (k3d)~~, ~~SQS queue~~, ~~failure test~~, ~~autoscaler sizing~~, Terraform EKS + Karpenter (written and planned, not yet applied), always-free k3s on Oracle Ampere A1 (waiting on capacity).
+- [ ] **8. Deploy + prove it:** ~~Prometheus/Grafana~~, ~~k6 load test showing the HPA scale out (k3d)~~, ~~SQS queue~~, ~~failure test~~, ~~autoscaler sizing~~, Terraform EKS + Karpenter (written and planned, not yet applied), always-free k3s on Oracle Ampere A1 (bootstrap, backups and runbook written in `infra/oci-k3s`; waiting on capacity, probed every 10 min).

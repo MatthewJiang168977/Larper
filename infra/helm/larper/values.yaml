@@ -50,6 +50,23 @@ postgres:
   resources:
     requests: { cpu: 250m, memory: 256Mi }
     limits: { memory: 1Gi }
+  # Backups to an S3-compatible object store via the Barman Cloud plugin (needs the
+  # plugin + cert-manager installed, and a Secret "pg-backup-s3"; scripts/oci-up.sh
+  # does both for Oracle). Off locally.
+  backup:
+    enabled: false
+    endpointURL: ""
+    bucket: ""
+    # Folder in the bucket for this cluster's base backups and WAL. A rebuilt cluster
+    # writes to a new one (pg-2, ...) while restoring from the old.
+    serverName: pg
+    retention: 14d
+    archiveTimeout: 1h
+    schedule: "0 0 3 * * 0" # weekly base backup, Sunday 03:00 (seconds first)
+  # Start from a backup instead of an empty database (infra/oci-k3s/README.md).
+  restore:
+    enabled: false
+    fromServerName: ""
 
 migrate:
   # Built from db/Dockerfile: golang-migrate + db/migrations.
