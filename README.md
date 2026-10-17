@@ -300,6 +300,7 @@ kubectl -n larper logs -l app=taste-worker -f                           # applie
 pnpm proto:gen                                                          # regenerate event types (needs buf)
 kubectl -n larper logs -l app=ingest-worker -f                          # area ingests: leased, ingested, retries
 TEST_DATABASE_URL=postgres://... go test ./internal/queue/              # queue integration tests (in workers/)
+TEST_DATABASE_URL=postgres://... pnpm --filter @larper/api test candidates.db  # ranking query vs the old one on real data (pg port-forward)
 ```
 
 ### Load test and monitoring
@@ -502,10 +503,11 @@ already ingested are used: no request started an ingest job. These runs are from
 #### Ranking-query fix
 
 `loadtest/rank-bench.sh` runs variants of the candidate query straight against Postgres for
-200 (onboarded user, cell) pairs taken from the clean cache-miss run. It reads the Postgres
-container's CPU from its cgroup (so parallel workers and planning count) and checks that each
-variant returns the same candidates as the original. Median of 3 runs, per query
-([run 1](loadtest/results/rank-bench-20261017-145511/report.md),
+200 (onboarded user, cell) pairs taken from the clean cache-miss run
+([`pairs.json`](loadtest/rank-bench/pairs.json)). It reads the Postgres container's CPU from
+its cgroup (so parallel workers and planning count) and checks that each variant returns the
+same candidates as the original. First pass, median of 3 runs, per query
+([1](loadtest/results/rank-bench-20261017-145511/report.md),
 [2](loadtest/results/rank-bench-20261017-145621/report.md),
 [3](loadtest/results/rank-bench-20261017-145717/report.md)):
 
@@ -514,18 +516,54 @@ variant returns the same candidates as the original. Median of 3 runs, per query
 | Original | 57.2 ms | 31.1 ms | 72.5 ms | |
 | No parallel workers | 21.3 ms | 22.3 ms | 66.0 ms | yes |
 | Taste vector passed in instead of joined, no parallel workers | 20.9 ms | 22.1 ms | 64.5 ms | yes |
-| **No parallel workers + two-phase (shipped)** | **18.8 ms** | **19.7 ms** | **45.4 ms** | **yes** |
+| No parallel workers + two-phase | 18.8 ms | 19.7 ms | 45.4 ms | yes |
 | Same, radius filter on a sphere | 17.1 ms | 18.6 ms | 39.6 ms | no (22 of 40 pairs) |
 
 - **Parallel workers were most of it.** The planner expects 3 rows from the geography radius
   filter (there are thousands), but still gave dense cells 3 parallel workers: ~4 ms less
   latency for 2.3x the CPU. Under load every core is already busy with other requests, so the
-  API's pool now turns them off (`max_parallel_workers_per_gather=0`); batch jobs keep them.
+  API's pool turns them off (`max_parallel_workers_per_gather=0` as a connection option).
+  That reaches only the API's own connections: the workers and batch jobs log in as the same
+  database user, so `ALTER ROLE` would have taken parallelism from them too.
 - **Two-phase:** rank on id + taste first, then fetch names, tags, links, distance and chain
   size for the 3,000 winners only. Dense cells have ~10k places in the radius, so this mostly
   cuts the tail.
 - **Ruled out:** passing the taste vector in (no gain), and a sphere instead of the ellipsoid
   for the radius filter (~1 ms, but it changes which places sit inside 1.5 km).
+
+**The old query wasn't deterministic.** In dense cells thousands of places share the lowest
+taste (no tags in common with the user): in one pair 3,632 places in the radius tie, and
+2,861 of them fill out the 3,000 candidates. With no tiebreak, *which* 2,861 depended on the
+plan; a parallel and a serial run of the old query picked different ones, and other factors
+(rarity, independence) can still lift one of them into the deck. The query now breaks ties by
+id, so a request always gets the same deck. The tiebreak costs ~1–2 ms, inside this laptop's
+noise: six interleaved runs, medians per query
+([1](loadtest/results/rank-bench-20261017-152527/report.md),
+[2](loadtest/results/rank-bench-20261017-152605/report.md),
+[3](loadtest/results/rank-bench-20261017-152639/report.md),
+[4](loadtest/results/rank-bench-20261017-152746/report.md),
+[5](loadtest/results/rank-bench-20261017-152834/report.md),
+[6](loadtest/results/rank-bench-20261017-152922/report.md); the same variant ranged 17–36 ms
+between runs. Three runs just before, without the no-tiebreak variants, had the shipped query
+at 25–32 ms: [1](loadtest/results/rank-bench-20261017-152156/report.md),
+[2](loadtest/results/rank-bench-20261017-152244/report.md),
+[3](loadtest/results/rank-bench-20261017-152333/report.md)):
+
+| Variant (no parallel workers) | Postgres CPU | Execution p95 |
+|---|---|---|
+| One query, no tiebreak | 22.6 ms | ~67 ms |
+| One query + id tiebreak | 21.5 ms (3 runs) | ~71 ms |
+| Two-phase, no tiebreak | 19.5 ms | ~50 ms |
+| **Two-phase + id tiebreak (shipped)** | **20.9 ms** (original: 57.2 ms, −63%) | **~50 ms** (original: 72.5 ms) |
+
+[`candidates.db.spec.ts`](apps/api/src/quests/candidates.db.spec.ts) checks this against a
+real database on the 200 pairs (skipped unless `TEST_DATABASE_URL` is set):
+- the shipped query equals the old query with only the id tiebreak added, exactly:
+  candidates, the ranked top 200 and the 10-place deck, for all 200 pairs;
+- against the old query as it was, every candidate above the tie matches, and the number of
+  tied ones (27 of the 200 pairs have ties at the limit);
+- API connections run without parallel workers; a plain connection as the same user keeps
+  the default.
 
 End to end, the same clean cache-miss test on the new image
 ([report](loadtest/results/cold-home-fix-20261017-150126/report.md)):

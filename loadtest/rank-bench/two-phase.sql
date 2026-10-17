@@ -11,7 +11,7 @@ top AS (
   CROSS JOIN o
   LEFT JOIN taste_profiles t ON t.user_id = :uid
   WHERE ST_DWithin(p.geom, o.g, :r)
-  ORDER BY taste DESC
+  ORDER BY taste DESC, p.id
   LIMIT 3000
 )
 SELECT p.id::text, p.name,
@@ -26,4 +26,4 @@ FROM top
 JOIN places p ON p.id = top.id
 CROSS JOIN o
 LEFT JOIN chain_stats c ON c.chain_key = p.chain_key
-ORDER BY top.taste DESC
+ORDER BY top.taste DESC, top.id

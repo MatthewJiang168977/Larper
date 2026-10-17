@@ -5,9 +5,9 @@ export const PG = Symbol('PG');
 
 // One pool per API replica. node-postgres rather than an ORM: the queries lean on
 // PostGIS and pgvector operators that ORMs don't model well.
-function createPool(): Pool {
+export function createPool(connectionString = process.env.DATABASE_URL): Pool {
   const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString,
     max: 10,
     // Fail a request after 5 s instead of queueing it forever while Postgres is down.
     connectionTimeoutMillis: 5_000,

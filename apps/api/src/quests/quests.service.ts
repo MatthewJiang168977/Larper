@@ -244,6 +244,9 @@ export class QuestsService {
   // narrow columns, then fetch names, tags, links, distance and chain size for the
   // winners only. A dense cell has ~10k places in the radius, and doing that work for
   // all of them was a third of the query (loadtest/rank-bench.sh).
+  // Ties are broken by id: in dense cells thousands of places share the lowest taste
+  // (no tags in common), the limit cuts through them, and without a tiebreak which
+  // ones made it depended on the plan, so the same request could get another deck.
   private async candidates(userId: string, lat: number, lng: number, radiusM: number): Promise<Candidate[]> {
     const { rows } = await this.pg.query<Candidate>(
       `WITH o AS (SELECT ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography AS g),
@@ -253,7 +256,7 @@ export class QuestsService {
          CROSS JOIN o
          LEFT JOIN taste_profiles t ON t.user_id = $1
          WHERE ST_DWithin(p.geom, o.g, $4)
-         ORDER BY taste DESC
+         ORDER BY taste DESC, p.id
          LIMIT ${MAX_CANDIDATES}
        )
        SELECT p.id::text, p.name,
@@ -268,7 +271,7 @@ export class QuestsService {
        JOIN places p ON p.id = top.id
        CROSS JOIN o
        LEFT JOIN chain_stats c ON c.chain_key = p.chain_key
-       ORDER BY top.taste DESC`,
+       ORDER BY top.taste DESC, top.id`,
       [userId, lng, lat, radiusM],
     );
     return rows;
