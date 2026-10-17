@@ -13,6 +13,9 @@ spec:
     metadata:
       labels: { app: redpanda }
     spec:
+      # The image runs as uid/gid 101. local-path volumes are world-writable, but a
+      # fresh EBS volume is root-owned, so give the group ownership on mount.
+      securityContext: { fsGroup: 101 }
       containers:
         - name: redpanda
           image: {{ .Values.redpanda.image }}
