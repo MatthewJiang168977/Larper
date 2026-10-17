@@ -1,0 +1,220 @@
+{
+    "metrics": {
+        "http_req_failed{name:today}": {
+            "passes": 0,
+            "fails": 21126,
+            "thresholds": {
+                "rate<0.01": false
+            },
+            "value": 0
+        },
+        "http_reqs": {
+            "count": 21870,
+            "rate": 73.65384578584894
+        },
+        "checks": {
+            "passes": 21126,
+            "fails": 0,
+            "value": 1
+        },
+        "http_req_tls_handshaking": {
+            "avg": 0.10739562871513492,
+            "min": 0,
+            "med": 0,
+            "max": 49.1288,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "http_req_sending": {
+            "min": 0,
+            "med": 0,
+            "max": 11.7096,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0.02520938271604933
+        },
+        "vus_max": {
+            "value": 100,
+            "min": 100,
+            "max": 100
+        },
+        "data_received": {
+            "count": 81348022,
+            "rate": 273964.0908720552
+        },
+        "http_req_failed": {
+            "fails": 21869,
+            "passes": 1,
+            "value": 0.000045724737082761774
+        },
+        "http_req_connecting": {
+            "med": 0,
+            "max": 9.4316,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0.034794586191129406,
+            "min": 0
+        },
+        "vus": {
+            "value": 1,
+            "min": 0,
+            "max": 100
+        },
+        "http_req_duration": {
+            "avg": 63.96491173754016,
+            "min": 0,
+            "med": 52.2483,
+            "max": 495.8211,
+            "p(90)": 116.38850000000002,
+            "p(95)": 142.76338999999996
+        },
+        "data_sent": {
+            "count": 19901739,
+            "rate": 67025.13100942915
+        },
+        "iterations": {
+            "count": 21126,
+            "rate": 71.14820055198193
+        },
+        "http_req_waiting": {
+            "avg": 63.36826249199813,
+            "min": 0,
+            "med": 51.76635,
+            "max": 495.8211,
+            "p(90)": 115.90752,
+            "p(95)": 142.30105
+        },
+        "http_req_duration{expected_response:true}": {
+            "p(90)": 116.38950000000001,
+            "p(95)": 142.7668799999999,
+            "avg": 63.96745066989818,
+            "min": 0,
+            "med": 52.2484,
+            "max": 495.8211
+        },
+        "iteration_duration": {
+            "max": 1828.9017,
+            "p(90)": 1466.5270500000001,
+            "p(95)": 1516.462925,
+            "avg": 1067.231168905616,
+            "min": 519.6815,
+            "med": 1065.11635
+        },
+        "http_req_duration{name:today}": {
+            "avg": 63.08006314020647,
+            "min": 7.0787,
+            "med": 51.05975,
+            "max": 495.8211,
+            "p(90)": 116.38695,
+            "p(95)": 142.507975,
+            "thresholds": {
+                "p(95)<800": false
+            }
+        },
+        "http_req_blocked": {
+            "p(95)": 0,
+            "avg": 0.14910039323273885,
+            "min": 0,
+            "med": 0,
+            "max": 71.5066,
+            "p(90)": 0
+        },
+        "http_req_receiving": {
+            "min": 0,
+            "med": 0,
+            "max": 35.5142,
+            "p(90)": 1.6637,
+            "p(95)": 2.4651349999999987,
+            "avg": 0.5714398628257886
+        }
+    },
+    "setup_data": {
+        "cards": [
+            "matcha",
+            "boba",
+            "line-dessert",
+            "noodle-counter",
+            "counter-seat",
+            "hidden-bar",
+            "dive",
+            "natty-wine",
+            "photobooth",
+            "games",
+            "crate-digging",
+            "thrift",
+            "paper",
+            "odd-museum",
+            "live-set",
+            "green",
+            "bathhouse",
+            "late-night"
+        ],
+        "sessions": [
+            "sess_3KphAddj4kUPx1UtovX8XvgRHRq",
+            "sess_3KphAiyhsabYscSas6DD728Wqky",
+            "sess_3KphAlsI11hkXrPqYgB5MTmXJPx",
+            "sess_3KphAn84qkztvCTUIwX2g8sWFL3",
+            "sess_3KphAvICrZ8dYaHrUez8JTgrfzh",
+            "sess_3KphAwGOmsJ3MoTHlRBD9ziqqEB",
+            "sess_3KphAylk39khTG3WrYfrx1R4dRq",
+            "sess_3KphB0G7zglGOlKNSp6e6mpQkao",
+            "sess_3KphAzJDzbhvw61ujB1amToTI33",
+            "sess_3KphB88cVCSb7KW0CABBxTO1pmt",
+            "sess_3KphB7Be06iwqwqIyvEOqpyDl5I",
+            "sess_3KphBA4b9ElYpgZQHxy3uZixJsV",
+            "sess_3KphBFfN8OZRCcCrO5lUSmFxwnf",
+            "sess_3KphBH2qs6fbQ4J8B4g3QLckRc0",
+            "sess_3KphBLAVNSUSLEFcyWRyZ1QR0xC",
+            "sess_3KphBPfdGbTgpGCCeTwBkyLRIMa",
+            "sess_3KphBN13MKoaRuLy7KzviNzsRPb",
+            "sess_3KphBPUoJfsUzKOI4C7DhQM0yc5",
+            "sess_3KphBaMymheHE46Bxn9ecUPgxgf",
+            "sess_3KphBaMWz3ZK7CgimPd9WTvhR2z",
+            "sess_3KphBWNMI7X0c5NPC7LewZDq9Zm",
+            "sess_3KphBfAvfhdF54HNV7CvTpN5HOE",
+            "sess_3KphBcQvJptmsjrgdnQ1s9bQfXm",
+            "sess_3KphBfFzH67IhSOIGauJe8vHSGz",
+            "sess_3KphBox4kSOvU7HSABqK7bKgm3g",
+            "sess_3KphBmA9GHRovzfVFBp2xc7y609",
+            "sess_3KphBo8ISefc9jlL0zRSK5ihI16",
+            "sess_3KphBtaeMknTNBu7CLTiLmtgGxu",
+            "sess_3KphBtmTxOxaVcTxaD6KsbB08Pm",
+            "sess_3KphByfLF2bMoQjpWm7U8SnxTZ2",
+            "sess_3KphBxhv5P56oi9lfq0SzPC2TGO",
+            "sess_3KphC6ersQMLoCSTZGPBJBa8if5",
+            "sess_3KphC1vIoRDf2QYvS3335FjusnB",
+            "sess_3KphC1YnBMOTqoacxswB4EVW8zL",
+            "sess_3KphCDSQwpE4vxB1a3xTxO3fdXB",
+            "sess_3KphC7N0eiowIAXn8gCTgtcfFd1",
+            "sess_3KphCAc6HO23g8oIwQ8rByVcj7U",
+            "sess_3KphCDL4encwiYRPaU1lzJIzdA5",
+            "sess_3KphCEvLyO5S8WsnQ3aqdUN7iVm",
+            "sess_3KphCGWvGYTamRrosCSwlQHTFKt",
+            "sess_3KphCJ2o8r9qv3TCivNYIyQhmZ6",
+            "sess_3KphCJn85FxgRXQRmxxdQZXps8p",
+            "sess_3KphCNF13o3T9WfDTYm8m7bEZEm",
+            "sess_3KphCR0J4z1SmEjpDqgcQlGFL9u",
+            "sess_3KphCTlFYcJpn48Quii6Ncyi3aQ",
+            "sess_3KphCZS2kqlFImmXVu8JmuJG1zY",
+            "sess_3KphCZLPLhN3DB9J01zU0UpbhTZ",
+            "sess_3KphDr8ye9jK5kUVQZENQWPG3Xp",
+            "sess_3KphDoewqILibGJHEz3UAwBwYIr",
+            "sess_3KphDsS65pkP2Q4o8EkKtpPuuJz"
+        ]
+    },
+    "root_group": {
+        "groups": {},
+        "checks": {
+                "200": {
+                    "name": "200",
+                    "path": "::200",
+                    "id": "4230b0c1b1cb609da348fcf04ffd96f4",
+                    "passes": 21126,
+                    "fails": 0
+                }
+            },
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e"
+    }
+}

@@ -35,3 +35,6 @@ credentials.json
 
 # Raw load-test output (reports are committed, CSVs are large)
 loadtest/results/**/*.csv
+# cold-run.sh inputs, regenerated from the database on every run
+loadtest/results/cold-*/cells.*
+loadtest/results/cold-*/areas.txt

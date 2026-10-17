@@ -253,7 +253,7 @@ proto/           Protobuf event schemas (generated into workers/gen and apps/api
 db/migrations/   SQL migrations (golang-migrate)
 data/            Python bulk extract of Overture places (shares workers/internal/places/overture_extract.sql)
 infra/           k3d config, Helm chart (+ values-aks/eks/oci.yaml), Postgres image, Terraform (azure, aws, eks), oci-k3s (VM bootstrap + rebuild runbook), monitoring values
-loadtest/        k6 script, failure test (chaos.sh), autoscaler runs (hpa-run.sh), cache + CPU profile (cache-profile.sh), reports in results/
+loadtest/        k6 script, failure test (chaos.sh), autoscaler runs (hpa-run.sh), cache + CPU profile (cache-profile.sh), cache miss (cold-run.sh), reports in results/
 docs/decisions/  Decision records (0001: sizing the API's CPU request and autoscaler)
 scripts/         up.sh / down.sh (k3d), build-images.sh (amd64 + arm64), monitoring.sh, aks-up.sh, eks-up.sh / eks-down.sh, oci-capacity-probe.sh / oci-up.sh
 ```
@@ -311,11 +311,14 @@ loadtest/hpa-run.sh <label>                     # k6 + autoscaler/CPU trace ever
 SCENARIO=steps loadtest/hpa-run.sh sizing       # HPA off: 20..100 VUs, finds req/s per pod where p95 degrades
 loadtest/chaos.sh                               # steady load while killing api, workers, Redis, Postgres in turn
 loadtest/cache-profile.sh <label>               # cache hit rate + 60 s CPU profile (needs --set api.cpuProfiling=true)
+loadtest/cold-run.sh <label>                    # cache miss: Redis flushed, fresh cells per user (COLD_MODE=relocate adds offer churn)
 ```
 The k6 script creates 10 `loadtest+N@example.com` users on the Clerk dev instance (once) and mints
 their session tokens itself. The secret key stays on the machine running k6.
 
-**Results on k3d** (laptop, k6 on the same machine, 2026-10-13):
+**Results on k3d, warm cache** (laptop, k6 on the same machine, 2026-10-13). 10 users near
+8 fixed spots, so nearly every request is a deck-cache hit (98.9% measured below); see
+[cache miss](#cache-miss) for the other end:
 
 | Run | Requests | Errors | Throughput | p50 / p95 | Replicas |
 |---|---|---|---|---|---|
@@ -360,6 +363,8 @@ targeted 70% of a 100m request, i.e. scale out at **70m per pod**, while a pod a
 on light load. A [sizing run](loadtest/results/hpa-sizing-20261013-211748/report.md) (HPA off,
 2 pods, 20 → 100 VUs) measured the need, then four identical 8-minute ramps to 200 VUs compared
 configs:
+
+All warm cache:
 
 | Config | Throughput at 200 VUs | p95 at 200 VUs | p50 / p95 / p99 (whole run) | p95 < 800 ms |
 |---|---|---|---|---|
@@ -422,6 +427,53 @@ a `cache_lookups_total{cache,result}` counter and a 60 s V8 profile of one pod.
 The 300m request stays: the drop is real, but at ~15–20% it's within the spread between sizing
 runs, and over-reserving a little costs less than throttling would. GC (21%) and parsing the
 cached deck (9%) are now the largest app-attributable costs.
+
+#### Cache miss
+
+Every number above is the **warm-cache** case. `loadtest/cold-run.sh` measures the other end:
+Redis flushed right before k6, onboarded users (so ranking computes real taste similarity),
+and every request in a cell the user hasn't asked about yet, ramping to 100 VUs and holding
+3 minutes on the final config (2026-10-17, k3d). Only cells whose whole search area is
+already ingested are used: no request started an ingest job.
+
+- **Cache miss** (`COLD_MODE=home`): each user has a home cell, and their requests visit
+  every populated cell within 4.9 km of it once. Offers expire at 5 km, so the user's offer
+  stays put and the only extra writes are re-onboards that give a user fresh cache keys
+  for another lap (403, ~2% of requests). 50 users with 2 VUs each, because a Clerk dev
+  instance stops at 100 users.
+- **Cache miss + offer churn** (`COLD_MODE=relocate`): users jump to a random cell anywhere
+  in the city on every request, so each request also expires the last offer and inserts a
+  new one (18,879 offers expired in the run).
+
+| | Warm cache ([200-VU ramp](loadtest/results/hpa-after-ramp-c-optimized-20261014-130527/report.md)) | [Cache miss](loadtest/results/cold-home-final-20261017-135716/report.md) | [Cache miss + offer churn](loadtest/results/cold-relocate-final-20261017-140429/report.md) |
+|---|---|---|---|
+| Deck cache hit rate | ~99% | **0.1%** | 2.6% |
+| Area-stats cache hit rate (shared per cell) | ~100% | 93.9% | 71.3% |
+| Throughput at the plateau | 195 req/s (200 VUs) | 92 req/s (100 VUs) | 93 req/s (100 VUs) |
+| p50 / p95 / p99 | 21 / 47 / 73 ms | **70 / 178 / 267 ms** | 52 / 146 / 208 ms |
+| API CPU per req/s | 17.5m | **44m** | 34m |
+| Postgres CPU | ~1.0 core | **~5.1 cores** (~55m per req/s) | ~3.7 cores (~39m per req/s) |
+| API replicas | 6 | 2 → 6 in ~60 s | 6 (still up from the previous run) |
+| Errors | 0 | 0 | 0 |
+
+- **Postgres is the bottleneck on misses.** At 92 req/s it burned ~5 of the laptop's 20 cores,
+  more than all six API pods together (~4 cores), and it is the one piece the autoscaler can't
+  add copies of. The API scaled out as designed; each miss costs it 2.5× a hit (the ranking
+  itself, plus parsing 3,000 candidate rows instead of a cached deck).
+- **Neither was saturated.** 100 VUs with ~1 s of think time can't ask for more than ~93
+  req/s, the laptop had half its cores free, and p95 stayed under 200 ms. The ceiling for
+  misses is lower than for hits, but these runs don't reach it.
+- **Where Postgres's time goes:** for a busy Manhattan cell the candidate query reads ~8,100
+  places in the 1.5 km radius, runs on 3 parallel workers, and takes 64 ms, 20 ms of that
+  planning (the driver doesn't use prepared statements). The planner expects 3 rows from the
+  geography radius filter instead of thousands, and re-checks the user's taste row per place.
+  Prepared statements, a better estimate (or a `MATERIALIZED` taste CTE), and a smaller
+  candidate cap are the next things to try.
+- **The two miss runs aren't a clean A/B for offer churn.** A home walk stays near the 50
+  homes with the most neighbours, mostly Manhattan: those cells average 144 places, against
+  81 for the whole city that relocating users sample. Fewer candidates per miss outweigh
+  the extra offer writes, which is why the churn run is cheaper. Relocating users also share
+  more area-stats misses (71% hits), since they spread over every cell.
 
 ---
 

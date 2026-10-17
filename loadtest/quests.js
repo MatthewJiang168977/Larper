@@ -37,6 +37,28 @@ const SPOTS = [
 
 // SCENARIO=ramp (default): scale-out test. SCENARIO=steady: constant load for the
 // failure test (loadtest/chaos.sh kills pods while it runs; VUS, DURATION).
+// SCENARIO=cold: the cache-miss test (loadtest/cold-run.sh). Users come from their own
+// onboarded pool (loadtest-cold+N, COLD_USERS of them: Clerk dev instances stop at
+// 100 users), VU i plays user i % COLD_USERS, and requests go to the populated cells
+// in CELLS (from loadtest/cold-cells.js, path relative to this file). A deck is
+// cached per user, taste version and cell for 10 min, so a request in a cell the user
+// hasn't visited since their taste last changed is a miss:
+//   COLD_MODE=home (default): each user has a home cell (the ones with the most
+//     cells within 4.9 km). Its VUs start at the home center, where the offer is
+//     made, then split the cells within 4.9 km and visit their share once each in
+//     random order. Staying within 5 km of the offer, it never goes stale. A VU that
+//     has walked its share re-posts the user's onboarding answers (same taste, new
+//     version, so every key is new) and walks again: a clean miss.
+//   COLD_MODE=relocate: each request in a random cell anywhere in the city. Every
+//     request also expires the last offer and makes a new one (offer churn).
+const COLD = (__ENV.SCENARIO || 'ramp') === 'cold';
+const COLD_MODE = __ENV.COLD_MODE || 'home';
+const COLD_USERS = Number(__ENV.COLD_USERS || 50);
+const CELLS = COLD ? JSON.parse(open(__ENV.CELLS)) : null;
+const HOMES = COLD
+  ? CELLS.near.map((n, i) => [n.length, i]).sort((a, b) => b[0] - a[0]).slice(0, COLD_USERS).map(([, i]) => i)
+  : null;
+
 const SCENARIOS = {
   ramp: {
     executor: 'ramping-vus',
@@ -61,6 +83,16 @@ const SCENARIOS = {
     ]),
     gracefulRampDown: '10s',
   },
+  cold: {
+    executor: 'ramping-vus',
+    startVUs: 0,
+    stages: [
+      { duration: '1m', target: PEAK },
+      { duration: __ENV.HOLD || '3m', target: PEAK },
+      { duration: '30s', target: 0 },
+    ],
+    gracefulRampDown: '10s',
+  },
   steady: {
     executor: 'constant-vus',
     vus: Number(__ENV.VUS || 60),
@@ -71,6 +103,7 @@ const SCENARIO = __ENV.SCENARIO || 'ramp';
 
 export const options = {
   scenarios: { [SCENARIO]: SCENARIOS[SCENARIO] },
+  setupTimeout: '10m',
   thresholds: {
     'http_req_failed{name:today}': ['rate<0.01'],
     'http_req_duration{name:today}': ['p(95)<800'],
@@ -78,30 +111,84 @@ export const options = {
 };
 
 function clerk(method, path, body) {
-  const res = http.request(method, `${CLERK}${path}`, body ? JSON.stringify(body) : null, {
-    headers: { Authorization: `Bearer ${SECRET}`, 'Content-Type': 'application/json' },
-    tags: { name: 'clerk' },
-  });
-  if (res.status >= 300) fail(`clerk ${method} ${path}: ${res.status} ${res.body}`);
-  return res.json();
+  for (let attempt = 0; ; attempt++) {
+    const res = http.request(method, `${CLERK}${path}`, body ? JSON.stringify(body) : null, {
+      headers: { Authorization: `Bearer ${SECRET}`, 'Content-Type': 'application/json' },
+      tags: { name: 'clerk' },
+    });
+    // Setting up 100 users runs into Clerk's Backend API rate limit; wait it out.
+    if (res.status === 429 && attempt < 10) {
+      sleep(Number(res.headers['Retry-After'] || 2));
+      continue;
+    }
+    if (res.status >= 300) fail(`clerk ${method} ${path}: ${res.status} ${res.body}`);
+    return res.json();
+  }
 }
 
 export function setup() {
   if (!SECRET) fail('set CLERK_SECRET_KEY (the dev instance secret, from apps/web/.env.local)');
+  const n = COLD ? COLD_USERS : USERS;
   const sessions = [];
-  for (let i = 0; i < USERS; i++) {
-    const email = `loadtest+${i}@example.com`;
+  let cards = null;
+  for (let i = 0; i < n; i++) {
+    const email = COLD ? `loadtest-cold+${i}@example.com` : `loadtest+${i}@example.com`;
     const found = clerk('GET', `/users?email_address=${encodeURIComponent(email)}`);
     const user = found.length
       ? found[0]
       : clerk('POST', '/users', { email_address: [email], skip_password_requirement: true });
-    sessions.push(clerk('POST', '/sessions', { user_id: user.id }).id);
+    const session = clerk('POST', '/sessions', { user_id: user.id }).id;
+    sessions.push(session);
+    if (!COLD) continue;
+    // Onboard, so ranking on a miss computes real taste similarity.
+    const jwt = clerk('POST', `/sessions/${session}/tokens`).jwt;
+    if (!cards) cards = http.get(`${BASE_URL}/onboarding/cards`, { headers: { Authorization: `Bearer ${jwt}` }, tags: { name: 'setup' } }).json().map((c) => c.id);
+    onboard(jwt, cards, i, 'setup');
   }
-  return { sessions };
+  if (COLD && HOMES.length < COLD_USERS) console.warn(`only ${HOMES.length} home cells for ${COLD_USERS} users: some share one`);
+  return { sessions, cards };
+}
+
+// The liked cards depend only on the user, so re-onboarding keeps the same taste
+// and only moves its version.
+function onboard(jwt, cards, i, name) {
+  const liked = [...new Set([0, 1, 2].map((k) => cards[(i * 7 + k * 5) % cards.length]))];
+  const res = http.post(`${BASE_URL}/onboarding`, JSON.stringify({ liked }), {
+    headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+    tags: { name },
+  });
+  if (res.status >= 300) fail(`onboarding user ${i}: ${res.status} ${res.body}`);
 }
 
 let token = null;
 let mintedAt = 0;
+
+// COLD_MODE=home: the cells this VU still has to visit before the next re-onboard.
+let walk = null;
+
+const shuffled = (xs) => {
+  const a = [...xs];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
+const pointIn = ([s, w, n, e]) => [s + Math.random() * (n - s), w + Math.random() * (e - w)];
+
+function coldStep(data, user) { // -> [lat, lng]
+  if (COLD_MODE === 'relocate') return pointIn(CELLS.cells[Math.floor(Math.random() * CELLS.cells.length)]);
+  const home = HOMES[user % HOMES.length];
+  if (walk && !walk.length) onboard(token, data.cards, user, 'onboard'); // new taste version: all keys fresh
+  if (!walk || !walk.length) {
+    const share = Math.floor((__VU - 1) / COLD_USERS);
+    const shares = Math.ceil(PEAK / COLD_USERS);
+    const [s, w, n, e] = CELLS.cells[home];
+    const mine = CELLS.near[home].filter((_, k) => k % shares === share);
+    walk = [[(s + n) / 2, (w + e) / 2], ...shuffled(mine).map((c) => pointIn(CELLS.cells[c]))];
+  }
+  return walk.shift();
+}
 
 export default function (data) {
   const user = (__VU - 1) % data.sessions.length;
@@ -110,9 +197,17 @@ export default function (data) {
     mintedAt = Date.now();
   }
 
-  const [lat, lng] = SPOTS[user % SPOTS.length];
-  const jitter = () => (Math.random() - 0.5) * 0.008; // ~±400 m
-  const res = http.get(`${BASE_URL}/quests/today?lat=${(lat + jitter()).toFixed(5)}&lng=${(lng + jitter()).toFixed(5)}`, {
+  let lat;
+  let lng;
+  if (COLD) {
+    [lat, lng] = coldStep(data, user);
+  } else {
+    const jitter = () => (Math.random() - 0.5) * 0.008; // ~±400 m
+    [lat, lng] = SPOTS[user % SPOTS.length];
+    lat += jitter();
+    lng += jitter();
+  }
+  const res = http.get(`${BASE_URL}/quests/today?lat=${lat.toFixed(5)}&lng=${lng.toFixed(5)}`, {
     headers: { Authorization: `Bearer ${token}` },
     tags: { name: 'today' },
   });
