@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -111,4 +112,143 @@ func TestRecomputeChainLocations(t *testing.T) {
 	if err := tx.QueryRow(ctx, `SELECT locations FROM chain_stats WHERE chain_key = 'stats-test-chain-a'`).Scan(&a); err != nil || a != 3 {
 		t.Errorf("chain_stats for chain a = %d (err %v), want 3", a, err)
 	}
+}
+
+// Two refreshes of different areas that share a chain, overlapping so that the first
+// counts the chain before a new location commits and writes after the second has
+// written the new count. Under READ COMMITTED an UPDATE re-checks its WHERE against a
+// newer row version but keeps the count from its own snapshot, so without the
+// per-chain lock the first one overwrites the right count with its stale one.
+//
+// The interleaving is forced: a third transaction holds one place's row lock, so the
+// first refresh stops inside its UPDATE, after its snapshot; that place already holds
+// the final count, so the second refresh never needs its lock. Unlike the test above
+// this one has to commit (the transactions must see each other), so it uses its own
+// chain in empty Southern Ocean areas and deletes everything it made.
+func TestRecomputeConcurrentRefreshesOfOneChain(t *testing.T) {
+	if testPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	const chain = "stats-race-chain"
+	var areas []string
+	cleanup := func() {
+		testPool.Exec(ctx, `DELETE FROM places WHERE overture_id LIKE 'stats-race-%'`)
+		testPool.Exec(ctx, `DELETE FROM chain_stats WHERE chain_key = $1`, chain)
+		testPool.Exec(ctx, `DELETE FROM area_stats WHERE left(geohash6, 5) = ANY($1)`, areas)
+		testPool.Exec(ctx, `DELETE FROM area_totals WHERE left(geohash6, 5) = ANY($1)`, areas)
+	}
+	cleanup()
+	t.Cleanup(cleanup)
+
+	add := func(key string, lat, lng float64, locations int) string {
+		t.Helper()
+		var area string
+		if err := testPool.QueryRow(ctx, `
+			INSERT INTO places (overture_id, name, geom, categories, chain_key, tags, tag_vec, confidence, chain_locations)
+			VALUES ($1, $1, ST_SetSRID(ST_MakePoint($3, $2), 4326)::geography, '{test}', $4, '{}',
+			        array_fill(0::real, ARRAY[160])::vector, 1, $5)
+			RETURNING left(geohash6, 5)`,
+			"stats-race-"+key, lat, lng, chain, locations).Scan(&area); err != nil {
+			t.Fatal(err)
+		}
+		return area
+	}
+	// Three locations now (two in area x, one in y); c1 already holds the count the
+	// chain will have once the fourth location lands.
+	x := add("c1", -60.001, 0.001, 4)
+	add("c2", -60.002, 0.002, 3)
+	y := add("c3", -61.001, 5.001, 3)
+	areas = []string{x, y}
+	if x == y {
+		t.Fatalf("test places should span two geohash5 areas, both are in %s", x)
+	}
+
+	hold, err := testPool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer hold.Rollback(ctx)
+	if _, err := hold.Exec(ctx, `SELECT 1 FROM places WHERE overture_id = 'stats-race-c1' FOR UPDATE`); err != nil {
+		t.Fatal(err)
+	}
+
+	first := make(chan error, 1)
+	go func() { first <- Recompute(ctx, testPool, []string{x}) }()
+	waitUntil(t, ctx, "the first refresh waiting on c1's row lock inside its UPDATE",
+		`SELECT count(*) > 0 FROM pg_stat_activity
+		 WHERE wait_event IN ('transactionid', 'tuple') AND query LIKE 'UPDATE places p SET chain_locations%'`)
+
+	add("c4", -61.002, 5.002, 1) // the fourth location, in area y, committed
+	second := make(chan error, 1)
+	go func() { second <- Recompute(ctx, testPool, []string{y}) }()
+	// Unserialized, the second refresh finishes now; serialized, it waits for the first
+	// (on the chain lock, or on any lock the first holds).
+	deadline := time.Now().Add(10 * time.Second)
+	for settled := false; !settled; {
+		select {
+		case err := <-second:
+			second <- err
+			settled = true
+		case <-time.After(100 * time.Millisecond):
+			var on string
+			testPool.QueryRow(ctx, `SELECT coalesce(min(wait_event), '') FROM pg_stat_activity
+				WHERE wait_event_type = 'Lock' AND query NOT LIKE 'UPDATE places p SET chain_locations%'`).Scan(&on)
+			if settled = on != ""; settled {
+				t.Logf("second refresh waits for the first (lock: %s)", on)
+			}
+			if !settled && time.Now().After(deadline) {
+				t.Fatal("the second refresh neither finished nor waited on the first")
+			}
+		}
+	}
+
+	if err := hold.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for name, ch := range map[string]chan error{"first": first, "second": second} {
+		select {
+		case err := <-ch:
+			if err != nil {
+				t.Fatalf("%s refresh: %v", name, err)
+			}
+		case <-time.After(30 * time.Second):
+			t.Fatalf("%s refresh didn't finish", name)
+		}
+	}
+
+	rows, err := testPool.Query(ctx, `SELECT overture_id, chain_locations FROM places WHERE chain_key = $1 ORDER BY 1`, chain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var n int
+		if err := rows.Scan(&id, &n); err != nil {
+			t.Fatal(err)
+		}
+		if n != 4 {
+			t.Errorf("%s: chain_locations = %d, want 4 (lost update)", id, n)
+		}
+	}
+	var stats int
+	if err := testPool.QueryRow(ctx, `SELECT locations FROM chain_stats WHERE chain_key = $1`, chain).Scan(&stats); err != nil || stats != 4 {
+		t.Errorf("chain_stats = %d (err %v), want 4", stats, err)
+	}
+}
+
+// waitUntil polls a boolean query until it's true, or fails the test after 10 s.
+func waitUntil(t *testing.T, ctx context.Context, what, query string) {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		var ok bool
+		if err := testPool.QueryRow(ctx, query).Scan(&ok); err != nil {
+			t.Fatal(err)
+		}
+		if ok {
+			return
+		}
+	}
+	t.Fatalf("timed out waiting for %s", what)
 }

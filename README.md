@@ -609,6 +609,17 @@ check on the 200 pairs compares against the old query, which still joins `chain_
 chains left alone). Against the original query (57.2 ms, p95 72.5 ms) the miss path is now
 about 3.4x cheaper in Postgres.
 
+- **Concurrent refreshes take a lock per chain.** Two ingests of different areas can share a
+  chain. Under READ COMMITTED each counts from its own snapshot, and an UPDATE that waits on
+  a row lock re-checks its WHERE against the newer row but keeps its own count, so a refresh
+  that counted before a new location committed could overwrite the newer count. `Recompute`
+  now takes `pg_advisory_xact_lock` on each chain in its areas first, in a fixed order, and
+  only recounts those chains. Until now the `chain_stats` upsert, whose row lock is held to
+  commit, serialized refreshes by accident (and could deadlock two of them, since it locked
+  chains in hash order); without it, as after the planned drop, the race is real.
+  `TestRecomputeConcurrentRefreshesOfOneChain` forces the interleaving: without the lock and
+  without the `chain_stats` write it ends with a stale count (3, want 4); with the lock it
+  passes, with or without `chain_stats`.
 - **Migrations run before the rollout now.** The migrate Job was a post-upgrade hook, so new
   pods started before the schema they need; it's now pre-upgrade (post-install on a fresh
   install, where the Postgres cluster comes from the same release). Migrations must keep
