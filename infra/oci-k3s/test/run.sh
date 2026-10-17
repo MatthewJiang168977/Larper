@@ -6,6 +6,7 @@
 #   infra/oci-k3s/test/run.sh up        # fake VM + S3 stand-in, oci-up.sh, then checks
 #   infra/oci-k3s/test/run.sh check     # re-run the checks
 #   infra/oci-k3s/test/run.sh reboot    # restart the VM, then check it came back
+#   infra/oci-k3s/test/run.sh k3s-restart  # firewall re-apply + k3s restart under requests, then check
 #   infra/oci-k3s/test/run.sh restore   # replace the VM, restore Postgres from the S3 stand-in
 #   infra/oci-k3s/test/run.sh down      # remove everything
 #
@@ -187,6 +188,43 @@ case ${1:-} in
     for _ in $(seq 1 60); do
       [[ -z $(kubectl get pods -A --no-headers | grep -vE 'Running|Completed') ]] && break; sleep 5
     done
+    kill $TUNNEL; trap - EXIT
+    check
+    ;;
+  k3s-restart)
+    # What a firewall change does on the real VM (bootstrap.sh: iptables-restore, which
+    # flushes k3s's chains, then restart k3s), and what a k3s upgrade does, on a node
+    # with the whole stack running and a request every 0.2 s through Traefik.
+    tunnel
+    restarts() { kubectl get pods -A --no-headers | awk '{print $1"/"$2, $5}' | sort; }
+    restarts >"$STATE/restarts.before"
+    # From the VM to its own address (Traefik's port 80 via k3s's service load
+    # balancer); the mangle guard doesn't apply to local traffic.
+    vm "nohup sh -c 'echo \$\$ >/tmp/readyz.pid; while :; do echo \$(date +%s.%N) \$(curl -s -o /dev/null -m 2 -w %{http_code} http://$VM_IP/readyz); sleep 0.2; done' >/tmp/readyz.log 2>&1 </dev/null &"
+    sleep 10
+    log "re-applying the firewall and restarting k3s"
+    vm "sudo sh -c 'iptables-restore </etc/iptables/rules.v4 && ip6tables-restore </etc/iptables/rules.v6 && systemctl restart k3s'"
+    kill $TUNNEL; trap - EXIT
+    for _ in $(seq 1 60); do vm "sudo k3s kubectl get --raw /readyz" >/dev/null 2>&1 && break; sleep 2; done
+    tunnel
+    log "waiting for pods to settle"
+    for _ in $(seq 1 60); do
+      [[ -z $(kubectl get pods -A --no-headers | grep -vE 'Running|Completed') ]] && break; sleep 5
+    done
+    sleep 20
+    vm 'kill $(cat /tmp/readyz.pid)' || true
+    vm "cat /tmp/readyz.log" >"$STATE/readyz.log"
+    awk '$2 != 200 {bad++; if (!first) first = $1; last = $1} END {
+      printf "  readyz during the restart: %d requests, %d not 200", NR, bad
+      if (bad) printf " (from first to last failure: %.1f s)", last - first
+      print ""}' "$STATE/readyz.log"
+    restarts >"$STATE/restarts.after"
+    changed=$(join "$STATE/restarts.before" "$STATE/restarts.after" | awk '$2 != $3 {print "  " $1 ": " $2 " -> " $3}')
+    gone=$(comm -3 <(cut -d' ' -f1 "$STATE/restarts.before") <(cut -d' ' -f1 "$STATE/restarts.after") | sed 's/^/  /')
+    [[ -z $changed ]] && ok "no container restarted" || echo "  container restarts:"$'\n'"$changed"
+    [[ -z $gone ]] || echo "  pods replaced:"$'\n'"$gone"
+    vm "sudo iptables -t mangle -S PREROUTING" | grep -q larper && ok "mangle guard present after the restart" \
+      || fail "mangle guard missing after the restart"
     kill $TUNNEL; trap - EXIT
     check
     ;;

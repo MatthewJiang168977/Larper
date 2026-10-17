@@ -195,6 +195,7 @@ and jobs use the real SQS queue.
 ```bash
 infra/oci-k3s/test/run.sh up        # stand-in VM + S3, oci-up.sh, then checks (~20 min)
 infra/oci-k3s/test/run.sh reboot    # restart the VM (as after an unattended-upgrades reboot), check again
+infra/oci-k3s/test/run.sh k3s-restart  # re-apply the firewall + restart k3s under requests, check again
 infra/oci-k3s/test/run.sh restore   # new VM, empty disks, restore Postgres from the last backup folder
 infra/oci-k3s/test/run.sh down      # remove it all (the VM may use up to 12 GB of memory)
 ```
@@ -211,11 +212,21 @@ CloudNativePG rejects (now `17-<commit>`, `scripts/pg-tag.sh`), the open Traefik
 ports (the mangle guard), a restore that pointed the app at an empty database, and
 Git Bash rewriting `/readyz`-style arguments.
 
+Passed on 2026-10-17: restarting k3s on a busy node (`k3s-restart`). With the whole
+stack and monitoring running and a `/readyz` request every 0.2 s from the VM through
+Traefik, it re-applied the firewall exactly as `bootstrap.sh` does on a change
+(`iptables-restore`, which flushes k3s's chains, then `systemctl restart k3s`, the same
+restart a k3s upgrade does). All 250 requests across the restart returned 200; no app
+container restarted (only the CloudNativePG operator and its backup plugin, which exit
+by design when they can't renew their leader lease while the API server is down, and
+came back on their own); the mangle guard was still in place; and every check above
+passed afterwards. The earlier stand-in that broke here shared the host's cgroup
+namespace; with `--cgroupns=private` the kubelet keeps track of running containers.
+
 ## Not verified yet
 
 - Anything specific to the real VM: arm64 images on A1 (built and checked separately,
   not deployed), Oracle's S3 endpoint (path-style addressing), and the VCN.
-- Restarting k3s on a busy node (a firewall change on a running cluster, a k3s
-  upgrade). An earlier stand-in shared the host's cgroup namespace and broke here; the
-  stand-in is fixed but this hasn't been re-run on it.
+- A k3s restart on the real VM. On the stand-in it's verified (above); an actual
+  k3s version upgrade (new binary) hasn't been run anywhere.
 - The restore drill above, on the real bucket.
