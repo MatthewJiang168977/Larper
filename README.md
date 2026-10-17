@@ -1,5 +1,7 @@
 # Larper
 
+[![CI](https://github.com/MatthewJiang168977/Larper/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MatthewJiang168977/Larper/actions/workflows/ci.yml)
+
 Find the most niche thing to do near you, shown on a 3D map of your surroundings.
 
 Larper hands you one **side quest** a day: the most unusual spot nearby that fits your taste. Think
@@ -320,8 +322,25 @@ pnpm proto:gen                                                          # regene
 kubectl -n larper logs -l app=ingest-worker -f                          # area ingests: leased, ingested, retries
 TEST_DATABASE_URL=postgres://... go test ./internal/queue/              # queue integration tests (in workers/)
 TEST_DATABASE_URL=postgres://... go test ./internal/stats/              # stats refresh vs the stack's Postgres, incl. Midtown + all NYC at full size; rolled back
-TEST_DATABASE_URL=postgres://... pnpm --filter @larper/api test candidates.db  # ranking query vs the old one on real data (pg port-forward)
+TEST_DATABASE_URL=postgres://... pnpm --filter @larper/api test candidates.db  # ranking query vs the old one on real data (pg port-forward; TEST_NYC_DATA=0 skips the 200-pair checks)
 ```
+
+### CI
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request and push to
+`main`, in four parallel jobs (each capped at 10 minutes, no secrets, nothing deployed):
+
+| Job | What it checks |
+|---|---|
+| API | `pnpm install` (cached), `tsc --noEmit`, ESLint (`apps/api/eslint.config.mjs`), Jest unit tests |
+| Go workers | `gofmt -l`, `go vet ./...`, `go test ./...` (unit tests; the integration tests skip) |
+| Database | Postgres 17 + PostGIS 3.6 + pgvector 0.8 as a service container, all migrations applied with the Helm Job's `migrate` image, then the Go integration tests (queue, stats refresh, the lost-update race) and the API's `candidates.db` spec |
+| Helm | `helm lint`, and the chart rendered with the default, monitoring, AKS, EKS and OCI values |
+
+The database is empty apart from what the tests insert, so two kinds of test skip there and run
+locally against the stack: the Midtown / all-NYC stats refreshes (they skip without the NYC
+places) and the 200-pair ranking-equivalence checks (`TEST_NYC_DATA=0`). The OCI capacity probe
+is a separate workflow that only runs on its schedule.
 
 ### Load test and monitoring
 ```bash
