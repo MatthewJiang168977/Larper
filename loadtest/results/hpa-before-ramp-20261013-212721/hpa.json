@@ -1,0 +1,43 @@
+{
+    "apiVersion": "autoscaling/v2",
+    "kind": "HorizontalPodAutoscaler",
+    "metadata": {
+        "annotations": {
+            "meta.helm.sh/release-name": "larper",
+            "meta.helm.sh/release-namespace": "larper"
+        },
+        "creationTimestamp": "2026-10-14T01:27:10Z",
+        "labels": {
+            "app.kubernetes.io/managed-by": "Helm"
+        },
+        "name": "api",
+        "namespace": "larper",
+        "resourceVersion": "61312",
+        "uid": "82d2a0f2-584e-4a06-9595-8b99a4be77a8"
+    },
+    "spec": {
+        "maxReplicas": 6,
+        "metrics": [
+            {
+                "resource": {
+                    "name": "cpu",
+                    "target": {
+                        "averageUtilization": 70,
+                        "type": "Utilization"
+                    }
+                },
+                "type": "Resource"
+            }
+        ],
+        "minReplicas": 2,
+        "scaleTargetRef": {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "name": "api"
+        }
+    },
+    "status": {
+        "currentMetrics": null,
+        "desiredReplicas": 0
+    }
+}

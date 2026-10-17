@@ -1,0 +1,2 @@
+# Copy to terraform.tfvars (gitignored). Your IP: curl -s https://checkip.amazonaws.com
+api_allowed_cidrs = ["203.0.113.7/32"]

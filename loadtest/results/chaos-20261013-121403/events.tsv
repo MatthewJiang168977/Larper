@@ -1,0 +1,19 @@
+1791908043	START steady load, 60 VUs
+1791908104	KILL api-crash api-6c67c5f988-78znz (force)
+1791908115	READY api-crash after 8s
+1791908164	KILL api-graceful api-6c67c5f988-84nwg (graceful)
+1791908177	READY api-graceful after 11s
+1791908224	KILL taste-worker taste-worker-7568cc8d7d-j5cml (force)
+1791908227	READY taste-worker after 1s
+1791908227	KILL ingest-worker ingest-worker-85d88b5fcf-5bqq2 (force)
+1791908230	READY ingest-worker after 0s
+1791908230	KILL outbox-relay outbox-relay-788bb59c7c-gfc6c (force)
+1791908233	READY outbox-relay after 0s
+1791908283	KILL redis redis-5bdc64d65d-n6dq2 (force)
+1791908290	READY redis after 4s
+1791908343	KILL postgres pg-1 (force)
+1791908361	READY postgres after 15s
+1791908468	END k6 exit 99
+1791908469	HEAL kafka-lag-zero after 1s
+1791908469	HEAL outbox-drained after 0s
+1791908470	HEAL all-deployments api=6/6 ingest-worker=2/2 outbox-relay=1/1 redis=1/1 taste-worker=2/2 

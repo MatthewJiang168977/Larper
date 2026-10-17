@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 import Redis from 'ioredis';
+import { cacheLookups } from '../metrics/metrics';
 
 // Cache-aside over Redis. Redis is an optimization, never a dependency: if it's
 // down, every call is a miss and requests go to Postgres (slower, still correct).
@@ -19,14 +20,18 @@ export class CacheService implements OnApplicationShutdown {
 
   // Returns the cached value or computes, stores, and returns it.
   async getOrSet<T>(key: string, ttlSeconds: number, compute: () => Promise<T>): Promise<{ value: T; hit: boolean }> {
+    const cache = key.slice(0, key.indexOf(':')); // "deck", "area"
     try {
       const raw = await this.redis.get(key);
       if (raw !== null) {
         this.log.debug(`hit ${key}`);
+        cacheLookups.inc({ cache, result: 'hit' });
         return { value: JSON.parse(raw) as T, hit: true };
       }
+      cacheLookups.inc({ cache, result: 'miss' });
     } catch (err) {
       this.log.warn(`cache read failed for ${key}: ${(err as Error).message}`);
+      cacheLookups.inc({ cache, result: 'error' });
     }
     this.log.debug(`miss ${key}`);
     const value = await compute();

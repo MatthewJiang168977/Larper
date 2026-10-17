@@ -1,5 +1,7 @@
 # Build context is the repo root: docker build -f apps/api/Dockerfile .
-FROM node:22-alpine AS build
+# Multi-arch (amd64 + arm64): the build stage runs on the build machine's platform.
+# Its output is plain JS with no native addons, so it runs on either architecture.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 RUN corepack enable
 WORKDIR /repo
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./

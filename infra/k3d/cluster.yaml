@@ -6,6 +6,10 @@ metadata:
   name: larper
 servers: 1
 agents: 2
+# Pinned: k3d's default random API port can land in a range Windows reserves for
+# Hyper-V/WinNAT after a reboot, and the cluster then won't start.
+kubeAPI:
+  hostPort: "6445"
 ports:
   - port: 8080:80
     nodeFilters: [loadbalancer]

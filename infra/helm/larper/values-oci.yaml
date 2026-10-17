@@ -1,0 +1,49 @@
+# Overrides for the Oracle Always Free target: single-node k3s on an Ampere A1 VM
+# (2 OCPU / 12 GB, arm64), set up by infra/oci-k3s/bootstrap.sh and deployed by
+# scripts/oci-up.sh. There is no registry: oci-up.sh builds arm64 images and imports
+# them straight into k3s's containerd, tagged with the git commit, e.g.
+#   --set api.image=larper.local/larper-api:3f9c2e1
+# ("larper.local" is not a real registry, so a missing image fails loudly instead of
+# being pulled from somewhere else.)
+
+# Imported, never pulled.
+imagePullPolicy: IfNotPresent
+
+ingress:
+  # k3s's built-in Traefik. Its ports are closed by both firewalls (only SSH is
+  # open); reach it through an SSH tunnel (oci-up.sh prints it), later through a
+  # Cloudflare Tunnel.
+  className: traefik
+
+api:
+  hpa:
+    # 2 OCPU allocatable, ~1.1 cores requested by the rest of the stack: three API
+    # pods at 300m fit, a fourth would stay Pending.
+    minReplicas: 2
+    maxReplicas: 3
+
+postgres:
+  # k3s local-path volumes on the 50 GB boot disk (sizes aren't enforced).
+  storage: 4Gi
+  backup:
+    enabled: true
+    # Oracle Object Storage, S3-compatible API. oci-up.sh sets endpointURL from the
+    # tenancy's namespace and creates the bucket and the pg-backup-s3 Secret.
+    bucket: larper-pg-backups
+
+redpanda:
+  storage: 4Gi
+
+workers:
+  tasteReplicas: 1
+
+ingest:
+  replicas: 1
+
+queue:
+  # Jobs are delivered by Amazon SQS (infra/terraform/aws); the jobs table stays the
+  # ledger. Needs the aws-sqs Secret (oci-up.sh creates it).
+  backend: sqs
+
+monitoring:
+  enabled: true

@@ -1,0 +1,220 @@
+{
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "200": {
+                    "id": "4230b0c1b1cb609da348fcf04ffd96f4",
+                    "passes": 20711,
+                    "fails": 0,
+                    "name": "200",
+                    "path": "::200"
+                }
+            }
+    },
+    "metrics": {
+        "data_received": {
+            "count": 80585273,
+            "rate": 281236.29122774786
+        },
+        "data_sent": {
+            "rate": 69514.16898377429,
+            "count": 19918547
+        },
+        "http_req_duration": {
+            "p(95)": 176.01972999999992,
+            "avg": 83.1263320691704,
+            "min": 0.5208,
+            "med": 71.9601,
+            "max": 1053.6575,
+            "p(90)": 144.01386000000002
+        },
+        "http_req_duration{name:today}": {
+            "avg": 84.11242148616668,
+            "min": 3.6102,
+            "med": 71.2769,
+            "max": 806.9927,
+            "p(90)": 145.8382,
+            "p(95)": 177.8503,
+            "thresholds": {
+                "p(95)<800": false
+            }
+        },
+        "iterations": {
+            "count": 20711,
+            "rate": 72.27976788783586
+        },
+        "vus": {
+            "value": 2,
+            "min": 0,
+            "max": 100
+        },
+        "http_req_receiving": {
+            "p(95)": 2.215339999999992,
+            "avg": 0.5086284367994879,
+            "min": 0,
+            "med": 0,
+            "max": 37.0895,
+            "p(90)": 1.5317800000000004
+        },
+        "http_req_failed": {
+            "passes": 0,
+            "fails": 21859,
+            "value": 0
+        },
+        "http_req_tls_handshaking": {
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0.08732944324991997,
+            "min": 0,
+            "med": 0,
+            "max": 51.2899
+        },
+        "http_req_waiting": {
+            "med": 71.4746,
+            "max": 1053.1282,
+            "p(90)": 143.58232,
+            "p(95)": 175.6290999999999,
+            "avg": 82.59884744041351,
+            "min": 0.5208
+        },
+        "http_req_blocked": {
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0.12950086920719162,
+            "min": 0,
+            "med": 0,
+            "max": 154.0158
+        },
+        "http_req_sending": {
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0.01885619195754609,
+            "min": 0,
+            "med": 0,
+            "max": 23.2135
+        },
+        "http_req_connecting": {
+            "med": 0,
+            "max": 10.3465,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0.03350998673315342,
+            "min": 0
+        },
+        "http_reqs": {
+            "count": 21859,
+            "rate": 76.28619797499898
+        },
+        "checks": {
+            "passes": 20711,
+            "fails": 0,
+            "value": 1
+        },
+        "vus_max": {
+            "max": 100,
+            "value": 100,
+            "min": 100
+        },
+        "iteration_duration": {
+            "avg": 1088.8557579016,
+            "min": 524.6076,
+            "med": 1089.7872,
+            "max": 2048.1934,
+            "p(90)": 1489.268,
+            "p(95)": 1539.0333
+        },
+        "http_req_failed{name:today}": {
+            "passes": 0,
+            "fails": 20711,
+            "thresholds": {
+                "rate<0.01": false
+            },
+            "value": 0
+        },
+        "http_req_duration{expected_response:true}": {
+            "avg": 83.1263320691704,
+            "min": 0.5208,
+            "med": 71.9601,
+            "max": 1053.6575,
+            "p(90)": 144.01386000000002,
+            "p(95)": 176.01972999999992
+        }
+    },
+    "setup_data": {
+        "cards": [
+            "matcha",
+            "boba",
+            "line-dessert",
+            "noodle-counter",
+            "counter-seat",
+            "hidden-bar",
+            "dive",
+            "natty-wine",
+            "photobooth",
+            "games",
+            "crate-digging",
+            "thrift",
+            "paper",
+            "odd-museum",
+            "live-set",
+            "green",
+            "bathhouse",
+            "late-night"
+        ],
+        "sessions": [
+            "sess_3KpgITHIk6W345nYjgZWB6qH3SU",
+            "sess_3KpgISqQJPLdY7oIyUD4dMLiRQw",
+            "sess_3KpgIYvzqOXvJXmjma8trgS6QxG",
+            "sess_3KpgIc9TVGx5x8aAajDApi0jLPy",
+            "sess_3KpgIb3YT8T16jV6PKtLJzEUN5J",
+            "sess_3KpgIdsxjr4nbCOwrvO0fTqvdo0",
+            "sess_3KpgIkfUk7ibyP0dmlg0vOTOjaU",
+            "sess_3KpgImhJmnK6cqv4MmZ94BeyuMF",
+            "sess_3KpgIngUXCnPkDsCzdkis95kpQk",
+            "sess_3KpgIs5YZStiqjZ3HCYeSLbHDTT",
+            "sess_3KpgItABobpqFfHPGsN8shyxTgf",
+            "sess_3KpgIzY0NfUWjJojRaJ184djwVI",
+            "sess_3KpgJ3aY8tEtoBUMfhhM2harFG2",
+            "sess_3KpgIwe1RdaLC91c1X7VpsyjEZW",
+            "sess_3KpgIxLSF8a8sY1nJi5AnZs9PHo",
+            "sess_3KpgJ4h7nwiISvsoBqUP7XXZtvv",
+            "sess_3KpgJ5zm67u5J2zKSYnC2eEpDxs",
+            "sess_3KpgJ8OqwasY4J3hV7BfRNt7a0M",
+            "sess_3KpgJBGRJM3VHu3J88lL4ar1xyO",
+            "sess_3KpgJG4fQ2R4tGEbdirJxFujPqj",
+            "sess_3KpgJD7bqTy6qZL64ZXH87moLGb",
+            "sess_3KpgJGSsU6jiSsCp7z1rNSGW0ys",
+            "sess_3KpgJMFytbKcShN2LUDyOITpFBg",
+            "sess_3KpgJMIz8p6jq1WJLccDYD093Nx",
+            "sess_3KpgJOXn1dLE6PIWOq7m2OnpGOg",
+            "sess_3KpgJR93GMLIxy8VePgcyNHHJZY",
+            "sess_3KpgJSG4IQMbGFtmCdYxrKpZBkK",
+            "sess_3KpgJV5nwW5vuqCKNn0A4RJ0ViD",
+            "sess_3KpgJW3pWAJWTp2IioUQu430rgF",
+            "sess_3KpgJcnSy5IQ9gHgHF1pzDxiiwG",
+            "sess_3KpgJc0vpfx9J6giNwONSHbxgL5",
+            "sess_3KpgJbdADtPA76NidipVMJDKhUp",
+            "sess_3KpgJhyIkMWKkhiTMQm4vG1KFMh",
+            "sess_3KpgJmyNqu13Km0YZoO9PUBCHrd",
+            "sess_3KpgJoBv2BIubMYuhhfcY7vMkmL",
+            "sess_3KpgJvaoMUtgxxSPFb4ERP1sK6k",
+            "sess_3KpgJsgLr91BFNoJx1L3K3tuhVG",
+            "sess_3KpgJuboG8pADORcAgScwGmpAaB",
+            "sess_3KpgJrfI5sbzt6FJ2mLVFS4pDhS",
+            "sess_3KpgK1dr7ZaOWf4Yj3zHEYx9Oaj",
+            "sess_3KpgK3fJ2dyWO84zDIp6Y2EzJGj",
+            "sess_3KpgKC1LEQ72xV40RIL7Md3us7H",
+            "sess_3KpgK9ZQniWepnS7N7PA476PIUr",
+            "sess_3KpgKGgr10vsBvQA039pEOpzwGb",
+            "sess_3KpgKE97Z0ksTvtlJMqv3Y5jiGJ",
+            "sess_3KpgKF3K3AgV4usukIYQZT0SUW1",
+            "sess_3KpgKKZAY02vcCZwLqgaM98Mf6O",
+            "sess_3KpgKR4L5tjPbl1hXvRC3sjDZ5E",
+            "sess_3KpgKPDmDszEaAenDCHVIwzw79k",
+            "sess_3KpgKVgTj68FEpq0hAwFh4ZGwGV"
+        ]
+    }
+}

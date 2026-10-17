@@ -12,3 +12,29 @@ data/*.duckdb
 
 # Local secrets loaded into k8s Secrets (never committed)
 infra/secrets/
+tfplan
+
+# Terraform variable files can hold subscription ids, emails, secrets
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Cluster credentials and cloud keys
+kubeconfig*
+*.kubeconfig
+.kube/
+.oci/
+*.pem
+*.key
+*.p12
+*.pfx
+.aws/
+credentials
+credentials.json
+*service-account*.json
+
+# Raw load-test output (reports are committed, CSVs are large)
+loadtest/results/**/*.csv
+# cold-run.sh inputs, regenerated from the database on every run
+loadtest/results/cold-*/cells.*
+loadtest/results/cold-*/areas.txt

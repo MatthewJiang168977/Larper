@@ -1,0 +1,39 @@
+{{- with .Values.postgres.backup }}
+{{- if .enabled }}
+# Where the Barman Cloud plugin puts base backups and WAL. Credentials come from the
+# Secret "pg-backup-s3" (keys ACCESS_KEY_ID, ACCESS_SECRET_KEY, REGION), created
+# outside the chart so no key ever sits in values.
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: pg-backups
+spec:
+  retentionPolicy: {{ .retention | quote }}
+  configuration:
+    destinationPath: {{ printf "s3://%s/" (required "postgres.backup.bucket" .bucket) | quote }}
+    endpointURL: {{ required "postgres.backup.endpointURL" .endpointURL | quote }}
+    s3Credentials:
+      accessKeyId: { name: pg-backup-s3, key: ACCESS_KEY_ID }
+      secretAccessKey: { name: pg-backup-s3, key: ACCESS_SECRET_KEY }
+      region: { name: pg-backup-s3, key: REGION }
+    wal:
+      compression: gzip
+    data:
+      compression: gzip
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: pg-weekly
+spec:
+  schedule: {{ .schedule | quote }}
+  # A first base backup right away, so a fresh cluster is restorable from day one.
+  immediate: true
+  backupOwnerReference: self
+  cluster:
+    name: pg
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
+{{- end }}
+{{- end }}

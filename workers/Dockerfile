@@ -1,19 +1,23 @@
 # Go workers. Build context: workers/. Two targets:
 #   static (default)  every Go command on distroless: relay, taste-worker, load-places
 #   ingest            ingest-worker + the DuckDB CLI, which needs glibc
-FROM golang:1.27-alpine AS build
+# Multi-arch (amd64 + arm64): Go cross-compiles on the build machine's own platform,
+# so only the small final stages run per target architecture.
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
+ARG TARGETOS TARGETARCH
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/ ./cmd/...
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/ ./cmd/...
 
 FROM debian:bookworm-slim AS ingest
 ARG DUCKDB_VERSION=1.5.6
+ARG TARGETARCH
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl unzip \
  && curl -fsSL -o /tmp/duckdb.zip \
-      "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/duckdb_cli-linux-amd64.zip" \
+      "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/duckdb_cli-linux-${TARGETARCH}.zip" \
  && unzip /tmp/duckdb.zip -d /usr/local/bin \
  && rm /tmp/duckdb.zip \
  && apt-get purge -y curl unzip && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*

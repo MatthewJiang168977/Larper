@@ -98,6 +98,39 @@ describe('mmr', () => {
     );
     expect(out.map((i) => i.id)).toEqual(['m1', 'vinyl']);
   });
+
+  it('picks exactly what the quadratic version picks', () => {
+    // The original: every candidate re-checked against every pick, each round.
+    const jac = (a: string[], b: string[]) => {
+      const sb = new Set(b);
+      const union = new Set([...a, ...b]).size;
+      return union === 0 ? 0 : a.filter((x) => sb.has(x)).length / union;
+    };
+    const reference = (items: ReturnType<typeof item>[], k: number, lambda = 0.7) => {
+      const pool = [...items].sort((a, b) => b.score - a.score);
+      const picked: typeof items = [];
+      while (picked.length < k && pool.length) {
+        let bestIdx = 0;
+        let bestVal = -Infinity;
+        pool.forEach((p, i) => {
+          const sim = picked.length ? Math.max(...picked.map((q) => jac(q.tags, p.tags))) : 0;
+          const val = lambda * p.score - (1 - lambda) * sim;
+          if (val > bestVal) [bestVal, bestIdx] = [val, i];
+        });
+        picked.push(pool.splice(bestIdx, 1)[0]);
+      }
+      return picked;
+    };
+    let seed = 42;
+    const rand = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+    const vocab = ['matcha', 'cafe', 'vinyl', 'bar', 'arcade', 'ramen', 'bakery', 'books', 'thrift', 'park'];
+    for (let run = 0; run < 50; run++) {
+      const items = Array.from({ length: 200 }, (_, i) =>
+        item(`p${i}`, Math.round(rand() * 20) / 20, vocab.filter(() => rand() < 0.25)),
+      );
+      for (const k of [1, 5, 10]) expect(mmr(items, k).map((x) => x.id)).toEqual(reference(items, k).map((x) => x.id));
+    }
+  });
 });
 
 describe('weightsFromEnv', () => {

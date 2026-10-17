@@ -1,5 +1,5 @@
 // Package platform holds the boring wiring every worker shares: config from env,
-// Postgres and Kafka clients, and signal-aware shutdown.
+// Postgres, Kafka and SQS clients, and signal-aware shutdown.
 package platform
 
 import (
@@ -12,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
@@ -72,4 +74,19 @@ func Header(r *kgo.Record, key string) string {
 		}
 	}
 	return ""
+}
+
+// SQS builds an SQS client from the standard AWS environment (AWS_REGION,
+// AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY). SQS_ENDPOINT points it at a local
+// SQS-compatible server (ElasticMQ) for development and tests.
+func SQS(ctx context.Context) (*sqs.Client, error) {
+	cfg, err := awsconfig.LoadDefaultConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return sqs.NewFromConfig(cfg, func(o *sqs.Options) {
+		if ep := os.Getenv("SQS_ENDPOINT"); ep != "" {
+			o.BaseEndpoint = &ep
+		}
+	}), nil
 }

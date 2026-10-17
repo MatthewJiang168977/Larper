@@ -4,7 +4,11 @@ metadata:
   name: api
   labels: {{- include "larper.labels" . | nindent 4 }}
 spec:
+  # With the HPA on, it owns replicas. Setting them here too makes Helm 4's
+  # server-side apply fail with a field conflict on every upgrade after a scale.
+  {{- if not .Values.api.hpa.enabled }}
   replicas: {{ .Values.api.replicas }}
+  {{- end }}
   selector:
     matchLabels: { app: api }
   template:
@@ -23,13 +27,20 @@ spec:
         - name: api
           image: {{ .Values.api.image }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
-          ports: [{ containerPort: 3000 }]
+          ports:
+            - { name: http, containerPort: 3000 }
+            - { name: metrics, containerPort: 9464 }
           env:
             - { name: PORT, value: "3000" }
+            - { name: METRICS_PORT, value: "9464" }
             - { name: REDIS_URL, value: "redis://redis:6379" }
             - { name: KAFKA_BROKERS, value: "redpanda:9092" }
             - { name: CLERK_PUBLISHABLE_KEY, value: {{ .Values.clerk.publishableKey | quote }} }
             - { name: CLERK_AUTHORIZED_PARTIES, value: {{ .Values.clerk.authorizedParties | quote }} }
+            {{- if .Values.api.cpuProfiling }}
+            # GET :9464/debug/cpu-profile?seconds=30 (metrics port, never routed publicly).
+            - { name: CPU_PROFILING, value: "1" }
+            {{- end }}
             - name: DATABASE_URL
               valueFrom: { secretKeyRef: { name: pg-app, key: uri } }
           # On delete, SIGTERM and endpoint removal happen concurrently; without this
@@ -50,9 +61,13 @@ apiVersion: v1
 kind: Service
 metadata:
   name: api
+  labels: { app: api }
 spec:
   selector: { app: api }
-  ports: [{ port: 80, targetPort: 3000 }]
+  # The ingress routes only to "http"; "metrics" is for in-cluster scrapes.
+  ports:
+    - { name: http, port: 80, targetPort: http }
+    - { name: metrics, port: 9464, targetPort: metrics }
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -85,4 +100,7 @@ spec:
       resource:
         name: cpu
         target: { type: Utilization, averageUtilization: {{ .Values.api.hpa.targetCPU }} }
+  {{- with .Values.api.hpa.behavior }}
+  behavior: {{- toYaml . | nindent 4 }}
+  {{- end }}
 {{- end }}
