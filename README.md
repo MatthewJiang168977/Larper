@@ -321,6 +321,10 @@ their session tokens itself. The secret key stays on the machine running k6.
 |---|---|---|---|---|---|
 | 1 | 35,917 | **2.7%** (500s) | 78 req/s | 331 ms / 5.44 s | 2 → 6 in ~30 s |
 | 2, after the fix | 50,243 | **0** | 108 req/s | 287 ms / 1.14 s | 2 → 6 in ~60 s |
+| [EKS](loadtest/results/hpa-eks-20261017-000510/report.md), final config (2026-10-17) | 65,715 | **0** | 186 req/s | 42 ms / 187 ms | 2 → 6 in ~120 s |
+
+On EKS k6 ran from the laptop, so latency includes the trip to us-east-1. All 6 API replicas
+fit on the managed node plus the one baseline Karpenter node; the second extra node wasn't needed.
 
 - **The load test found a race.** Run 1's errors were all `offer vanished`: a request lost the
   "one active quest" insert to another replica, and a third request expired the winner's offer
