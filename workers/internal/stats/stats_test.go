@@ -107,11 +107,6 @@ func TestRecomputeChainLocations(t *testing.T) {
 		}
 	}
 
-	// chain_stats still agrees, for API pods that read it until it's dropped.
-	var a int
-	if err := tx.QueryRow(ctx, `SELECT locations FROM chain_stats WHERE chain_key = 'stats-test-chain-a'`).Scan(&a); err != nil || a != 3 {
-		t.Errorf("chain_stats for chain a = %d (err %v), want 3", a, err)
-	}
 }
 
 // Two refreshes of different areas that share a chain, overlapping so that the first
@@ -134,7 +129,6 @@ func TestRecomputeConcurrentRefreshesOfOneChain(t *testing.T) {
 	var areas []string
 	cleanup := func() {
 		testPool.Exec(ctx, `DELETE FROM places WHERE overture_id LIKE 'stats-race-%'`)
-		testPool.Exec(ctx, `DELETE FROM chain_stats WHERE chain_key = $1`, chain)
 		testPool.Exec(ctx, `DELETE FROM area_stats WHERE left(geohash6, 5) = ANY($1)`, areas)
 		testPool.Exec(ctx, `DELETE FROM area_totals WHERE left(geohash6, 5) = ANY($1)`, areas)
 	}
@@ -232,9 +226,9 @@ func TestRecomputeConcurrentRefreshesOfOneChain(t *testing.T) {
 			t.Errorf("%s: chain_locations = %d, want 4 (lost update)", id, n)
 		}
 	}
-	var stats int
-	if err := testPool.QueryRow(ctx, `SELECT locations FROM chain_stats WHERE chain_key = $1`, chain).Scan(&stats); err != nil || stats != 4 {
-		t.Errorf("chain_stats = %d (err %v), want 4", stats, err)
+	var live int
+	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM places WHERE chain_key = $1`, chain).Scan(&live); err != nil || live != 4 {
+		t.Errorf("live count = %d (err %v), want 4", live, err)
 	}
 }
 

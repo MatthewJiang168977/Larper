@@ -3,7 +3,8 @@
 # the API or k6: the same (user, cell) pairs through each variant, one session.
 # Reports Postgres CPU per query (the container's cgroup counter, so parallel
 # workers and planning count), planning and execution time, and whether each
-# variant returns the same candidates as rank-bench/current.sql.
+# variant returns the same candidates as the reference variant (REF, default the
+# shipped query, rank-bench/chain-column.sql). Older variants: rank-bench/archive/.
 #
 #   loadtest/rank-bench.sh [variant ...]        # default: every rank-bench/*.sql
 #   N=200 CELLS=path/cells.json loadtest/rank-bench.sh
@@ -19,6 +20,7 @@ NS=${NS:-larper}
 N=${N:-200}
 SEED=${SEED:-0.42}
 CHECK_N=${CHECK_N:-40}
+REF=${REF:-chain-column}
 CELLS=${CELLS:-$(ls -d loadtest/results/cold-home-* 2>/dev/null | tail -1)/cells.json}
 [[ -f $CELLS ]] || { echo "no cells file ($CELLS): run cold-run.sh or set CELLS"; exit 1; }
 OUT=loadtest/results/rank-bench-$(date +%Y%m%d-%H%M%S)
@@ -52,12 +54,12 @@ fs.writeFileSync(process.argv[5], JSON.stringify(pairs));
 node -e "const fs = require('fs'); fs.writeFileSync('$OUT/pairs-check.json', JSON.stringify(JSON.parse(fs.readFileSync('$OUT/pairs.json', 'utf8')).slice(0, $CHECK_N)))"
 
 # Reference rows for the equivalence check.
-node loadtest/rank-bench.js loadtest/rank-bench/current.sql "$OUT/pairs-check.json" rows | psql -At >"$OUT/rows-current.txt"
+node loadtest/rank-bench.js "loadtest/rank-bench/$REF.sql" "$OUT/pairs-check.json" rows | psql -At >"$OUT/rows-ref.txt"
 
 {
   echo "# Ranking query bench: $(basename "$OUT")"
   echo
-  echo "$N pairs (cells from $CELLS, $(wc -l <"$OUT/users.txt") onboarded users, seed $SEED); equivalence on the first $CHECK_N."
+  echo "$N pairs (cells from $CELLS, $(wc -l <"$OUT/users.txt") onboarded users, seed $SEED); equivalence vs $REF on the first $CHECK_N."
   echo "Postgres CPU = the pg container's cgroup usage over the run / $N (includes parallel workers, planning, psql)."
   echo
   echo '| variant | Postgres CPU per query (ms) | wall per query (ms) | planning p50 (ms) | execution p50 / p95 (ms) | same candidates |'
@@ -91,7 +93,7 @@ for (const [i, ra] of a) {
   if (ra.length !== rb.length || above(ra) !== above(rb) || tastes(ra) !== tastes(rb)) bad++;
 }
 console.log(bad ? 'NO (' + bad + ' of ' + a.size + ' pairs differ)' : 'yes (' + a.size + ' pairs)');
-" "$OUT/rows-current.txt" "$OUT/rows-$v.txt")
+" "$OUT/rows-ref.txt" "$OUT/rows-$v.txt")
   fi
   node -e "
 const t = require('fs').readFileSync(process.argv[1], 'utf8');

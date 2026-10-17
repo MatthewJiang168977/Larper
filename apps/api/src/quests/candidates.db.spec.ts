@@ -29,14 +29,21 @@ const BENCH = join(__dirname, '../../../../loadtest/rank-bench');
 const PAIRS: { uid: number; lat: number; lng: number; r: number }[] = JSON.parse(
   readFileSync(join(BENCH, 'pairs.json'), 'utf8'),
 );
-// The replaced query, as the bench runs it, with the bench's placeholders as
-// parameters in the order candidates() passes them.
-const OLD_SQL = readFileSync(join(BENCH, 'current.sql'), 'utf8')
+// The replaced query, as the bench ran it, with the bench's placeholders as
+// parameters in the order candidates() passes them. It read the chain size from
+// chain_stats, which migration 0009 dropped: here it counts the chain's places live,
+// which is what chain_stats held (0008 found 0 mismatches before backfilling).
+const CHAIN_STATS_JOIN = 'LEFT JOIN chain_stats c ON c.chain_key = p.chain_key';
+const LIVE_CHAIN_JOIN = `LEFT JOIN LATERAL (SELECT count(*)::int AS locations FROM places p2
+  WHERE p2.chain_key = p.chain_key) c ON true`;
+const OLD_SQL = readFileSync(join(BENCH, 'archive/current.sql'), 'utf8')
   .replace(/^--.*$/gm, '')
   .replace(/:uid\b/g, '$1')
   .replace(/:lng\b/g, '$2')
   .replace(/:lat\b/g, '$3')
-  .replace(/:r\b/g, '$4');
+  .replace(/:r\b/g, '$4')
+  .replace(CHAIN_STATS_JOIN, LIVE_CHAIN_JOIN);
+if (OLD_SQL.includes('chain_stats')) throw new Error('archive/current.sql: chain_stats join not replaced');
 const OLD_SQL_TIEBREAK = OLD_SQL.replace('ORDER BY taste DESC', 'ORDER BY taste DESC, p.id');
 const DECK_SIZE = 10;
 
@@ -85,12 +92,13 @@ describeDb('two-phase candidate query (real database)', () => {
     await plain.end();
   });
 
-  // The old query read the chain size from chain_stats; candidates() now reads the
-  // copy on each place (migration 0008, kept current by stats.Recompute).
-  it('has the same chain size on every place as chain_stats', async () => {
+  // candidates() reads the chain size stored on each place (migration 0008, kept
+  // current by stats.Recompute): it must equal a live count of the chain's places.
+  it('has the live chain size on every place', async () => {
     const { rows } = await pool.query<{ n: string }>(
-      `SELECT count(*) AS n FROM places p LEFT JOIN chain_stats c ON c.chain_key = p.chain_key
-       WHERE p.chain_locations <> coalesce(c.locations, 1)`,
+      `SELECT count(*) AS n FROM places p
+       JOIN (SELECT chain_key, count(*)::int AS live FROM places GROUP BY 1) c USING (chain_key)
+       WHERE p.chain_locations <> c.live`,
     );
     expect(rows[0].n).toBe('0');
   });
