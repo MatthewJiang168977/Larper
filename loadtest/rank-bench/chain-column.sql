@@ -1,6 +1,6 @@
--- What QuestsService.candidates() runs now: two-phase.sql with the chain size read
--- from places.chain_locations (migration 0008) instead of a chain_stats lookup per
--- winner.
+-- What QuestsService.candidates() runs: the two-phase query (archive/two-phase.sql)
+-- with the chain size read from places.chain_locations (migration 0008) instead of a
+-- chain_stats lookup per winner. The reference for rank-bench.sh.
 -- setup:
 SET max_parallel_workers_per_gather = 0
 -- query:

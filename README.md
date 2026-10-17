@@ -169,10 +169,9 @@ Slots are append-only, so stored vectors never change meaning. Of 566k open NYC 
 
 | Table | Purpose |
 |---|---|
-| `places` | Overture places: `geography(Point)` (GiST), `tag_vec vector(160)`, tags, chain key, contact links |
+| `places` | Overture places: `geography(Point)` (GiST), `tag_vec vector(160)`, tags, chain key + `chain_locations` (indie score), contact links |
 | `tags` | Slot → tag mapping, published by the loader so Go and TypeScript agree on the vector layout |
 | `area_stats`, `area_totals` | Tag counts and place totals per geohash6 cell (rarity) |
-| `chain_stats` | Locations per chain key (indie score) |
 | `areas_ingested` | Which geohash5 areas have data |
 | `users`, `taste_profiles` | Clerk id → user; `vec vector(160)` + `updated_at` (the cache version) |
 | `quests` | The quest log; state enum, frozen reasons, offer origin; partial unique index |
@@ -237,6 +236,16 @@ Slots are append-only, so stored vectors never change meaning. Of 566k open NYC 
   baseline and the second is scale-out headroom.
 - **EKS API reachable from one IP.** The public endpoint only accepts `api_allowed_cidrs` (no
   default, and `0.0.0.0/0` is rejected), set in a gitignored `terraform.tfvars`.
+- **Schema changes as expand/contract.** Migrations run before pods roll out (pre-upgrade hook),
+  so each one has to work for the pods still running. Moving the chain size onto the place took
+  two releases: 0008 added `places.chain_locations` while the stats refresh kept writing
+  `chain_stats` for API pods that still read it, then 0009 dropped `chain_stats` once nothing
+  read it. A grep of the repo (API, workers, tests, load tests, dashboards) found no other
+  reader. The table's row locks had also been serializing concurrent stats refreshes by
+  accident; a per-chain advisory lock took over that job first, so the drop is safe on its own
+  (the concurrency test passes with only the lock). In the drop's release, old workers can
+  still try to write the table for the few seconds of their rollout; their ingest job fails and
+  retries (5 attempts, 5–40 s backoff), and the retry is idempotent.
 - **Monitoring has hard limits.** Grafana once crash-looped
   (OOM at 256Mi) and, with no CPU limit, burned ~9 cores per restart on the node running Postgres,
   which silently skewed two load tests. Monitoring now has hard CPU and memory limits.
@@ -588,8 +597,9 @@ query looked up in `chain_stats` once per winner (3,000 index probes). Migration
 [0008](db/migrations/0008_place_chain_locations.up.sql) stores it on the place
 (`places.chain_locations`), and [`stats.Recompute`](workers/internal/stats/stats.go) keeps it
 current for every chain present in a refreshed area, wherever its other locations are.
-`chain_stats` is still written for API pods that read it during a rollout; a later migration
-drops it. Six interleaved runs, alternating which variant went first, medians per query
+`chain_stats` was written alongside it for one release, for API pods still reading it during
+the rollout; migration [0009](db/migrations/0009_drop_chain_stats.up.sql) then dropped it.
+Six interleaved runs, alternating which variant went first, medians per query
 ([1](loadtest/results/rank-bench-20261017-155013/report.md),
 [2](loadtest/results/rank-bench-20261017-155038/report.md),
 [3](loadtest/results/rank-bench-20261017-155101/report.md),
@@ -603,8 +613,9 @@ drops it. Six interleaved runs, alternating which variant went first, medians pe
 | **Two-phase, chain size on the place (shipped)** | **16.9 ms (−24%)** | **~42 ms** |
 
 The column was faster in 5 of the 6 pairs, by a median 4.4 ms. `candidates.db.spec.ts` checks
-that every place's `chain_locations` equals what `chain_stats` says, and its exact-equality
-check on the 200 pairs compares against the old query, which still joins `chain_stats`;
+that every place's `chain_locations` equals a live count of its chain, and its exact-equality
+check on the 200 pairs compares against the original query (`rank-bench/archive/current.sql`,
+its `chain_stats` join swapped for that live count);
 `workers/internal/stats/stats_test.go` checks `Recompute` (counts across areas, untouched
 chains left alone). Against the original query (57.2 ms, p95 72.5 ms) the miss path is now
 about 3.4x cheaper in Postgres.
@@ -686,4 +697,4 @@ for Students credit. The load balancer rate is from Azure's pricing page.
 - [x] **6. Events:** transactional outbox, Go relay + idempotent taste-worker with DLQ, protobuf events, geofenced check-in.
 - [x] **7. Async ingest:** unmapped area → leased work queue → ingest-worker (DuckDB) → stats refresh; "surveying the area…" in the app.
 - [x] **8. Deploy + prove it:** Prometheus/Grafana, k6 load test showing the HPA scale out (k3d and EKS), SQS queue, failure test, autoscaler sizing, cache-miss test, Terraform EKS + Karpenter (applied, load tested, destroyed), always-free k3s on Oracle Ampere A1 (bootstrap, backups and runbook in `infra/oci-k3s`, rehearsed on a local stand-in VM including a k3s restart under load and a restore).
-- [ ] **Next:** Oracle A1 deploy once the probe finds capacity; optional EKS failure test; drop `chain_stats` (contract step); a smaller candidate cap once the equivalence test shows the deck doesn't change.
+- [ ] **Next:** Oracle A1 deploy once the probe finds capacity; optional EKS failure test; a smaller candidate cap once the equivalence test shows the deck doesn't change.
