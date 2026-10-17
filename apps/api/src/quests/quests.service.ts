@@ -240,25 +240,38 @@ export class QuestsService {
   }
 
   // Places in the radius (GiST index), with taste similarity computed by pgvector
-  // (<=> is cosine distance) against the user's stored vector.
+  // (<=> is cosine distance) against the user's stored vector. Two steps: rank on the
+  // narrow columns, then fetch names, tags, links, distance and chain size for the
+  // winners only. A dense cell has ~10k places in the radius, and doing that work for
+  // all of them was a third of the query (loadtest/rank-bench.sh).
+  // Ties are broken by id: in dense cells thousands of places share the lowest taste
+  // (no tags in common), the limit cuts through them, and without a tiebreak which
+  // ones made it depended on the plan, so the same request could get another deck.
   private async candidates(userId: string, lat: number, lng: number, radiusM: number): Promise<Candidate[]> {
     const { rows } = await this.pg.query<Candidate>(
-      `WITH o AS (SELECT ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography AS g)
+      `WITH o AS (SELECT ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography AS g),
+       top AS (
+         SELECT p.id, coalesce(1 - (p.tag_vec <=> t.vec), 0)::float8 AS taste
+         FROM places p
+         CROSS JOIN o
+         LEFT JOIN taste_profiles t ON t.user_id = $1
+         WHERE ST_DWithin(p.geom, o.g, $4)
+         ORDER BY taste DESC, p.id
+         LIMIT ${MAX_CANDIDATES}
+       )
        SELECT p.id::text, p.name,
               ST_Y(p.geom::geometry) AS lat, ST_X(p.geom::geometry) AS lng,
               p.categories[array_length(p.categories, 1)] AS category, p.tags,
-              coalesce(1 - (p.tag_vec <=> t.vec), 0)::float8 AS taste,
+              top.taste,
               coalesce(c.locations, 1) AS "chainLocations",
               p.confidence::float8 AS confidence,
               ST_Distance(p.geom, o.g)::float8 AS "distanceM",
               p.website, p.instagram, p.phone
-       FROM places p
+       FROM top
+       JOIN places p ON p.id = top.id
        CROSS JOIN o
-       LEFT JOIN taste_profiles t ON t.user_id = $1
        LEFT JOIN chain_stats c ON c.chain_key = p.chain_key
-       WHERE ST_DWithin(p.geom, o.g, $4)
-       ORDER BY taste DESC
-       LIMIT ${MAX_CANDIDATES}`,
+       ORDER BY top.taste DESC, top.id`,
       [userId, lng, lat, radiusM],
     );
     return rows;

@@ -1,0 +1,220 @@
+{
+    "root_group": {
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "200": {
+                    "name": "200",
+                    "path": "::200",
+                    "id": "4230b0c1b1cb609da348fcf04ffd96f4",
+                    "passes": 20875,
+                    "fails": 0
+                }
+            },
+        "name": ""
+    },
+    "metrics": {
+        "http_req_waiting": {
+            "med": 61.856,
+            "max": 810.5459,
+            "p(90)": 131.91556,
+            "p(95)": 162.26271499999993,
+            "avg": 73.950577833273,
+            "min": 0.5388
+        },
+        "http_req_duration{expected_response:true}": {
+            "avg": 74.5307162156026,
+            "min": 0.7982,
+            "med": 62.3468,
+            "max": 811.0709,
+            "p(90)": 132.54973000000004,
+            "p(95)": 162.69844
+        },
+        "http_req_sending": {
+            "avg": 0.029329476934253577,
+            "min": 0,
+            "med": 0,
+            "max": 13.7361,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "data_sent": {
+            "count": 20072003,
+            "rate": 68025.6048528185
+        },
+        "checks": {
+            "passes": 20875,
+            "fails": 0,
+            "value": 1
+        },
+        "vus_max": {
+            "value": 100,
+            "min": 100,
+            "max": 100
+        },
+        "http_req_duration{name:today}": {
+            "max": 811.0709,
+            "p(90)": 134.26180000000002,
+            "p(95)": 164.60275,
+            "avg": 75.24112514011976,
+            "min": 10.6649,
+            "med": 61.794,
+            "thresholds": {
+                "p(95)<800": false
+            }
+        },
+        "http_reqs": {
+            "count": 22024,
+            "rate": 74.64107699059603
+        },
+        "iteration_duration": {
+            "med": 1077.872,
+            "max": 1949.9265,
+            "p(90)": 1477.1407000000002,
+            "p(95)": 1528.62077,
+            "avg": 1079.6653813604785,
+            "min": 520.3124
+        },
+        "http_req_duration": {
+            "med": 62.33925,
+            "max": 811.0709,
+            "p(90)": 132.54579000000004,
+            "p(95)": 162.69832,
+            "avg": 74.52470578459862,
+            "min": 0.7982
+        },
+        "http_req_blocked": {
+            "avg": 0.18566790319651288,
+            "min": 0,
+            "med": 0,
+            "max": 205.2173,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "iterations": {
+            "rate": 70.74702516249057,
+            "count": 20875
+        },
+        "http_req_receiving": {
+            "min": 0,
+            "med": 0,
+            "max": 14.6014,
+            "p(90)": 1.60357,
+            "p(95)": 2.2513199999999984,
+            "avg": 0.5447984743915731
+        },
+        "http_req_tls_handshaking": {
+            "avg": 0.1381114874682165,
+            "min": 0,
+            "med": 0,
+            "max": 113.5869,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "http_req_failed": {
+            "passes": 2,
+            "fails": 22022,
+            "value": 0.00009081002542680712
+        },
+        "vus": {
+            "max": 100,
+            "value": 4,
+            "min": 0
+        },
+        "data_received": {
+            "count": 81214292,
+            "rate": 275241.65555343026
+        },
+        "http_req_connecting": {
+            "avg": 0.03673931620050853,
+            "min": 0,
+            "med": 0,
+            "max": 12.3301,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "http_req_failed{name:today}": {
+            "passes": 0,
+            "fails": 20875,
+            "thresholds": {
+                "rate<0.01": false
+            },
+            "value": 0
+        }
+    },
+    "setup_data": {
+        "cards": [
+            "matcha",
+            "boba",
+            "line-dessert",
+            "noodle-counter",
+            "counter-seat",
+            "hidden-bar",
+            "dive",
+            "natty-wine",
+            "photobooth",
+            "games",
+            "crate-digging",
+            "thrift",
+            "paper",
+            "odd-museum",
+            "live-set",
+            "green",
+            "bathhouse",
+            "late-night"
+        ],
+        "sessions": [
+            "sess_3Kpo6WItBy7mykV2L8aEgBSeDAd",
+            "sess_3Kpo6kkbmNFAmuhMN65kAGdFU0y",
+            "sess_3Kpo6ixuzsUg37tSnr8gMwszhQQ",
+            "sess_3Kpo6kYgEX1I5OgPtIL5xt6fGpX",
+            "sess_3Kpo6prgGU6AjIWXJJSO5YnzL3Z",
+            "sess_3Kpo6lwm3PkAZijqgmzvrAeIxEP",
+            "sess_3Kpo6ph9UVl0WqNWyWEu83RQxaM",
+            "sess_3Kpo6nNCmbFHhHyZWYB37sDDWyR",
+            "sess_3Kpo6vIJf7z1RDjUJiPvDSwpCzS",
+            "sess_3Kpo6tcLZFFXCuIfpyALzF0YilC",
+            "sess_3Kpo6xktLGY74k3KSwdNHXZQqyS",
+            "sess_3Kpo76Niz50Mi56ZQWSSySlLIif",
+            "sess_3Kpo765jrxdUb2EDXIW1aEn8lKF",
+            "sess_3Kpo73AxcJ0Isgasbg2dNwe54uD",
+            "sess_3Kpo76vFLRRDcTQRSuFxz4983jW",
+            "sess_3Kpo7EFVf8cLdLEQ4pbaA5K6xfB",
+            "sess_3Kpo7DJzUnDV9UxP9ytb6Vlm3UD",
+            "sess_3Kpo7AV81sCT1uZ2RfRINDfXkDW",
+            "sess_3Kpo7Khtr9GfJIOiPVvCHi87kPg",
+            "sess_3Kpo7K9M5SOTRgOdkAE5YESnJDi",
+            "sess_3Kpo7NXXW45xmFuvRjYb5GkmCGS",
+            "sess_3Kpo7JaI45XyfR8b1mpugVw3ops",
+            "sess_3Kpo7SsEAnFfxoZbFDIXR3DBzDe",
+            "sess_3Kpo7PxgsDZmDMpzbTmZtlDmOu2",
+            "sess_3Kpo7S79bbYE5JW93erUwILoh21",
+            "sess_3Kpo7V5kfWZwydW2uBgvj5QKuWL",
+            "sess_3Kpo7d2QKrISu9LpfpteB62LXKO",
+            "sess_3Kpo7bTZmHQk4Op2N5qiGa8tO3F",
+            "sess_3Kpo7dWAMkiQtbpStZXKGiZWPYT",
+            "sess_3Kpo7lI2OnR4RdLSU3hzJtaYwPo",
+            "sess_3Kpo7kmf8GrsmClOG4cNukcSquf",
+            "sess_3Kpo7fVaHI8kol4kP0a71VnAYA7",
+            "sess_3Kpo7gGdWwl3cl5OxL0YChaPrLl",
+            "sess_3Kpo7qflZUVMbstDIUhrBqAydY7",
+            "sess_3Kpo7q0wGtEEQ7XOfbwThEypqmx",
+            "sess_3Kpo7wD5qaMVJvgghtlxzzFNPwj",
+            "sess_3Kpo7wiRUEN1Cvkj4eeEvhaiJej",
+            "sess_3Kpo7uA77dZ7ipmaXapkO41Z6dw",
+            "sess_3Kpo7vuTyQ3AfPqTjY1uuo4hpcX",
+            "sess_3Kpo84f2DhWQC3mhcHAsik4nFfw",
+            "sess_3Kpo870nsW2LDNoUHYvZ2nNzEqU",
+            "sess_3Kpo88d3tUYDkZLvO4bIOWvGufj",
+            "sess_3Kpo832I7WwTNxOqh0PjaEXZ3FX",
+            "sess_3Kpo8DQmFlsstVwoR1grJNTSwkq",
+            "sess_3Kpo89XH366iTY0cqEkv3JAsuhJ",
+            "sess_3Kpo9QFehmXydKDhKCI6lK9LrV7",
+            "sess_3Kpo9X9cFXoOgGnVSj7qUA9qMG5",
+            "sess_3Kpo9YaTfwDo1ClKsgZCOUBJYsr",
+            "sess_3Kpo9bSXgsFGnw5xCQx5gmYYppM",
+            "sess_3Kpo9cwdhMzCz48ezULQ7azrPMv"
+        ]
+    }
+}

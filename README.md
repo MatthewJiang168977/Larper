@@ -300,6 +300,7 @@ kubectl -n larper logs -l app=taste-worker -f                           # applie
 pnpm proto:gen                                                          # regenerate event types (needs buf)
 kubectl -n larper logs -l app=ingest-worker -f                          # area ingests: leased, ingested, retries
 TEST_DATABASE_URL=postgres://... go test ./internal/queue/              # queue integration tests (in workers/)
+TEST_DATABASE_URL=postgres://... pnpm --filter @larper/api test candidates.db  # ranking query vs the old one on real data (pg port-forward)
 ```
 
 ### Load test and monitoring
@@ -323,7 +324,7 @@ users (a Clerk dev instance stops at 100). The secret key stays on the machine r
 |---|---|---|
 | Scale-out ramp to 200 VUs, warm cache | k3d | 195 req/s, p50 / p95 / p99 21 / 47 / 73 ms, 0 errors, 2 → 6 API replicas |
 | Same ramp, warm cache | **EKS** (1 Graviton node + Karpenter) | 186 req/s, p50 / p95 42 / 187 ms from the laptop to us-east-1, 0 errors, 2 → 6 replicas on the managed node + one Karpenter node |
-| Cache miss, 100 VUs, Redis flushed | k3d | deck hits 0.1%, p50 / p95 / p99 70 / 178 / 267 ms, 0 errors; **Postgres is the bottleneck** (~5 cores at 92 req/s) |
+| Cache miss, 100 VUs, Redis flushed | k3d | deck hits 0.1%, p50 / p95 / p99 59 / 151 / 217 ms, 0 errors; Postgres ~2.9 cores at 93 req/s after the [ranking-query fix](#ranking-query-fix) (it was the bottleneck at ~5 cores) |
 | Failure test: kill API, workers, Redis, Postgres under load | k3d | 0 errors for everything but Postgres; Postgres down 13 s = 143 errors, no API crash (it used to take every API pod down) |
 | Autoscaler sizing | k3d | 300m request, no CPU limit, 60% target ([ADR](docs/decisions/0001-hpa-cpu-request.md)): peak p95 3.25 s → 0.16 s |
 | Oracle k3s rebuild: bootstrap, reboot, k3s restart under load, restore from backup | local stand-in VM | all checks pass ([details](infra/oci-k3s/README.md#local-rehearsal)) |
@@ -459,7 +460,8 @@ Every number above is the **warm-cache** case. `loadtest/cold-run.sh` measures t
 Redis flushed right before k6, onboarded users (so ranking computes real taste similarity),
 and every request in a cell the user hasn't asked about yet, ramping to 100 VUs and holding
 3 minutes on the final config (2026-10-17, k3d). Only cells whose whole search area is
-already ingested are used: no request started an ingest job.
+already ingested are used: no request started an ingest job. These runs are from before the
+[ranking-query fix](#ranking-query-fix); the after numbers are there.
 
 - **Cache miss** (`COLD_MODE=home`): each user has a home cell, and their requests visit
   every populated cell within 4.9 km of it once. Offers expire at 5 km, so the user's offer
@@ -488,17 +490,100 @@ already ingested are used: no request started an ingest job.
 - **Neither was saturated.** 100 VUs with ~1 s of think time can't ask for more than ~93
   req/s, the laptop had half its cores free, and p95 stayed under 200 ms. The ceiling for
   misses is lower than for hits, but these runs don't reach it.
-- **Where Postgres's time goes:** for a busy Manhattan cell the candidate query reads ~8,100
-  places in the 1.5 km radius, runs on 3 parallel workers, and takes 64 ms, 20 ms of that
-  planning (the driver doesn't use prepared statements). The planner expects 3 rows from the
-  geography radius filter instead of thousands, and re-checks the user's taste row per place.
-  Prepared statements, a better estimate (or a `MATERIALIZED` taste CTE), and a smaller
-  candidate cap are the next things to try.
+- **Where Postgres's time went:** the candidate query, ~57 ms of Postgres CPU per miss, almost
+  all of the ~55m per req/s above. See the fix below. (A first read of one plan blamed the
+  per-place lookup of the user's taste row and 20 ms of planning; measured over 200 queries,
+  the lookup costs ~1 µs a place and planning ~2 ms once a connection is warm.)
 - **The two miss runs aren't a clean A/B for offer churn.** A home walk stays near the 50
   homes with the most neighbours, mostly Manhattan: those cells average 144 places, against
   81 for the whole city that relocating users sample. Fewer candidates per miss outweigh
   the extra offer writes, which is why the churn run is cheaper. Relocating users also share
   more area-stats misses (71% hits), since they spread over every cell.
+
+#### Ranking-query fix
+
+`loadtest/rank-bench.sh` runs variants of the candidate query straight against Postgres for
+200 (onboarded user, cell) pairs taken from the clean cache-miss run
+([`pairs.json`](loadtest/rank-bench/pairs.json)). It reads the Postgres container's CPU from
+its cgroup (so parallel workers and planning count) and checks that each variant returns the
+same candidates as the original. First pass, median of 3 runs, per query
+([1](loadtest/results/rank-bench-20261017-145511/report.md),
+[2](loadtest/results/rank-bench-20261017-145621/report.md),
+[3](loadtest/results/rank-bench-20261017-145717/report.md)):
+
+| Variant | Postgres CPU | Wall | Execution p95 | Same candidates |
+|---|---|---|---|---|
+| Original | 57.2 ms | 31.1 ms | 72.5 ms | |
+| No parallel workers | 21.3 ms | 22.3 ms | 66.0 ms | yes |
+| Taste vector passed in instead of joined, no parallel workers | 20.9 ms | 22.1 ms | 64.5 ms | yes |
+| No parallel workers + two-phase | 18.8 ms | 19.7 ms | 45.4 ms | yes |
+| Same, radius filter on a sphere | 17.1 ms | 18.6 ms | 39.6 ms | no (22 of 40 pairs) |
+
+- **Parallel workers were most of it.** The planner expects 3 rows from the geography radius
+  filter (there are thousands), but still gave dense cells 3 parallel workers: ~4 ms less
+  latency for 2.3x the CPU. Under load every core is already busy with other requests, so the
+  API's pool turns them off (`max_parallel_workers_per_gather=0` as a connection option).
+  That reaches only the API's own connections: the workers and batch jobs log in as the same
+  database user, so `ALTER ROLE` would have taken parallelism from them too.
+- **Two-phase:** rank on id + taste first, then fetch names, tags, links, distance and chain
+  size for the 3,000 winners only. Dense cells have ~10k places in the radius, so this mostly
+  cuts the tail.
+- **Ruled out:** passing the taste vector in (no gain), and a sphere instead of the ellipsoid
+  for the radius filter (~1 ms, but it changes which places sit inside 1.5 km).
+
+**The old query wasn't deterministic.** In dense cells thousands of places share the lowest
+taste (no tags in common with the user): in one pair 3,632 places in the radius tie, and
+2,861 of them fill out the 3,000 candidates. With no tiebreak, *which* 2,861 depended on the
+plan; a parallel and a serial run of the old query picked different ones, and other factors
+(rarity, independence) can still lift one of them into the deck. The query now breaks ties by
+id, so a request always gets the same deck. The tiebreak costs ~1–2 ms, inside this laptop's
+noise: six interleaved runs, medians per query
+([1](loadtest/results/rank-bench-20261017-152527/report.md),
+[2](loadtest/results/rank-bench-20261017-152605/report.md),
+[3](loadtest/results/rank-bench-20261017-152639/report.md),
+[4](loadtest/results/rank-bench-20261017-152746/report.md),
+[5](loadtest/results/rank-bench-20261017-152834/report.md),
+[6](loadtest/results/rank-bench-20261017-152922/report.md); the same variant ranged 17–36 ms
+between runs. Three runs just before, without the no-tiebreak variants, had the shipped query
+at 25–32 ms: [1](loadtest/results/rank-bench-20261017-152156/report.md),
+[2](loadtest/results/rank-bench-20261017-152244/report.md),
+[3](loadtest/results/rank-bench-20261017-152333/report.md)):
+
+| Variant (no parallel workers) | Postgres CPU | Execution p95 |
+|---|---|---|
+| One query, no tiebreak | 22.6 ms | ~67 ms |
+| One query + id tiebreak | 21.5 ms (3 runs) | ~71 ms |
+| Two-phase, no tiebreak | 19.5 ms | ~50 ms |
+| **Two-phase + id tiebreak (shipped)** | **20.9 ms** (original: 57.2 ms, −63%) | **~50 ms** (original: 72.5 ms) |
+
+[`candidates.db.spec.ts`](apps/api/src/quests/candidates.db.spec.ts) checks this against a
+real database on the 200 pairs (skipped unless `TEST_DATABASE_URL` is set):
+- the shipped query equals the old query with only the id tiebreak added, exactly:
+  candidates, the ranked top 200 and the 10-place deck, for all 200 pairs;
+- against the old query as it was, every candidate above the tie matches, and the number of
+  tied ones (27 of the 200 pairs have ties at the limit);
+- API connections run without parallel workers; a plain connection as the same user keeps
+  the default.
+
+End to end, the same clean cache-miss test on the new image
+([report](loadtest/results/cold-home-fix-20261017-150126/report.md)):
+
+| Clean cache miss, 100 VUs | Before | After |
+|---|---|---|
+| Postgres CPU | ~5.1 cores (55m per req/s) | **~2.9 cores (31m per req/s, −44%)** |
+| API CPU per req/s | 44m | 49m |
+| p50 / p95 / p99 | 70 / 178 / 267 ms | **59 / 151 / 217 ms** |
+| Throughput, errors, deck hits | 92 req/s, 0, 0.1% | 93 req/s, 0, 0.1% |
+
+- **The bottleneck moved to the API,** which scales out: Postgres now spends less per miss than
+  the API does. Each request also runs a few small queries (offer, survey, taste), so the saving
+  per request (~24 ms) is below the query's ~38 ms; under real load the original also couldn't
+  always get its 3 workers.
+- **API CPU up 12%:** nothing changed on its side (same rows, same scoring), and that's inside
+  the run-to-run spread seen today; an A/B in one session would settle it.
+- **Next:** chain sizes are ~5 ms of the remaining ~17 (a join per winner; storing the size on
+  the place would remove it), distances ~3 ms, and the 3,000-candidate cap drives the API's
+  parse cost; cutting it needs a test that the final deck doesn't change.
 
 ---
 
@@ -559,4 +644,4 @@ for Students credit. The load balancer rate is from Azure's pricing page.
 - [x] **6. Events:** transactional outbox, Go relay + idempotent taste-worker with DLQ, protobuf events, geofenced check-in.
 - [x] **7. Async ingest:** unmapped area → leased work queue → ingest-worker (DuckDB) → stats refresh; "surveying the area…" in the app.
 - [x] **8. Deploy + prove it:** Prometheus/Grafana, k6 load test showing the HPA scale out (k3d and EKS), SQS queue, failure test, autoscaler sizing, cache-miss test, Terraform EKS + Karpenter (applied, load tested, destroyed), always-free k3s on Oracle Ampere A1 (bootstrap, backups and runbook in `infra/oci-k3s`, rehearsed on a local stand-in VM including a k3s restart under load and a restore).
-- [ ] **Next:** Oracle A1 deploy once the probe finds capacity; optional EKS failure test; cheaper miss path in Postgres (prepared statements, the taste join, a smaller candidate cap).
+- [ ] **Next:** Oracle A1 deploy once the probe finds capacity; optional EKS failure test; cheaper miss path (chain size stored on the place, a smaller candidate cap once a test shows the deck doesn't change).
