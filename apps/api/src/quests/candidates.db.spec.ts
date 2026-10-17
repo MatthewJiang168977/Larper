@@ -24,6 +24,9 @@ import { Candidate, mmr, Scored } from './scoring';
 //   and on how many tied ones there are.
 const URL = process.env.TEST_DATABASE_URL;
 const describeDb = URL ? describe : describe.skip;
+// The 200-pair checks need the NYC places and the bench's onboarded users. CI runs
+// against an empty, freshly migrated database and sets TEST_NYC_DATA=0 to skip them.
+const itNyc = process.env.TEST_NYC_DATA === '0' ? it.skip : it;
 
 const BENCH = join(__dirname, '../../../../loadtest/rank-bench');
 const PAIRS: { uid: number; lat: number; lng: number; r: number }[] = JSON.parse(
@@ -109,7 +112,7 @@ describeDb('two-phase candidate query (real database)', () => {
     expect(await show(plain)).not.toBe('0');
   });
 
-  it('matches the old query plus an id tiebreak exactly: candidates, top 200, deck', async () => {
+  itNyc('matches the old query plus an id tiebreak exactly: candidates, top 200, deck', async () => {
     const diffs: string[] = [];
     for (const [i, p] of PAIRS.entries()) {
       const uid = String(p.uid);
@@ -134,7 +137,7 @@ describeDb('two-phase candidate query (real database)', () => {
     expect(diffs).toEqual([]);
   }, 600_000);
 
-  it('matches the old query as it was everywhere but the tie at the limit', async () => {
+  itNyc('matches the old query as it was everywhere but the tie at the limit', async () => {
     const diffs: string[] = [];
     let ties = 0;
     for (const [i, p] of PAIRS.entries()) {

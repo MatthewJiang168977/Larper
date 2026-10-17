@@ -1,0 +1,132 @@
+# Checks every pull request and every push to main: the API (typecheck, lint, unit
+# tests), the Go workers (gofmt, vet, unit tests), the database tests against a real
+# Postgres with PostGIS and pgvector, and the Helm chart.
+#
+# No secrets and no cloud: nothing here deploys, and pull requests from forks run it
+# with read-only permissions. It doesn't touch oci-probe.yml (that one only runs on
+# its schedule and manual dispatch, in its own concurrency group).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# A new push to the same branch or PR cancels the run it replaces.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: API (typecheck, lint, unit tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4 # version from package.json's packageManager
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @larper/api typecheck
+      - run: pnpm --filter @larper/api lint
+      # The database specs skip themselves without TEST_DATABASE_URL; the db job runs them.
+      - run: pnpm --filter @larper/api test
+
+  workers:
+    name: Go workers (gofmt, vet, unit tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: workers
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: workers/go.mod
+          cache-dependency-path: workers/go.sum
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then echo "gofmt needed:"; echo "$unformatted"; exit 1; fi
+      - run: go vet ./...
+      # Integration tests skip themselves without TEST_DATABASE_URL; the db job runs them.
+      - run: go test ./...
+
+  db:
+    name: Database tests (Postgres 17 + PostGIS + pgvector)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.0-pg17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: larper
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/larper?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      # The stack's image is CloudNativePG's with PostGIS added; this is the same pair
+      # of extensions on the stock postgres image, which CI can start as a service.
+      - name: Add PostGIS and create the extensions (CNPG does this at initdb)
+        run: |
+          docker exec ${{ job.services.postgres.id }} sh -c \
+            'apt-get update -qq && apt-get install -y -qq --no-install-recommends postgresql-17-postgis-3 >/dev/null'
+          docker exec ${{ job.services.postgres.id }} psql -U postgres -d larper \
+            -c 'CREATE EXTENSION postgis' -c 'CREATE EXTENSION vector'
+      - name: Apply the migrations (same image as the Helm migrate Job)
+        run: |
+          docker run --rm --network host -v "$PWD/db/migrations:/migrations:ro" migrate/migrate:v4.19.0 \
+            -path /migrations -database "$TEST_DATABASE_URL" up
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: workers/go.mod
+          cache-dependency-path: workers/go.sum
+      # Queue tests, the stats refresh and the lost-update race test bring their own
+      # rows. The Midtown / all-NYC refresh tests skip: they need the NYC places.
+      - name: Go integration tests
+        working-directory: workers
+        run: go test -count=1 ./internal/...
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The two 200-pair equivalence checks need the NYC places and the bench's users,
+      # so they're skipped here (TEST_NYC_DATA=0) and run locally against the stack.
+      - name: API database tests
+        env:
+          TEST_NYC_DATA: '0'
+        run: pnpm --filter @larper/api test candidates.db
+
+  helm:
+    name: Helm chart (lint, render)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v4.3.0
+      - run: helm lint infra/helm/larper
+      - name: Render with each values file
+        run: |
+          chart=infra/helm/larper
+          helm template larper $chart -n larper > /dev/null
+          helm template larper $chart -n larper --set monitoring.enabled=true > /dev/null
+          helm template larper $chart -n larper -f $chart/values-aks.yaml > /dev/null
+          helm template larper $chart -n larper -f $chart/values-eks.yaml > /dev/null
+          # oci-up.sh supplies the Object Storage endpoint at deploy time.
+          helm template larper $chart -n larper -f $chart/values-oci.yaml \
+            --set postgres.backup.endpointURL=https://objectstorage.example.invalid > /dev/null

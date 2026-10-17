@@ -1,5 +1,7 @@
 # Larper
 
+[![CI](https://github.com/MatthewJiang168977/Larper/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MatthewJiang168977/Larper/actions/workflows/ci.yml)
+
 Find the most niche thing to do near you, shown on a 3D map of your surroundings.
 
 Larper hands you one **side quest** a day: the most unusual spot nearby that fits your taste. Think
@@ -8,6 +10,139 @@ accept it, walk there, and check in. Every choice you make feeds back into what 
 
 It's also a systems project: a small but real distributed system (load-balanced API, cache, event
 stream, idempotent workers, Kubernetes) built to be explained, measured, and broken on purpose.
+
+---
+
+## Quick start
+
+From a fresh clone to the app running on your machine. It was built on Windows 11; macOS and
+Linux work the same without the Windows notes. The first run takes about 20 minutes (five
+image builds and a one-minute data extract), and later runs a few.
+
+### Prerequisites
+
+| Tool | Version used | Install (Windows) |
+|---|---|---|
+| Docker Desktop (WSL 2 backend) | 29.8 | `winget install Docker.DockerDesktop`, then start it once |
+| k3d (bundles k3s) | 5.9 (k3s 1.35.5) | `winget install k3d.k3d` |
+| kubectl | 1.36 | `winget install Kubernetes.kubectl` |
+| Helm | 4.3 | `winget install Helm.Helm` |
+| Go | 1.27 (`workers/go.mod`) | `winget install GoLang.Go` |
+| Node.js + pnpm | Node 22, pnpm 10.33.2 (`packageManager`) | `winget install OpenJS.NodeJS.LTS`, then `corepack enable` in an admin PowerShell (it writes next to `node.exe`), or `npm install -g pnpm@10.33.2` without admin |
+| Python + DuckDB | 3.13, duckdb 1.5 | `winget install Python.Python.3.13`, then `pip install duckdb` |
+| Git for Windows (Git Bash) | 2.46 | `winget install Git.Git` |
+
+You also need a free [Clerk](https://clerk.com) account for sign-in, and about **10 GB of free
+RAM**: the stack takes ~7.5 GB in Docker's VM.
+
+### Windows notes
+
+- **Git Bash for everything in this README**, including `./scripts/*.sh`. Use PowerShell only for
+  `winget` and the admin fix below. Open a new Git Bash after installing so it picks up the PATH.
+- **`MSYS_NO_PATHCONV=1`.** Git Bash rewrites arguments that look like Unix paths (`/readyz`,
+  `/sys/fs/cgroup/cpu.stat`) into `C:/Program Files/Git/...` before Windows programs such as
+  `kubectl` see them. Prefix those commands:
+  `MSYS_NO_PATHCONV=1 kubectl -n larper exec pg-1 -c postgres -- cat /sys/fs/cgroup/cpu.stat`.
+- **Reserved ports (winnat).** Windows reserves ranges of ports for Hyper-V/WinNAT, and the ranges
+  move after a reboot. If the cluster's API port lands in one, `kubectl` fails with "No connection
+  could be made because the target machine actively refused it". The cluster config pins the API
+  to 6445 to make that rare. Check with `netsh interface ipv4 show excludedportrange protocol=tcp`.
+  Fix it in an **admin PowerShell**, then start the cluster again:
+  ```powershell
+  net stop winnat; net start winnat
+  ```
+- **Without admin rights: a port proxy.** Leave the reserved port alone and reach the API server
+  through a small container on the cluster's network, on a free port (6445 here, or any other):
+  ```bash
+  docker run -d --name k3d-larper-apiproxy --network k3d-larper -p 127.0.0.1:6445:6443 \
+    alpine/socat tcp-listen:6443,fork,reuseaddr tcp-connect:k3d-larper-server-0:6443
+  kubectl config set-cluster k3d-larper --server=https://127.0.0.1:6445
+  kubectl get nodes          # 3 nodes, Ready
+  ```
+  It has to be recreated after each `k3d cluster start`; remove it with
+  `docker rm -f k3d-larper-apiproxy`.
+
+### Clerk dev keys
+
+1. Sign up at [clerk.com](https://clerk.com) and create an application (email sign-in is
+   enough). New applications start with a **Development** instance; that's the one to use.
+2. In the dashboard, open **Configure → API keys** and copy the **Publishable key** (`pk_test_…`)
+   and the **Secret key** (`sk_test_…`).
+3. `cp apps/web/.env.example apps/web/.env.local` and paste both in. `.env.local` is gitignored.
+   The web app uses both; `scripts/up.sh` passes only the publishable key to the API, which
+   verifies tokens against your app's public keys and never holds the secret.
+
+### Zero to running
+
+```bash
+git clone https://github.com/MatthewJiang168977/Larper.git && cd Larper
+pnpm install                                     # ~2 min the first time
+cp apps/web/.env.example apps/web/.env.local     # then paste your Clerk keys
+./scripts/up.sh
+```
+`up.sh` creates the k3d cluster (1 server + 2 agents, a local registry on :5111, the ingress on
+:8080), installs CloudNativePG, builds and pushes the five images, and installs the chart. It
+ends with `Up. Try: for i in 1 2 3 4; do curl -s localhost:8080/healthz; echo; done`. Then:
+
+```bash
+kubectl -n larper get pods       # api x2, ingest-worker x2, outbox-relay, pg-1, redis, redpanda-0,
+                                 # taste-worker x2: all Running
+for i in 1 2 3 4; do curl -s localhost:8080/healthz; echo; done
+# {"status":"ok","pod":"api-69586d44f5-fhz58"}    the pod name changes between requests
+```
+
+Load the NYC places (Overture data, read straight from its public S3 bucket):
+
+```bash
+python data/extract_overture.py --out data/nyc.parquet       # "wrote 566… places", ~1 min, ~35 MB
+kubectl -n larper port-forward svc/pg-rw 55432:5432 &
+PW=$(kubectl -n larper get secret pg-app -o jsonpath='{.data.password}' | base64 -d)
+(cd workers && DATABASE_URL="postgres://larper:$PW@127.0.0.1:55432/larper?sslmode=require" \
+  go run ./cmd/load-places -in ../data/nyc.parquet)          # ends "INFO done read=… kept=…" (~80k kept)
+kill %1                                                      # stop the port-forward
+```
+
+Run the web app and open it:
+
+```bash
+pnpm web:dev       # Next.js on http://localhost:3001; /api/* goes to the cluster on :8080
+```
+Open <http://localhost:3001/?at=40.7295,-73.9965> (`?at=` fakes your location; this is
+Washington Square). Sign up, swipe through the onboarding cards, and the map shows today's quest.
+
+### Stop and clean up
+
+| To | Run |
+|---|---|
+| Pause, keeping everything (data included) | `k3d cluster stop larper`; later `k3d cluster start larper` |
+| Delete the cluster and its data (loaded places too) | `./scripts/down.sh` |
+| Check for leftovers afterwards | `docker ps -a --filter name=larper` (e.g. `docker rm -f k3d-larper-apiproxy`) |
+
+`pnpm web:dev` and port-forwards stop with Ctrl+C (or `kill %1` for a backgrounded one).
+
+### Troubleshooting
+
+- **A port is already in use.** The stack listens on 8080 (ingress), 5111 (registry), 6445 (k3d
+  API) and 3001 (web); the data load forwards 55432. Find the owner in PowerShell:
+  `Get-Process -Id (Get-NetTCPConnection -LocalPort 8080 -State Listen).OwningProcess`.
+- **`kubectl` refuses to connect.** Check that `kubectl config current-context` says
+  `k3d-larper` (`eks-up.sh` switches it to `larper-eks`), then see "Reserved ports" above.
+- **Low memory.** With under ~10 GB free, Windows pages Docker's VM: everything slows down, load
+  test numbers mean nothing, and pods can be OOM-killed. Check free RAM with
+  `(Get-Counter '\Memory\Available MBytes').CounterSamples.CookedValue` and close what you can
+  (browsers are the usual culprit). Docker's share is set in `%UserProfile%\.wslconfig`
+  (`[wsl2]`, `memory=`). The monitoring stack (`scripts/monitoring.sh`) is optional and adds ~1 GB.
+- **401 from the API after signing in.** The API has a different Clerk app's publishable key.
+  Fill in `apps/web/.env.local` and run `./scripts/up.sh` again (`helm -n larper get values
+  larper` shows what's set).
+- **Clerk's 100-user cap.** Development instances stop at 100 users; creating one more fails with
+  `403 user_quota_exceeded`. The load tests create up to 60 (`loadtest+0..9`,
+  `loadtest-cold+0..49`). Delete users under **Users** in the dashboard.
+- **Pods stuck after the laptop slept.** `k3d cluster stop larper && k3d cluster start larper`.
+  A warning about `/etc/hosts` during the start is harmless if the nodes come up Ready.
+
+The sections under [Running locally](#running-locally) have the day-to-day commands, load tests
+and monitoring.
 
 ---
 
@@ -242,13 +377,20 @@ Slots are append-only, so stored vectors never change meaning. Of 566k open NYC 
   `chain_stats` for API pods that still read it, then 0009 dropped `chain_stats` once nothing
   read it. A grep of the repo (API, workers, tests, load tests, dashboards) found no other
   reader. The table's row locks had also been serializing concurrent stats refreshes by
-  accident; a per-chain advisory lock took over that job first, so the drop is safe on its own
+  accident; an advisory lock took over that job first, so the drop is safe on its own
   (the concurrency test passes with only the lock). In the drop's release, old workers can
   still try to write the table for the few seconds of their rollout; their ingest job fails and
   retries (5 attempts, 5–40 s backoff), and the retry is idempotent. With live traffic we'd
   split this into two releases (stop writing, then drop); here there's no long-running
   deployment and the brief rollout window self-heals via ingest retries, so a single release
   is acceptable.
+- **Test write paths at full size.** The lock bug above shipped with green tests: the stats
+  tests inserted five places, so each refresh took a handful of locks, and the 200-pair
+  equivalence test and the benchmark only ran read queries. The cost of a per-chain lock grows
+  with the data, and the limit it hit (Postgres's shared lock table) is a fixed resource the
+  small tests never got near. `TestRecomputeDenseArea` and `TestRecomputeAllAreas` now refresh
+  Midtown and all of NYC against the real data, in a transaction they roll back, and assert the
+  refresh holds at most one advisory lock.
 - **Monitoring has hard limits.** Grafana once crash-looped
   (OOM at 256Mi) and, with no CPU limit, burned ~9 cores per restart on the node running Postgres,
   which silently skewed two load tests. Monitoring now has hard CPU and memory limits.
@@ -274,11 +416,8 @@ scripts/         up.sh / down.sh (k3d), build-images.sh (amd64 + arm64), monitor
 
 ## Running locally
 
-### Prerequisites (Windows)
-```powershell
-winget install Docker.DockerDesktop   # restart afterwards, start Docker Desktop once
-winget install k3d.k3d Helm.Helm Kubernetes.kubectl GoLang.Go
-```
+First time? Start with the [Quick start](#quick-start): prerequisites, Clerk keys and Windows
+notes are there.
 
 ### Bring up the stack
 ```bash
@@ -290,7 +429,7 @@ for i in 1 2 3 4; do curl -s localhost:8080/healthz; echo; done   # pod name cha
 ```
 
 ### Load place data (NYC)
-Migrations run automatically as a Helm post-install/upgrade Job.
+Migrations run automatically as a Helm Job (pre-upgrade, or post-install on a fresh install).
 ```bash
 pip install duckdb
 python data/extract_overture.py --out data/nyc.parquet        # ~566k places, ~1 min, 27 MB
@@ -301,8 +440,9 @@ cd workers && DATABASE_URL="postgres://larper:$PW@127.0.0.1:55432/larper?sslmode
 ```
 
 ### Auth
-Clerk handles sign-in in `apps/web` (keys in `apps/web/.env.local`, written by `clerk init`,
-gitignored). The API only needs the public publishable key, set in `infra/helm/larper/values.yaml`.
+Clerk handles sign-in in `apps/web` (keys in `apps/web/.env.local`, gitignored; template in
+`apps/web/.env.example`). The API only needs the public publishable key: `scripts/up.sh` passes
+yours from `.env.local`, and `infra/helm/larper/values.yaml` holds a default.
 
 ### Useful commands
 ```bash
@@ -312,9 +452,26 @@ kubectl -n larper logs -l app=taste-worker -f                           # applie
 pnpm proto:gen                                                          # regenerate event types (needs buf)
 kubectl -n larper logs -l app=ingest-worker -f                          # area ingests: leased, ingested, retries
 TEST_DATABASE_URL=postgres://... go test ./internal/queue/              # queue integration tests (in workers/)
-TEST_DATABASE_URL=postgres://... go test ./internal/stats/              # stats refresh vs the stack's Postgres (PostGIS), rolled back
-TEST_DATABASE_URL=postgres://... pnpm --filter @larper/api test candidates.db  # ranking query vs the old one on real data (pg port-forward)
+TEST_DATABASE_URL=postgres://... go test ./internal/stats/              # stats refresh vs the stack's Postgres, incl. Midtown + all NYC at full size; rolled back
+TEST_DATABASE_URL=postgres://... pnpm --filter @larper/api test candidates.db  # ranking query vs the old one on real data (pg port-forward; TEST_NYC_DATA=0 skips the 200-pair checks)
 ```
+
+### CI
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request and push to
+`main`, in four parallel jobs (each capped at 10 minutes, no secrets, nothing deployed):
+
+| Job | What it checks |
+|---|---|
+| API | `pnpm install` (cached), `tsc --noEmit`, ESLint (`apps/api/eslint.config.mjs`), Jest unit tests |
+| Go workers | `gofmt -l`, `go vet ./...`, `go test ./...` (unit tests; the integration tests skip) |
+| Database | Postgres 17 + PostGIS 3.6 + pgvector 0.8 as a service container, all migrations applied with the Helm Job's `migrate` image, then the Go integration tests (queue, stats refresh, the lost-update race) and the API's `candidates.db` spec |
+| Helm | `helm lint`, and the chart rendered with the default, monitoring, AKS, EKS and OCI values |
+
+The database is empty apart from what the tests insert, so two kinds of test skip there and run
+locally against the stack: the Midtown / all-NYC stats refreshes (they skip without the NYC
+places) and the 200-pair ranking-equivalence checks (`TEST_NYC_DATA=0`). The OCI capacity probe
+is a separate workflow that only runs on its schedule.
 
 ### Load test and monitoring
 ```bash
@@ -623,17 +780,26 @@ its `chain_stats` join swapped for that live count);
 chains left alone). Against the original query (57.2 ms, p95 72.5 ms) the miss path is now
 about 3.4x cheaper in Postgres.
 
-- **Concurrent refreshes take a lock per chain.** Two ingests of different areas can share a
-  chain. Under READ COMMITTED each counts from its own snapshot, and an UPDATE that waits on
-  a row lock re-checks its WHERE against the newer row but keeps its own count, so a refresh
-  that counted before a new location committed could overwrite the newer count. `Recompute`
-  now takes `pg_advisory_xact_lock` on each chain in its areas first, in a fixed order, and
-  only recounts those chains. Until now the `chain_stats` upsert, whose row lock is held to
-  commit, serialized refreshes by accident (and could deadlock two of them, since it locked
-  chains in hash order); without it, as after the planned drop, the race is real.
+- **Stats refreshes run one at a time.** Two ingests of different areas can share a chain.
+  Under READ COMMITTED each counts from its own snapshot, and an UPDATE that waits on a row
+  lock re-checks its WHERE against the newer row but keeps its own count, so a refresh that
+  counted before a new location committed could overwrite the newer count. `Recompute` takes
+  one `pg_advisory_xact_lock` before it reads anything, so each refresh counts with a snapshot
+  taken after the previous one committed. The `chain_stats` upsert, whose row lock is held to
+  commit, used to serialize refreshes by accident (and could deadlock two of them, since it
+  locked chains in hash order); without it the race is real.
   `TestRecomputeConcurrentRefreshesOfOneChain` forces the interleaving: without the lock and
   without the `chain_stats` write it ends with a stale count (3, want 4); with the lock it
-  passes, with or without `chain_stats`.
+  passes.
+  - *One lock, not one per chain.* The first version locked each chain in the refreshed areas,
+    which let refreshes of unrelated chains run in parallel. A full NYC load refreshes ~70k
+    chains, and Postgres keeps advisory locks in a shared table sized at about
+    `max_locks_per_transaction` × `max_connections` (64 × 100 = 6,400): the documented
+    `load-places` step failed with `out of shared memory` (SQLSTATE 53200). Midtown's 10,967
+    chains still fit, by borrowing spare shared memory, which is luck rather than design. A
+    refresh takes 0.4 s for Midtown and 1.2 s for all of NYC, and runs once per ingested area,
+    so serializing them costs nothing that matters. Hashing chains into 1,024 buckets would
+    have kept some parallelism, but a dense area touches nearly every bucket anyway.
 - **Migrations run before the rollout now.** The migrate Job was a post-upgrade hook, so new
   pods started before the schema they need; it's now pre-upgrade (post-install on a fresh
   install, where the Postgres cluster comes from the same release). Migrations must keep
