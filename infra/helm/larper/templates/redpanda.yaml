@@ -23,16 +23,14 @@ spec:
             - redpanda
             - start
             - --mode=dev-container
-            - --smp=1
-            - --memory=512M
+            - --smp={{ .Values.redpanda.smp }}
+            - --memory={{ .Values.redpanda.memory }}
             - --overprovisioned
             - --kafka-addr=PLAINTEXT://0.0.0.0:9092
             - --advertise-kafka-addr=PLAINTEXT://redpanda:9092
           ports: [{ containerPort: 9092 }]
           volumeMounts: [{ name: data, mountPath: /var/lib/redpanda/data }]
-          resources:
-            requests: { cpu: 100m, memory: 640Mi }
-            limits: { memory: 800Mi }
+          resources: {{- toYaml .Values.redpanda.resources | nindent 12 }}
   volumeClaimTemplates:
     - metadata: { name: data }
       spec:

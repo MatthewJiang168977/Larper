@@ -130,3 +130,7 @@ jobs:
           # oci-up.sh supplies the Object Storage endpoint at deploy time.
           helm template larper $chart -n larper -f $chart/values-oci.yaml \
             --set postgres.backup.endpointURL=https://objectstorage.example.invalid > /dev/null
+          # The demo profile is a layer: alone (k3d) and over the Oracle target.
+          helm template larper $chart -n larper -f $chart/values-demo.yaml > /dev/null
+          helm template larper $chart -n larper -f $chart/values-oci.yaml -f $chart/values-demo.yaml \
+            --set postgres.backup.endpointURL=https://objectstorage.example.invalid > /dev/null

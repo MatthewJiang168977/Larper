@@ -406,8 +406,8 @@ workers/         Go: cmd/{load-places, outbox-relay, taste-worker, ingest-worker
 proto/           Protobuf event schemas (generated into workers/gen and apps/api/src/gen)
 db/migrations/   SQL migrations (golang-migrate)
 data/            Python bulk extract of Overture places (shares workers/internal/places/overture_extract.sql)
-infra/           k3d config, Helm chart (+ values-aks/eks/oci.yaml), Postgres image, Terraform (azure, aws, eks), oci-k3s (VM bootstrap + rebuild runbook), monitoring values
-loadtest/        k6 script, failure test (chaos.sh), autoscaler runs (hpa-run.sh), cache + CPU profile (cache-profile.sh), cache miss (cold-run.sh), reports in results/
+infra/           k3d config, Helm chart (+ values-aks/eks/oci.yaml, values-demo.yaml for one small VM), Postgres image, Terraform (azure, aws, eks), oci-k3s (VM bootstrap + rebuild runbook), monitoring values
+loadtest/        k6 script, end-to-end check (e2e-check.sh), footprint (footprint.sh), failure test (chaos.sh), autoscaler runs (hpa-run.sh), cache + CPU profile (cache-profile.sh), cache miss (cold-run.sh), reports in results/
 docs/decisions/  Decision records (0001: sizing the API's CPU request and autoscaler)
 scripts/         up.sh / down.sh (k3d), build-images.sh (amd64 + arm64), monitoring.sh, aks-up.sh, eks-up.sh / eks-down.sh, oci-capacity-probe.sh / oci-up.sh
 ```
@@ -806,6 +806,67 @@ about 3.4x cheaper in Postgres.
   working for the old pods still running: add in one release, drop in a later one.
 - **Next:** distances are ~3 ms of what's left, and the 3,000-candidate cap drives the API's
   parse cost; cutting it needs the equivalence test to show the deck doesn't change.
+
+---
+
+## Demo profile (one small VM)
+
+[`values-demo.yaml`](infra/helm/larper/values-demo.yaml) runs the whole architecture for an
+always-on demo (a few users, under 1 req/s) on one small VM. It's a layer over a target's
+values, applied last:
+
+```bash
+helm upgrade --install larper infra/helm/larper -n larper -f infra/helm/larper/values-oci.yaml \
+  -f infra/helm/larper/values-demo.yaml          # Oracle k3s (or just -f values-demo.yaml on k3d)
+```
+
+It changes sizes only: 1 API replica (HPA max 2), one taste-worker and one ingest-worker,
+Redpanda on one core with Seastar capped at 384M (container 512Mi), Postgres with
+`shared_buffers` 128MB, `work_mem` 4MB and `max_connections` 50, DuckDB capped at 384MB and
+one thread, Redis as it is, and requests set to the measured steady usage. Monitoring is off:
+kube-prometheus-stack alone takes ~0.8 GiB. To turn it back on, install it
+(`./scripts/monitoring.sh`) and add `--set monitoring.enabled=true`. The full profile is
+unchanged: every existing values file renders the same Kubernetes objects as before.
+
+Measured on k3d with `loadtest/footprint.sh` (every pod via `kubectl top`, every 3–10 s),
+all pods except monitoring (the app, kube-system's CoreDNS, Traefik and metrics-server, and
+the CNPG operator):
+
+| Demo profile | CPU mean / peak | Memory mean / peak |
+|---|---|---|
+| [Idle](loadtest/results/footprint-demo-idle-20261017-174412/report.md) (after warm-up) | 64m / 81m | 754 Mi / 759 Mi |
+| [8 VUs](loadtest/results/footprint-demo-8vus-20261017-174743/report.md), ~8 req/s for 3 min | 261m / 328m | 841 Mi / 867 Mi |
+| [Ingest of a new area](loadtest/results/footprint-demo-ingest-20261017-174114/report.md) | 205m / 410m | 789 Mi / 876 Mi |
+| [Full profile, idle](loadtest/results/footprint-full-idle-20261017-172940/report.md), for comparison | 85m / 108m | 423 Mi / 424 Mi (+ 824 Mi monitoring) |
+
+- **Idle memory is higher than the full profile's fresh idle**, because `kubectl top` counts
+  each pod's active page cache: Postgres sits at ~340 Mi once `shared_buffers` and its cache
+  are warm, and the ingest-worker keeps ~140 Mi after a DuckDB run. That's the steady state of
+  an always-on demo, so the requests are set to it.
+- **At 8 VUs** (8× the demo's load; warm users): 0 errors, p50 16 ms, p95 41 ms, max 440 ms,
+  and the API scaled 1 → 2.
+- **End to end** (`loadtest/e2e-check.sh`): a quest near Washington Square; accept and check-in
+  (201), the taste-worker applying both events (`taste_profiles.source = 'events'`), the
+  outbox drained; and quests in White Plains and Stamford, which weren't ingested: each
+  survey (two geohash5 areas) loaded in ~56 s and the next request got a quest there.
+
+**Smallest VM: 2 vCPU / 4 GB; comfortable: 6 GB.** On one node the cluster's own processes
+come on top of the pods (measured inside the k3d server node):
+
+| | Memory |
+|---|---|
+| Pods, peak (above) | ~0.9 GiB |
+| k3s (API server, controllers, SQLite, kubelet, flannel in one process) | ~1.0 GiB RSS |
+| containerd and one shim per pod | ~0.3–0.4 GiB |
+| OS (Ubuntu server: systemd, sshd, journald) | ~0.3 GiB |
+| **In use at peak** | **~2.5–2.7 GiB** |
+
+On 4 GB that leaves ~1.3 GB for the page cache (Postgres reads through it) and spikes; 6 GB
+leaves room to turn monitoring back on. CPU stays under half a core for the pods at 8× the
+demo's load, so 2 vCPU leaves the rest for k3s. The k3s figure is from this k3d cluster, whose
+API server also carries kube-prometheus-stack's CRDs; without them it should be lower, but it
+wasn't measured that way. Nothing here was measured on an actual 4 GB VM; the Oracle A1
+target (2 OCPU / 12 GB) has room either way.
 
 ---
 
