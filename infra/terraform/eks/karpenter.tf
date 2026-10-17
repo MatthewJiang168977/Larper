@@ -1,6 +1,8 @@
 # Node scale-out with Karpenter. The managed node group stays at one node (it runs
 # the system pods and Karpenter itself); when pods can't be scheduled, Karpenter
-# launches one more t4g.large and removes it again once it's empty or underused.
+# launches up to two more t4g.large and removes each once it's empty. The idle
+# stack (~2 CPU of requests) already needs one of them, so the second is the
+# load-test headroom.
 #
 # Why Karpenter, not Cluster Autoscaler: Cluster Autoscaler publishes one image per
 # Kubernetes minor and has none for 1.37 yet (newest v1.36.1). Karpenter 1.15
@@ -14,9 +16,9 @@
 # EC2NodeClass first and waits until Karpenter has cleaned those up.
 
 variable "karpenter_max_extra_cpu" {
-  # The NodePool's CPU limit: 2 = at most one extra 2-vCPU node.
+  # The NodePool's CPU limit: 4 = at most two extra 2-vCPU nodes.
   type    = number
-  default = 2
+  default = 4
 }
 
 resource "aws_iam_role" "karpenter" {

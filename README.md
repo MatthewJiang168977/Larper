@@ -231,8 +231,10 @@ Slots are append-only, so stored vectors never change meaning. Of 566k open NYC 
 - **Lazy user creation.** Users are created on their first authenticated call. The Clerk webhook
   is deferred until it's needed (e.g. account deletion).
 - **Karpenter over Cluster Autoscaler on EKS.** Cluster Autoscaler had no release for Kubernetes
-  1.37 yet; Karpenter 1.15 supports it. Its NodePool is capped at one extra `t4g.large`
-  (`limits.cpu: 2`) and removes the node 30 s after it empties, so a demo can't run up a bill.
+  1.37 yet; Karpenter 1.15 supports it. Its NodePool is capped at two extra `t4g.large`
+  (`limits.cpu: 4`) and removes a node 30 s after it empties, so a demo can't run up a bill.
+  The idle stack (~2 CPU of requests) doesn't fit on one t4g.large, so one extra node is
+  baseline and the second is scale-out headroom.
 - **EKS API reachable from one IP.** The public endpoint only accepts `api_allowed_cidrs` (no
   default, and `0.0.0.0/0` is rejected), set in a gitignored `terraform.tfvars`.
 - **Monitoring has hard limits.** Grafana once crash-looped

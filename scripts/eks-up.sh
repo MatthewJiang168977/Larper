@@ -75,7 +75,7 @@ spec:
         - { key: node.kubernetes.io/instance-type, operator: In, values: [${k.instance_type}] }
         - { key: karpenter.sh/capacity-type, operator: In, values: [on-demand] }
         - { key: kubernetes.io/arch, operator: In, values: [${k.arch}] }
-  # A t4g.large has exactly 2 vCPU, so a 2-CPU limit allows one extra node, never two.
+  # A t4g.large has exactly 2 vCPU, so a 4-CPU limit allows two extra nodes, never three.
   limits: { cpu: "${k.max_extra_cpu}" }
   disruption:
     # Only remove nodes that are empty (no pods moved off busy nodes mid-demo), and
