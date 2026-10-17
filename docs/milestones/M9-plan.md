@@ -42,11 +42,24 @@ the plan picks a default, it says so.
 ## Redpanda retention: rebuild from Postgres
 
 The topics Job creates `user.events` with partitions and replication only
-(`infra/helm/larper/templates/workers.yaml:23-25`), so the topic uses the cluster
-default retention. Redpanda's default `log_retention_ms` is 7 days; confirm with
-`rpk cluster config get log_retention_ms` and `rpk topic describe user.events -c` the next
-time a cluster is up (not run for this plan). Even with infinite retention, Kafka would
-not be a complete history:
+(`infra/helm/larper/templates/workers.yaml:23-25`), and nothing else in the chart or the
+code sets a retention, so the topic inherits the broker's defaults. Checked on the k3d
+stack (Redpanda v24.2.7, started with `--mode=dev-container`, which doesn't change these)
+with `rpk cluster config get log_retention_ms` and `rpk topic describe user.events -c`:
+
+| Setting | Value | Source |
+|---|---|---|
+| `retention.ms` | 604800000 (7 days) | `DEFAULT_CONFIG` (cluster `log_retention_ms`) |
+| `retention.bytes` | -1 (no size limit) | `DEFAULT_CONFIG` |
+| `cleanup.policy` | `delete` | `DEFAULT_CONFIG` |
+| `segment.ms` / `segment.bytes` | 1209600000 (14 days) / 128 MiB | `DEFAULT_CONFIG` |
+
+Retention deletes whole closed segments, so 7 days is a floor, not the window: on a topic
+as quiet as this one a segment only closes when it is 14 days old (it would take far more
+than 128 MiB of events to fill one first), and its events go 7 days after that. An event
+can stay readable for up to ~21 days, and the oldest offset moves in jumps. Neither number
+is something to build on. Even with infinite retention, Kafka would not be a complete
+history:
 
 - Redpanda is one broker on a 2Gi PVC with no backup (`templates/redpanda.yaml`). Cloud
   clusters are destroyed after each demo, and the Oracle rebuild restores **Postgres only**
@@ -99,7 +112,8 @@ shared by the consumer and the rebuild command, so "rebuild gives identical stat
 by construction. Why not apply deltas from the event payload:
 
 - Deltas double-count on bootstrap: a new group starts at the earliest retained offset
-  (up to 7 days of events) on top of a rebuild that already counted them, and there is no
+  (at least the last 7 days of events, up to ~21 on a quiet topic; see the retention
+  section) on top of a rebuild that already counted them, and there is no
   clean watermark between a Postgres snapshot and a Kafka offset.
 - A rebuild must equal the incremental result, and deltas depend on values that drift
   (area rarity changes when areas are re-ingested). Freezing rarity on the quest row and
