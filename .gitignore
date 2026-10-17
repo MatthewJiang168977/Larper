@@ -38,3 +38,6 @@ loadtest/results/**/*.csv
 # cold-run.sh inputs, regenerated from the database on every run
 loadtest/results/cold-*/cells.*
 loadtest/results/cold-*/areas.txt
+# rank-bench.sh: generated SQL, plans and rows (report.md is committed)
+loadtest/results/rank-bench-*/*
+!loadtest/results/rank-bench-*/report.md
