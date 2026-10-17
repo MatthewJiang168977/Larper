@@ -242,13 +242,20 @@ Slots are append-only, so stored vectors never change meaning. Of 566k open NYC 
   `chain_stats` for API pods that still read it, then 0009 dropped `chain_stats` once nothing
   read it. A grep of the repo (API, workers, tests, load tests, dashboards) found no other
   reader. The table's row locks had also been serializing concurrent stats refreshes by
-  accident; a per-chain advisory lock took over that job first, so the drop is safe on its own
+  accident; an advisory lock took over that job first, so the drop is safe on its own
   (the concurrency test passes with only the lock). In the drop's release, old workers can
   still try to write the table for the few seconds of their rollout; their ingest job fails and
   retries (5 attempts, 5–40 s backoff), and the retry is idempotent. With live traffic we'd
   split this into two releases (stop writing, then drop); here there's no long-running
   deployment and the brief rollout window self-heals via ingest retries, so a single release
   is acceptable.
+- **Test write paths at full size.** The lock bug above shipped with green tests: the stats
+  tests inserted five places, so each refresh took a handful of locks, and the 200-pair
+  equivalence test and the benchmark only ran read queries. The cost of a per-chain lock grows
+  with the data, and the limit it hit (Postgres's shared lock table) is a fixed resource the
+  small tests never got near. `TestRecomputeDenseArea` and `TestRecomputeAllAreas` now refresh
+  Midtown and all of NYC against the real data, in a transaction they roll back, and assert the
+  refresh holds at most one advisory lock.
 - **Monitoring has hard limits.** Grafana once crash-looped
   (OOM at 256Mi) and, with no CPU limit, burned ~9 cores per restart on the node running Postgres,
   which silently skewed two load tests. Monitoring now has hard CPU and memory limits.
@@ -312,7 +319,7 @@ kubectl -n larper logs -l app=taste-worker -f                           # applie
 pnpm proto:gen                                                          # regenerate event types (needs buf)
 kubectl -n larper logs -l app=ingest-worker -f                          # area ingests: leased, ingested, retries
 TEST_DATABASE_URL=postgres://... go test ./internal/queue/              # queue integration tests (in workers/)
-TEST_DATABASE_URL=postgres://... go test ./internal/stats/              # stats refresh vs the stack's Postgres (PostGIS), rolled back
+TEST_DATABASE_URL=postgres://... go test ./internal/stats/              # stats refresh vs the stack's Postgres, incl. Midtown + all NYC at full size; rolled back
 TEST_DATABASE_URL=postgres://... pnpm --filter @larper/api test candidates.db  # ranking query vs the old one on real data (pg port-forward)
 ```
 
@@ -623,17 +630,26 @@ its `chain_stats` join swapped for that live count);
 chains left alone). Against the original query (57.2 ms, p95 72.5 ms) the miss path is now
 about 3.4x cheaper in Postgres.
 
-- **Concurrent refreshes take a lock per chain.** Two ingests of different areas can share a
-  chain. Under READ COMMITTED each counts from its own snapshot, and an UPDATE that waits on
-  a row lock re-checks its WHERE against the newer row but keeps its own count, so a refresh
-  that counted before a new location committed could overwrite the newer count. `Recompute`
-  now takes `pg_advisory_xact_lock` on each chain in its areas first, in a fixed order, and
-  only recounts those chains. Until now the `chain_stats` upsert, whose row lock is held to
-  commit, serialized refreshes by accident (and could deadlock two of them, since it locked
-  chains in hash order); without it, as after the planned drop, the race is real.
+- **Stats refreshes run one at a time.** Two ingests of different areas can share a chain.
+  Under READ COMMITTED each counts from its own snapshot, and an UPDATE that waits on a row
+  lock re-checks its WHERE against the newer row but keeps its own count, so a refresh that
+  counted before a new location committed could overwrite the newer count. `Recompute` takes
+  one `pg_advisory_xact_lock` before it reads anything, so each refresh counts with a snapshot
+  taken after the previous one committed. The `chain_stats` upsert, whose row lock is held to
+  commit, used to serialize refreshes by accident (and could deadlock two of them, since it
+  locked chains in hash order); without it the race is real.
   `TestRecomputeConcurrentRefreshesOfOneChain` forces the interleaving: without the lock and
   without the `chain_stats` write it ends with a stale count (3, want 4); with the lock it
-  passes, with or without `chain_stats`.
+  passes.
+  - *One lock, not one per chain.* The first version locked each chain in the refreshed areas,
+    which let refreshes of unrelated chains run in parallel. A full NYC load refreshes ~70k
+    chains, and Postgres keeps advisory locks in a shared table sized at about
+    `max_locks_per_transaction` × `max_connections` (64 × 100 = 6,400): the documented
+    `load-places` step failed with `out of shared memory` (SQLSTATE 53200). Midtown's 10,967
+    chains still fit, by borrowing spare shared memory, which is luck rather than design. A
+    refresh takes 0.4 s for Midtown and 1.2 s for all of NYC, and runs once per ingested area,
+    so serializing them costs nothing that matters. Hashing chains into 1,024 buckets would
+    have kept some parallelism, but a dense area touches nearly every bucket anyway.
 - **Migrations run before the rollout now.** The migrate Job was a post-upgrade hook, so new
   pods started before the schema they need; it's now pre-upgrade (post-install on a fresh
   install, where the Postgres cluster comes from the same release). Migrations must keep

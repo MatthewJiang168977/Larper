@@ -9,9 +9,9 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// chainLockClass namespaces the per-chain advisory locks (two-int form, so they can't
+// refreshLock is the advisory lock every refresh holds (two-int form, so it can't
 // collide with single-bigint locks such as golang-migrate's).
-const chainLockClass = 0x4c43 // "LC"
+const refreshLockClass, refreshLockID = 0x4c43, 1 // "LC"
 
 // Recompute rebuilds stats for every geohash6 cell inside the given geohash5
 // areas, in one transaction so readers never see a half-updated area.
@@ -29,20 +29,20 @@ func Recompute(ctx context.Context, db interface {
 	// Two refreshes of different areas can share a chain. Under READ COMMITTED each
 	// computes the chain's count from its own snapshot, and an UPDATE that waits on a
 	// row lock re-checks its WHERE against the newer row but keeps its old count, so
-	// the later commit could overwrite a newer count with a staler one. Lock the chains
-	// first, in a fixed order (no deadlocks), before any row lock; a refresh that
-	// waits here counts with a snapshot taken after the other one committed. Only the
-	// chains locked here are recounted: a chain that turns up in these areas later
-	// belongs to a load whose own refresh follows it.
+	// the later commit could overwrite a newer count with a staler one. So refreshes
+	// run one at a time: each takes one advisory lock before reading anything, and
+	// counts with a snapshot taken after the previous refresh committed. One lock,
+	// not one per chain: a dense area has ~11k chains and a bulk load ~70k, more than
+	// Postgres's shared lock table holds (max_locks_per_transaction x max_connections).
+	// Refreshes are short background work after an ingest, so the lost parallelism
+	// doesn't matter.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, $2)`, refreshLockClass, refreshLockID); err != nil {
+		return fmt.Errorf("stats: lock: %w", err)
+	}
 	var chains []string
 	if err := tx.QueryRow(ctx, `SELECT coalesce(array_agg(DISTINCT chain_key), '{}')
 		FROM places WHERE left(geohash6, 5) = ANY($1)`, geohash5).Scan(&chains); err != nil {
 		return fmt.Errorf("stats: %w", err)
-	}
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($2, k)
-		FROM (SELECT DISTINCT hashtext(c) AS k FROM unnest($1::text[]) AS c ORDER BY 1) s`,
-		chains, chainLockClass); err != nil {
-		return fmt.Errorf("stats: lock chains: %w", err)
 	}
 
 	areaStmts := []string{
