@@ -26,7 +26,12 @@ docker push localhost:5111/larper-ingest:dev
 docker build -f apps/api/Dockerfile -t localhost:5111/larper-api:dev .
 docker push localhost:5111/larper-api:dev
 
-helm upgrade --install larper infra/helm/larper -n larper --create-namespace
+# The API only accepts tokens from the Clerk app whose publishable key it has. Use yours
+# (CLERK_PUBLISHABLE_KEY, or the web app's apps/web/.env.local); the chart's default is
+# the original dev instance.
+CLERK_PK=${CLERK_PUBLISHABLE_KEY:-$(grep -E '^NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=' apps/web/.env.local 2>/dev/null | cut -d= -f2- | tr -d '"\r' || true)}
+helm upgrade --install larper infra/helm/larper -n larper --create-namespace \
+  ${CLERK_PK:+--set clerk.publishableKey=$CLERK_PK}
 kubectl -n larper rollout restart deploy/api deploy/outbox-relay deploy/taste-worker deploy/ingest-worker
 kubectl -n larper rollout status deploy/api --timeout=180s
 
