@@ -245,7 +245,10 @@ Slots are append-only, so stored vectors never change meaning. Of 566k open NYC 
   accident; a per-chain advisory lock took over that job first, so the drop is safe on its own
   (the concurrency test passes with only the lock). In the drop's release, old workers can
   still try to write the table for the few seconds of their rollout; their ingest job fails and
-  retries (5 attempts, 5–40 s backoff), and the retry is idempotent.
+  retries (5 attempts, 5–40 s backoff), and the retry is idempotent. With live traffic we'd
+  split this into two releases (stop writing, then drop); here there's no long-running
+  deployment and the brief rollout window self-heals via ingest retries, so a single release
+  is acceptable.
 - **Monitoring has hard limits.** Grafana once crash-looped
   (OOM at 256Mi) and, with no CPU limit, burned ~9 cores per restart on the node running Postgres,
   which silently skewed two load tests. Monitoring now has hard CPU and memory limits.
