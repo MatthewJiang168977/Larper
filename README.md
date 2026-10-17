@@ -314,7 +314,32 @@ loadtest/cache-profile.sh <label>               # cache hit rate + 60 s CPU prof
 loadtest/cold-run.sh <label>                    # cache miss: Redis flushed, fresh cells per user (COLD_MODE=relocate adds offer churn)
 ```
 The k6 script creates 10 `loadtest+N@example.com` users on the Clerk dev instance (once) and mints
-their session tokens itself. The secret key stays on the machine running k6.
+their session tokens itself; the cache-miss test uses its own 50 onboarded `loadtest-cold+N`
+users (a Clerk dev instance stops at 100). The secret key stays on the machine running k6.
+
+**Results at a glance** (milestone 8). Details and reports for each are below.
+
+| Test | Where | Result |
+|---|---|---|
+| Scale-out ramp to 200 VUs, warm cache | k3d | 195 req/s, p50 / p95 / p99 21 / 47 / 73 ms, 0 errors, 2 → 6 API replicas |
+| Same ramp, warm cache | **EKS** (1 Graviton node + Karpenter) | 186 req/s, p50 / p95 42 / 187 ms from the laptop to us-east-1, 0 errors, 2 → 6 replicas on the managed node + one Karpenter node |
+| Cache miss, 100 VUs, Redis flushed | k3d | deck hits 0.1%, p50 / p95 / p99 70 / 178 / 267 ms, 0 errors; **Postgres is the bottleneck** (~5 cores at 92 req/s) |
+| Failure test: kill API, workers, Redis, Postgres under load | k3d | 0 errors for everything but Postgres; Postgres down 13 s = 143 errors, no API crash (it used to take every API pod down) |
+| Autoscaler sizing | k3d | 300m request, no CPU limit, 60% target ([ADR](docs/decisions/0001-hpa-cpu-request.md)): peak p95 3.25 s → 0.16 s |
+| Oracle k3s rebuild: bootstrap, reboot, k3s restart under load, restore from backup | local stand-in VM | all checks pass ([details](infra/oci-k3s/README.md#local-rehearsal)) |
+
+- **Verified:** everything in the table. EKS was created with Terraform, load tested, and
+  destroyed with `eks-down.sh`, which confirmed nothing billable was left. The run found two
+  EKS-only bugs (Redpanda couldn't write to a root-owned EBS volume; the idle stack's CPU
+  requests didn't fit one `t4g.large`, so Karpenter got room for two extra nodes).
+- **Pending Oracle capacity:** the always-free A1 VM. Its bootstrap, firewall, backups and
+  restore are rehearsed on the stand-in; what's left is anything only the real VM has (arm64
+  images in place, Oracle's S3 endpoint, the VCN). A probe asks for capacity every 10 minutes.
+- **Optional, not run:** the failure test on EKS. The k3d run covers the app's behaviour when
+  each component dies; on EKS it would add the managed pieces (EBS reattach, NLB). An attempt
+  was cut short by tearing the cluster down mid-run, so there are no EKS chaos numbers.
+- **Not applied:** AKS. Its Terraform is validated and kept as a second target for the same
+  chart.
 
 **Results on k3d, warm cache** (laptop, k6 on the same machine, 2026-10-13). 10 users near
 8 fixed spots, so nearly every request is a deck-cache hit (98.9% measured below); see
@@ -533,4 +558,5 @@ for Students credit. The load balancer rate is from Azure's pricing page.
 - [x] **5. Map UI:** field-journal 3D map (MapLibre + OpenFreeMap), quest sheet, journal page, PWA manifest.
 - [x] **6. Events:** transactional outbox, Go relay + idempotent taste-worker with DLQ, protobuf events, geofenced check-in.
 - [x] **7. Async ingest:** unmapped area → leased work queue → ingest-worker (DuckDB) → stats refresh; "surveying the area…" in the app.
-- [ ] **8. Deploy + prove it:** ~~Prometheus/Grafana~~, ~~k6 load test showing the HPA scale out (k3d)~~, ~~SQS queue~~, ~~failure test~~, ~~autoscaler sizing~~, Terraform EKS + Karpenter (written and planned, not yet applied), always-free k3s on Oracle Ampere A1 (bootstrap, backups and runbook written in `infra/oci-k3s` and rehearsed end to end on a local stand-in VM, restore included; waiting on capacity, probed every 10 min).
+- [x] **8. Deploy + prove it:** Prometheus/Grafana, k6 load test showing the HPA scale out (k3d and EKS), SQS queue, failure test, autoscaler sizing, cache-miss test, Terraform EKS + Karpenter (applied, load tested, destroyed), always-free k3s on Oracle Ampere A1 (bootstrap, backups and runbook in `infra/oci-k3s`, rehearsed on a local stand-in VM including a k3s restart under load and a restore).
+- [ ] **Next:** Oracle A1 deploy once the probe finds capacity; optional EKS failure test; cheaper miss path in Postgres (prepared statements, the taste join, a smaller candidate cap).
