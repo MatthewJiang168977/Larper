@@ -263,14 +263,13 @@ export class QuestsService {
               ST_Y(p.geom::geometry) AS lat, ST_X(p.geom::geometry) AS lng,
               p.categories[array_length(p.categories, 1)] AS category, p.tags,
               top.taste,
-              coalesce(c.locations, 1) AS "chainLocations",
+              p.chain_locations AS "chainLocations",
               p.confidence::float8 AS confidence,
               ST_Distance(p.geom, o.g)::float8 AS "distanceM",
               p.website, p.instagram, p.phone
        FROM top
        JOIN places p ON p.id = top.id
        CROSS JOIN o
-       LEFT JOIN chain_stats c ON c.chain_key = p.chain_key
        ORDER BY top.taste DESC, top.id`,
       [userId, lng, lat, radiusM],
     );

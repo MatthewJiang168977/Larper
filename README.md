@@ -300,6 +300,7 @@ kubectl -n larper logs -l app=taste-worker -f                           # applie
 pnpm proto:gen                                                          # regenerate event types (needs buf)
 kubectl -n larper logs -l app=ingest-worker -f                          # area ingests: leased, ingested, retries
 TEST_DATABASE_URL=postgres://... go test ./internal/queue/              # queue integration tests (in workers/)
+TEST_DATABASE_URL=postgres://... go test ./internal/stats/              # stats refresh vs the stack's Postgres (PostGIS), rolled back
 TEST_DATABASE_URL=postgres://... pnpm --filter @larper/api test candidates.db  # ranking query vs the old one on real data (pg port-forward)
 ```
 
@@ -581,9 +582,39 @@ End to end, the same clean cache-miss test on the new image
   always get its 3 workers.
 - **API CPU up 12%:** nothing changed on its side (same rows, same scoring), and that's inside
   the run-to-run spread seen today; an A/B in one session would settle it.
-- **Next:** chain sizes are ~5 ms of the remaining ~17 (a join per winner; storing the size on
-  the place would remove it), distances ~3 ms, and the 3,000-candidate cap drives the API's
-  parse cost; cutting it needs a test that the final deck doesn't change.
+
+**Chain size on the place.** The indie score needs each candidate's chain size, which the
+query looked up in `chain_stats` once per winner (3,000 index probes). Migration
+[0008](db/migrations/0008_place_chain_locations.up.sql) stores it on the place
+(`places.chain_locations`), and [`stats.Recompute`](workers/internal/stats/stats.go) keeps it
+current for every chain present in a refreshed area, wherever its other locations are.
+`chain_stats` is still written for API pods that read it during a rollout; a later migration
+drops it. Six interleaved runs, alternating which variant went first, medians per query
+([1](loadtest/results/rank-bench-20261017-155013/report.md),
+[2](loadtest/results/rank-bench-20261017-155038/report.md),
+[3](loadtest/results/rank-bench-20261017-155101/report.md),
+[4](loadtest/results/rank-bench-20261017-155125/report.md),
+[5](loadtest/results/rank-bench-20261017-155149/report.md),
+[6](loadtest/results/rank-bench-20261017-155213/report.md)):
+
+| Variant | Postgres CPU | Execution p95 |
+|---|---|---|
+| Two-phase, chain size from `chain_stats` | 22.4 ms | ~54 ms |
+| **Two-phase, chain size on the place (shipped)** | **16.9 ms (−24%)** | **~42 ms** |
+
+The column was faster in 5 of the 6 pairs, by a median 4.4 ms. `candidates.db.spec.ts` checks
+that every place's `chain_locations` equals what `chain_stats` says, and its exact-equality
+check on the 200 pairs compares against the old query, which still joins `chain_stats`;
+`workers/internal/stats/stats_test.go` checks `Recompute` (counts across areas, untouched
+chains left alone). Against the original query (57.2 ms, p95 72.5 ms) the miss path is now
+about 3.4x cheaper in Postgres.
+
+- **Migrations run before the rollout now.** The migrate Job was a post-upgrade hook, so new
+  pods started before the schema they need; it's now pre-upgrade (post-install on a fresh
+  install, where the Postgres cluster comes from the same release). Migrations must keep
+  working for the old pods still running: add in one release, drop in a later one.
+- **Next:** distances are ~3 ms of what's left, and the 3,000-candidate cap drives the API's
+  parse cost; cutting it needs the equivalence test to show the deck doesn't change.
 
 ---
 
@@ -644,4 +675,4 @@ for Students credit. The load balancer rate is from Azure's pricing page.
 - [x] **6. Events:** transactional outbox, Go relay + idempotent taste-worker with DLQ, protobuf events, geofenced check-in.
 - [x] **7. Async ingest:** unmapped area → leased work queue → ingest-worker (DuckDB) → stats refresh; "surveying the area…" in the app.
 - [x] **8. Deploy + prove it:** Prometheus/Grafana, k6 load test showing the HPA scale out (k3d and EKS), SQS queue, failure test, autoscaler sizing, cache-miss test, Terraform EKS + Karpenter (applied, load tested, destroyed), always-free k3s on Oracle Ampere A1 (bootstrap, backups and runbook in `infra/oci-k3s`, rehearsed on a local stand-in VM including a k3s restart under load and a restore).
-- [ ] **Next:** Oracle A1 deploy once the probe finds capacity; optional EKS failure test; cheaper miss path (chain size stored on the place, a smaller candidate cap once a test shows the deck doesn't change).
+- [ ] **Next:** Oracle A1 deploy once the probe finds capacity; optional EKS failure test; drop `chain_stats` (contract step); a smaller candidate cap once the equivalence test shows the deck doesn't change.

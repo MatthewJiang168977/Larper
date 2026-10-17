@@ -85,6 +85,16 @@ describeDb('two-phase candidate query (real database)', () => {
     await plain.end();
   });
 
+  // The old query read the chain size from chain_stats; candidates() now reads the
+  // copy on each place (migration 0008, kept current by stats.Recompute).
+  it('has the same chain size on every place as chain_stats', async () => {
+    const { rows } = await pool.query<{ n: string }>(
+      `SELECT count(*) AS n FROM places p LEFT JOIN chain_stats c ON c.chain_key = p.chain_key
+       WHERE p.chain_locations <> coalesce(c.locations, 1)`,
+    );
+    expect(rows[0].n).toBe('0');
+  });
+
   it('turns parallel workers off on API connections only', async () => {
     const show = async (p: Pool) => (await p.query('SHOW max_parallel_workers_per_gather')).rows[0].max_parallel_workers_per_gather;
     expect(await show(pool)).toBe('0');

@@ -1,4 +1,4 @@
--- What QuestsService.candidates() runs now: rank on the narrow columns first, then
+-- QuestsService.candidates() as of PR #3: rank on the narrow columns first, then
 -- fetch the wide ones (names, tags, links, distance, chain size) for the 3000 winners
 -- only. No parallel workers (the API's pool turns them off).
 -- setup:
