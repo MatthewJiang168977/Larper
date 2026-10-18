@@ -18,7 +18,9 @@ vi.mock("next/link", () => ({
 }));
 
 let location: Located | null;
-vi.mock("@/hooks/use-location", () => ({ useLocation: () => location }));
+let retrying = false;
+const retryLocation = vi.fn();
+vi.mock("@/hooks/use-location", () => ({ useLocation: () => ({ loc: location, retry: retryLocation, retrying }) }));
 
 // One stable api function (it's an effect dependency), answering from `routes`.
 type Route = (path: string, init?: RequestInit) => Promise<unknown>;
@@ -52,6 +54,7 @@ vi.mock("./quest-sheet", () => ({
 // --- fixtures -------------------------------------------------------------------
 
 const HERE: Located = { lat: 40.7295, lng: -73.9965, source: "gps", accuracyM: 20 };
+const demoSpot = (reason: Located["reason"]): Located => ({ lat: 40.7308, lng: -73.9973, source: "demo", reason });
 const ME: Me = { id: "u1", onboarded: true, topTags: [] };
 const place = (name: string) => ({
   id: name,
@@ -86,6 +89,8 @@ const advance = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
 
 beforeEach(() => {
   location = HERE;
+  retrying = false;
+  retryLocation.mockClear();
   calls.length = 0;
   for (const k of Object.keys(routes)) delete routes[k];
   routes["/me"] = ok(ME);
@@ -239,5 +244,66 @@ describe("QuestHome: never stuck on 'Surveying…'", () => {
     routes["/quests/q1/complete"] = ok({});
     fireEvent.click(screen.getByText("I went"));
     expect(screen.queryByRole("alert")).toBeNull(); // cleared as the next action starts
+  });
+});
+
+describe("QuestHome: the demo area is labelled as such", () => {
+  it("says it's a demo area and offers to retry when the location fallback kicks in", async () => {
+    location = demoSpot("waiting");
+    routes["/quests/today"] = ok(withQuest);
+    render(<QuestHome />);
+    await settle();
+    const notice = screen.getByRole("region", { name: "Demo area" });
+    expect(notice.textContent).toContain("Demo area: Washington Square.");
+    expect(notice.textContent).toContain("We couldn't find you yet.");
+    expect(screen.getByText("quest: Cafe Uno")).toBeTruthy(); // the demo deck still works
+
+    fireEvent.click(screen.getByText("Try location again"));
+    expect(retryLocation).toHaveBeenCalledTimes(1);
+  });
+
+  it("tells a user who denied location how to turn it back on", async () => {
+    location = demoSpot("denied");
+    routes["/quests/today"] = ok(withQuest);
+    render(<QuestHome />);
+    await settle();
+    expect(screen.getByRole("region", { name: "Demo area" }).textContent).toContain("Allow it in your browser's settings");
+    expect(screen.getByText("Try location again")).toBeTruthy();
+  });
+
+  it("shows the retry as in progress, and none at all without GPS", async () => {
+    location = demoSpot("waiting");
+    retrying = true;
+    routes["/quests/today"] = ok(withQuest);
+    const { unmount } = render(<QuestHome />);
+    await settle();
+    expect((screen.getByText("Looking…") as HTMLButtonElement).disabled).toBe(true);
+    unmount();
+
+    location = demoSpot("no-gps");
+    retrying = false;
+    render(<QuestHome />);
+    await settle();
+    expect(screen.getByRole("region", { name: "Demo area" })).toBeTruthy();
+    expect(screen.queryByText("Try location again")).toBeNull();
+  });
+
+  it("shows no demo notice for a real fix", async () => {
+    routes["/quests/today"] = ok(withQuest);
+    render(<QuestHome />);
+    await settle();
+    expect(screen.queryByRole("region", { name: "Demo area" })).toBeNull();
+  });
+
+  it("doesn't refetch the deck when only the location's note changes", async () => {
+    location = demoSpot("waiting");
+    routes["/quests/today"] = ok(withQuest);
+    const { rerender } = render(<QuestHome />);
+    await settle();
+    const before = todayCalls();
+    location = demoSpot("denied"); // same coordinates, new object
+    rerender(<QuestHome />);
+    await settle();
+    expect(todayCalls()).toBe(before);
   });
 });

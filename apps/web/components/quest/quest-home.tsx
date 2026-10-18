@@ -4,7 +4,7 @@ import { UserButton } from "@clerk/nextjs";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { useLocation } from "@/hooks/use-location";
+import { useLocation, type Located } from "@/hooks/use-location";
 import { describeError, useApi, type Me, type Today } from "@/lib/api";
 import { QuestSheet, type QuestAction } from "./quest-sheet";
 
@@ -19,7 +19,7 @@ const QuestMap = dynamic(() => import("@/components/map/maplibre-quest-map"), { 
 
 export function QuestHome() {
   const api = useApi();
-  const loc = useLocation();
+  const { loc, retry: retryLocation, retrying: locating } = useLocation();
   const [me, setMe] = useState<Me | null>(null);
   const [meError, setMeError] = useState<unknown>(null);
   const [meTries, setMeTries] = useState(0);
@@ -48,13 +48,17 @@ export function QuestHome() {
 
   // Refetch on a new location, after an action, a retry or a survey poll. `stale` drops
   // a slow response for an old location that lands after a newer one.
-  const request = loc && me?.onboarded ? `${loc.lat},${loc.lng}#${reloads}` : null;
+  // Keyed on the coordinates, not the object: a new note (e.g. a location retry that
+  // ends on the same demo spot) is not a new place.
+  const lat = loc?.lat;
+  const lng = loc?.lng;
+  const request = lat !== undefined && me?.onboarded ? `${lat},${lng}#${reloads}` : null;
   const loading = request !== null && answered !== request;
   useEffect(() => {
-    if (!loc || !me?.onboarded) return;
-    const key = `${loc.lat},${loc.lng}#${reloads}`;
+    if (lat === undefined || !me?.onboarded) return;
+    const key = `${lat},${lng}#${reloads}`;
     let stale = false;
-    api<Today>(`/quests/today?lat=${loc.lat}&lng=${loc.lng}`).then(
+    api<Today>(`/quests/today?lat=${lat}&lng=${lng}`).then(
       (t) => {
         if (stale) return;
         setToday(t);
@@ -74,7 +78,7 @@ export function QuestHome() {
     return () => {
       stale = true;
     };
-  }, [api, loc, me?.onboarded, reloads]);
+  }, [api, lat, lng, me?.onboarded, reloads]);
 
   // While areas are being surveyed, check back until the ingest-worker finishes. Every
   // finished request, failed or not, schedules the next check, up to SURVEY_MAX_MS.
@@ -165,40 +169,45 @@ export function QuestHome() {
         </div>
       </header>
 
-      {loc?.note && (
-        <p className="field-label absolute left-3 top-16 z-10 rounded bg-paper/90 px-2 py-1">{loc.note}</p>
-      )}
+      {/* Notices under the header, stacked so they never overlap. */}
+      <div className="pointer-events-none absolute inset-x-3 top-16 z-20 flex flex-col items-center gap-2 [&>*]:pointer-events-auto">
+        {loc?.source === "demo" ? (
+          <DemoNotice loc={loc} onRetry={retryLocation} retrying={locating} />
+        ) : (
+          loc?.note && <p className="field-label self-start rounded bg-paper/90 px-2 py-1">{loc.note}</p>
+        )}
 
-      {surveying && (
-        <p
-          role="status"
-          className={`field-label absolute left-1/2 top-16 z-10 -translate-x-1/2 rounded border border-rule bg-paper/95 px-3 py-1.5 ${surveyOverdue ? "" : "animate-pulse"}`}
-        >
-          {surveyOverdue ? "Still surveying" : "Surveying the area…"} mapping {today!.surveying!.pending.length} new{" "}
-          {today!.surveying!.pending.length === 1 ? "district" : "districts"}
-        </p>
-      )}
-
-      {banner && (
-        <div
-          role="alert"
-          className="absolute inset-x-3 top-24 z-20 flex items-center gap-3 rounded border border-oxblood bg-paper px-3 py-2 text-sm text-oxblood"
-        >
-          <p className="flex-1">{banner.text}</p>
-          {banner.retry && (
-            <button onClick={banner.retry} disabled={loading} className="font-medium underline disabled:opacity-50">
-              {loading ? "Retrying…" : "Retry"}
-            </button>
-          )}
-          <button
-            onClick={() => (actionError ? setActionError(null) : setTodayError(null))}
-            aria-label="Dismiss"
-            className="px-1"
+        {surveying && (
+          <p
+            role="status"
+            className={`field-label rounded border border-rule bg-paper/95 px-3 py-1.5 ${surveyOverdue ? "" : "animate-pulse"}`}
           >
-            ×
-          </button>
-        </div>
-      )}
+            {surveyOverdue ? "Still surveying" : "Surveying the area…"} mapping {today!.surveying!.pending.length} new{" "}
+            {today!.surveying!.pending.length === 1 ? "district" : "districts"}
+          </p>
+        )}
+
+        {banner && (
+          <div
+            role="alert"
+            className="flex w-full items-center gap-3 rounded border border-oxblood bg-paper px-3 py-2 text-sm text-oxblood"
+          >
+            <p className="flex-1">{banner.text}</p>
+            {banner.retry && (
+              <button onClick={banner.retry} disabled={loading} className="font-medium underline disabled:opacity-50">
+                {loading ? "Retrying…" : "Retry"}
+              </button>
+            )}
+            <button
+              onClick={() => (actionError ? setActionError(null) : setTodayError(null))}
+              aria-label="Dismiss"
+              className="px-1"
+            >
+              ×
+            </button>
+          </div>
+        )}
+      </div>
 
       {!loc ? (
         <BottomLabel>Finding you…</BottomLabel>
@@ -256,6 +265,34 @@ export function QuestHome() {
         />
       )}
     </main>
+  );
+}
+
+const DEMO_COPY: Record<NonNullable<Located["reason"]>, string> = {
+  waiting: "We couldn't find you yet.",
+  denied: "Location is off for this site. Allow it in your browser's settings, then try again.",
+  unavailable: "Your device couldn't get a location fix.",
+  "no-gps": "This device has no location.",
+};
+
+// Shown whenever the map isn't where the user is, so a demo deck is never mistaken for
+// their own neighbourhood.
+function DemoNotice({ loc, onRetry, retrying }: { loc: Located; onRetry: () => void; retrying: boolean }) {
+  return (
+    <div
+      role="region"
+      aria-label="Demo area"
+      className="flex w-full items-center gap-3 rounded border border-rule bg-paper/95 px-3 py-2 text-sm"
+    >
+      <p className="flex-1">
+        <span className="font-medium">Demo area: Washington Square.</span> {DEMO_COPY[loc.reason ?? "unavailable"]}
+      </p>
+      {loc.reason !== "no-gps" && (
+        <button onClick={onRetry} disabled={retrying} className="font-medium text-oxblood underline disabled:opacity-50">
+          {retrying ? "Looking…" : "Try location again"}
+        </button>
+      )}
+    </div>
   );
 }
 
