@@ -1,0 +1,13 @@
+# gitleaks: its default rules, plus what this repo knowingly commits.
+# Used by CI (.github/workflows/ci.yml, job "secrets") and scripts/secret-scan.sh.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Values that are public by design"
+regexes = [
+  # Clerk publishable keys: they ship to every browser (infra/helm/larper/values.yaml,
+  # apps/web/.env.example). Secret keys (sk_test_ / sk_live_) are NOT allowed.
+  '''^pk_(test|live)_[A-Za-z0-9+/]+={0,2}$''',
+]

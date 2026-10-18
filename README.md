@@ -467,6 +467,8 @@ TEST_DATABASE_URL=postgres://... pnpm --filter @larper/api test candidates.db  #
 | Go workers | `gofmt -l`, `go vet ./...`, `go test ./...` (unit tests; the integration tests skip) |
 | Database | Postgres 17 + PostGIS 3.6 + pgvector 0.8 as a service container, all migrations applied with the Helm Job's `migrate` image, then the Go integration tests (queue, stats refresh, the lost-update race) and the API's `candidates.db` spec |
 | Helm | `helm lint`, and the chart rendered with the default, monitoring, AKS, EKS and OCI values |
+| Secret scan | gitleaks (pinned image) over **every commit**, default rules plus [`.gitleaks.toml`](.gitleaks.toml), which allows only Clerk publishable keys (public by design). Before a commit: `scripts/secret-scan.sh` (staged changes) or `--history` (what CI runs) |
+| Load-test results | `loadtest/redact.js --check`: no Clerk session IDs, tokens or k6 `setup_data` in `loadtest/results` |
 
 The database is empty apart from what the tests insert, so two kinds of test skip there and run
 locally against the stack: the Midtown / all-NYC stats refreshes (they skip without the NYC
