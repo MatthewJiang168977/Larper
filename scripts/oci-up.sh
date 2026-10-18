@@ -171,6 +171,8 @@ else
 fi
 
 log "larper"
+# A cluster from before the per-service DB roles needs this once (see the script).
+scripts/pg-owner-createrole.sh
 helm upgrade --install larper infra/helm/larper -n larper -f infra/helm/larper/values-oci.yaml \
   -f infra/helm/larper/values-demo.yaml \
   --set postgres.image="$REG/larper-postgres:$PG_TAG" \

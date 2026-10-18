@@ -6,8 +6,10 @@ import { assertDisposableDatabase } from './test-guard';
 // The guard that keeps writing DB tests off live stacks. Each case is invisible to the
 // other spec files Jest runs at the same time: data goes in a transaction that's rolled
 // back (the guard reads through the same connection), and the pretend relay connects
-// under a name only this file looks for.
-const URL = process.env.TEST_DATABASE_URL;
+// under a name only this file looks for. The writing tests call the guard as the schema
+// owner (TEST_OWNER_DATABASE_URL in CI; it reads tables a service role can't), so this
+// does too.
+const URL = process.env.TEST_OWNER_DATABASE_URL ?? process.env.TEST_DATABASE_URL;
 const describeDb = URL ? describe : describe.skip;
 
 describeDb('assertDisposableDatabase (real database)', () => {

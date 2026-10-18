@@ -1,0 +1,24 @@
+{{- /*
+One login Secret per service role (migration 0010), in the form CloudNativePG reads
+for a managed role's password (kubernetes.io/basic-auth). CNPG doesn't generate
+passwords for managed roles, so the chart does, once: an upgrade keeps the existing
+one. A restore brings the roles back and CNPG sets their passwords from these, so a
+rebuilt cluster with new Secrets works too.
+*/ -}}
+{{- range $role, $name := fromYaml (include "larper.dbRoles" .) }}
+{{- $secret := printf "pg-%s" $role }}
+{{- $existing := lookup "v1" "Secret" $.Release.Namespace $secret }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secret }}
+  labels:
+    {{- include "larper.labels" $ | nindent 4 }}
+    # CNPG applies a password change right away instead of at its next resync.
+    cnpg.io/reload: "true"
+type: kubernetes.io/basic-auth
+data:
+  username: {{ $name | b64enc }}
+  password: {{ if $existing }}{{ index $existing.data "password" }}{{ else }}{{ randAlphaNum 40 | b64enc }}{{ end }}
+{{- end }}

@@ -16,22 +16,36 @@ import (
 // is rolled back, in empty Southern Ocean areas):
 //
 //	TEST_DATABASE_URL=postgres://... go test ./internal/stats/
-var testPool *pgxpool.Pool
+//
+// The refresh runs as TEST_DATABASE_URL's role (the ingest-worker's, larper_ingest, in
+// CI). The race test's cleanup deletes places, which the worker can't, so it uses
+// TEST_OWNER_DATABASE_URL, the schema owner, when set.
+var testPool, ownerPool *pgxpool.Pool
 
 func TestMain(m *testing.M) {
 	if url := os.Getenv("TEST_DATABASE_URL"); url != "" {
-		pool, err := pgxpool.New(context.Background(), url)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+		testPool = connect(url)
+		ownerPool = testPool
+		if owner := os.Getenv("TEST_OWNER_DATABASE_URL"); owner != "" {
+			ownerPool = connect(owner)
 		}
-		testPool = pool
 	}
 	code := m.Run()
-	if testPool != nil {
-		testPool.Close()
+	for _, p := range []*pgxpool.Pool{testPool, ownerPool} {
+		if p != nil {
+			p.Close()
+		}
 	}
 	os.Exit(code)
+}
+
+func connect(url string) *pgxpool.Pool {
+	pool, err := pgxpool.New(context.Background(), url)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	return pool
 }
 
 func TestRecomputeChainLocations(t *testing.T) {
@@ -128,9 +142,9 @@ func TestRecomputeConcurrentRefreshesOfOneChain(t *testing.T) {
 	const chain = "stats-race-chain"
 	var areas []string
 	cleanup := func() {
-		testPool.Exec(ctx, `DELETE FROM places WHERE overture_id LIKE 'stats-race-%'`)
-		testPool.Exec(ctx, `DELETE FROM area_stats WHERE left(geohash6, 5) = ANY($1)`, areas)
-		testPool.Exec(ctx, `DELETE FROM area_totals WHERE left(geohash6, 5) = ANY($1)`, areas)
+		ownerPool.Exec(ctx, `DELETE FROM places WHERE overture_id LIKE 'stats-race-%'`)
+		ownerPool.Exec(ctx, `DELETE FROM area_stats WHERE left(geohash6, 5) = ANY($1)`, areas)
+		ownerPool.Exec(ctx, `DELETE FROM area_totals WHERE left(geohash6, 5) = ANY($1)`, areas)
 	}
 	cleanup()
 	t.Cleanup(cleanup)

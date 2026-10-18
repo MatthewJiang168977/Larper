@@ -15,9 +15,50 @@ metadata:
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
 spec:
   backoffLimit: 10
+  # However the retries go, the Job (and so the upgrade's hook) fails after this long
+  # instead of running forever.
+  activeDeadlineSeconds: {{ .Values.migrate.deadlineSeconds }}
   template:
     spec:
       restartPolicy: OnFailure
+      # Migration 0010 creates the service roles if CNPG hasn't yet, which needs
+      # CREATEROLE, and a migration that fails halfway leaves golang-migrate "dirty"
+      # until someone forces the version. So wait until it can't fail that way: the
+      # owner has CREATEROLE (CNPG's managed role, or scripts/pg-owner-createrole.sh on
+      # a cluster from before 0010) or the roles all exist. Also waits out the first
+      # minute of a fresh install, before Postgres accepts connections. Gives up after
+      # migrate.waitForRolesSeconds, saying why (kubectl describe shows it as the
+      # container's termination message; its log has it too).
+      initContainers:
+        - name: wait-for-roles
+          image: {{ .Values.postgres.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              q="SELECT rolcreaterole OR (SELECT count(*) = 4 FROM pg_roles
+                   WHERE rolname IN ('larper_api', 'larper_relay', 'larper_taste', 'larper_ingest'))
+                 FROM pg_roles WHERE rolname = current_user"
+              limit={{ .Values.migrate.waitForRolesSeconds }}
+              start=$(date +%s)
+              while :; do
+                if ok=$(psql "$DATABASE_URL" -XAtqc "$q" 2>/dev/null); then
+                  [ "$ok" = t ] && exit 0
+                  why="larper has no CREATEROLE and the four service roles don't all exist. On a cluster from before migration 0010, run scripts/pg-owner-createrole.sh, then upgrade again"
+                else
+                  why="Postgres isn't accepting connections (kubectl get cluster pg; kubectl logs pg-1)"
+                fi
+                if [ $(( $(date +%s) - start )) -ge "$limit" ]; then
+                  echo "gave up after ${limit} s: $why"
+                  echo "gave up after ${limit} s: $why" > /dev/termination-log 2>/dev/null
+                  exit 1
+                fi
+                echo "waiting: $why"
+                sleep 5
+              done
+          env:
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: pg-app, key: uri } }
       containers:
         - name: migrate
           image: {{ .Values.migrate.image }}

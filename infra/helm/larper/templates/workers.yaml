@@ -48,7 +48,7 @@ spec:
           image: {{ .Values.workers.image }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           command: ["/usr/local/bin/outbox-relay"]
-          env: {{- include "larper.workerEnv" . | nindent 12 }}
+          env: {{- include "larper.workerEnv" (dict "root" . "role" "relay") | nindent 12 }}
           resources: {{- toYaml .Values.workers.resources | nindent 12 }}
 ---
 # A consumer group: replicas split user.events' partitions between them, and Kafka
@@ -74,7 +74,7 @@ spec:
           image: {{ .Values.workers.image }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           command: ["/usr/local/bin/taste-worker"]
-          env: {{- include "larper.workerEnv" . | nindent 12 }}
+          env: {{- include "larper.workerEnv" (dict "root" . "role" "taste") | nindent 12 }}
           resources: {{- toYaml .Values.workers.resources | nindent 12 }}
 ---
 # Its own identity: on EKS, a Pod Identity association maps this ServiceAccount to
@@ -109,8 +109,7 @@ spec:
           image: {{ .Values.ingest.image }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           env:
-            - name: DATABASE_URL
-              valueFrom: { secretKeyRef: { name: pg-app, key: uri } }
+            {{- include "larper.dbEnv" (dict "root" . "role" "ingest") | nindent 12 }}
             - { name: OVERTURE_RELEASE, value: {{ .Values.ingest.overtureRelease | quote }} }
             - { name: JOB_LEASE_SECONDS, value: {{ .Values.ingest.leaseSeconds | quote }} }
             - { name: DUCKDB_MEMORY_LIMIT, value: {{ .Values.ingest.duckdbMemory | quote }} }

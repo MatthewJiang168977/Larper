@@ -3,7 +3,7 @@
 // ingest-worker that loads single areas on demand.
 //
 //	kubectl -n larper port-forward svc/pg-rw 55432:5432
-//	DATABASE_URL=postgres://larper:...@127.0.0.1:55432/larper go run ./cmd/load-places -in ../data/nyc.parquet
+//	DATABASE_URL=postgres://larper_ingest:...@127.0.0.1:55432/larper go run ./cmd/load-places -in ../data/nyc.parquet
 package main
 
 import (

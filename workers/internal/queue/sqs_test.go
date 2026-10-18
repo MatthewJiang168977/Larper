@@ -29,7 +29,7 @@ func testSQS(t *testing.T) (*SQS, string) {
 	}
 	// SQS caps queue names at 80 chars, so not the test-name-based ledger queue.
 	name := fmt.Sprintf("q%d", time.Now().UnixNano())
-	t.Cleanup(func() { pg.Pool.Exec(context.Background(), `DELETE FROM jobs WHERE queue = $1`, name) })
+	t.Cleanup(func() { ownerPool.Exec(context.Background(), `DELETE FROM jobs WHERE queue = $1`, name) })
 	client := sqs.New(sqs.Options{
 		Region:       "us-east-1",
 		BaseEndpoint: &ep,
@@ -74,7 +74,7 @@ func claim(t *testing.T, q *SQS, queue string, lease time.Duration) *Job {
 func TestSQSCompleteRoundTrip(t *testing.T) {
 	q, name := testSQS(t)
 	ctx := context.Background()
-	enqueue(t, Postgres{Pool: q.Pool}, name, "a", 5)
+	enqueue(t, name, "a", 5)
 	dispatchAll(t, q, name)
 	if n, _ := q.Dispatch(ctx, name); n != 0 {
 		t.Fatalf("second dispatch sent %d jobs, want 0", n)
@@ -98,7 +98,7 @@ func TestSQSCompleteRoundTrip(t *testing.T) {
 func TestSQSRetryAfterBackoff(t *testing.T) {
 	q, name := testSQS(t)
 	ctx := context.Background()
-	enqueue(t, Postgres{Pool: q.Pool}, name, "a", 5)
+	enqueue(t, name, "a", 5)
 	dispatchAll(t, q, name)
 
 	j := claim(t, q, name, 30*time.Second)
@@ -121,7 +121,7 @@ func TestSQSRetryAfterBackoff(t *testing.T) {
 func TestSQSPermanentFailureDeadLetters(t *testing.T) {
 	q, name := testSQS(t)
 	ctx := context.Background()
-	enqueue(t, Postgres{Pool: q.Pool}, name, "a", 5)
+	enqueue(t, name, "a", 5)
 	dispatchAll(t, q, name)
 
 	j := claim(t, q, name, 30*time.Second)
@@ -146,7 +146,7 @@ func TestSQSPermanentFailureDeadLetters(t *testing.T) {
 func TestSQSLapsedLeaseFencesOldWorker(t *testing.T) {
 	q, name := testSQS(t)
 	ctx := context.Background()
-	enqueue(t, Postgres{Pool: q.Pool}, name, "a", 5)
+	enqueue(t, name, "a", 5)
 	dispatchAll(t, q, name)
 
 	first := claim(t, q, name, time.Second)
@@ -166,7 +166,7 @@ func TestSQSLapsedLeaseFencesOldWorker(t *testing.T) {
 func TestSQSDuplicateSendIsDropped(t *testing.T) {
 	q, name := testSQS(t)
 	ctx := context.Background()
-	enqueue(t, Postgres{Pool: q.Pool}, name, "a", 5)
+	enqueue(t, name, "a", 5)
 	dispatchAll(t, q, name)
 	// Simulate the dispatcher crashing after a send but before its commit.
 	var id int64
