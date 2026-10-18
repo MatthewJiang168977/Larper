@@ -19,13 +19,20 @@ spec:
       parameters:
         barmanObjectName: pg-backups
         serverName: {{ .serverName }}
+  {{- end }}
+  {{- end }}
+  {{- if or .Values.postgres.backup.enabled .Values.postgres.parameters }}
   postgresql:
     parameters:
+      {{- if .Values.postgres.backup.enabled }}
       # A WAL segment is archived when full or after this long; each one is a few
       # object-store requests, so an idle database at CNPG's 5 min default would use
       # a good part of a 50k-requests/month free tier.
-      archive_timeout: {{ .archiveTimeout | quote }}
-  {{- end }}
+      archive_timeout: {{ .Values.postgres.backup.archiveTimeout | quote }}
+      {{- end }}
+      {{- range $name, $value := .Values.postgres.parameters }}
+      {{ $name }}: {{ $value | quote }}
+      {{- end }}
   {{- end }}
   bootstrap:
     {{- if .Values.postgres.restore.enabled }}

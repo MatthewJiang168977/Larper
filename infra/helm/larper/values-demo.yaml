@@ -1,0 +1,71 @@
+# Always-on demo: a few users, under 1 req/s, on one small VM. The whole architecture
+# still runs (API behind the ingress, Postgres + PostGIS + pgvector, Redis, Redpanda,
+# outbox relay, taste-worker, ingest-worker); only replicas and sizes change.
+#
+# Layer it last, over the target's values:
+#   helm upgrade --install larper infra/helm/larper -n larper -f values-oci.yaml -f values-demo.yaml
+#   helm upgrade --install larper infra/helm/larper -n larper -f values-demo.yaml   # k3d
+#
+# Sized from k3d measurements (loadtest/results/footprint-demo-*): requests at the
+# measured steady working set, limits above the measured peak (idle, 8 VUs at
+# ~8 req/s, and an area ingest). Together the app's pods used ~0.75 GiB idle and
+# ~0.88 GiB at peak; with k3s, containerd and the OS a 2 vCPU / 4 GB VM fits it, and
+# 6 GB leaves comfortable room (README, "Demo profile").
+#
+# Monitoring is off: kube-prometheus-stack alone takes ~0.8 GiB. To turn it back on,
+# install it (scripts/monitoring.sh) and add --set monitoring.enabled=true.
+
+api:
+  replicas: 1
+  # Measured: ~8m / 43Mi idle; ~85m / ~60Mi per pod at 8 req/s across 2 pods.
+  # The HPA scales to 2 at 60% of the request (60m, ~4-5 req/s).
+  resources:
+    requests: { cpu: 100m, memory: 96Mi }
+    limits: { memory: 256Mi }
+  hpa:
+    minReplicas: 1
+    maxReplicas: 2
+
+postgres:
+  # Measured: 17m / 342Mi steady (shared_buffers and cache warm), 170m / 419Mi peak
+  # (an ingest's stats refresh).
+  resources:
+    requests: { cpu: 100m, memory: 384Mi }
+    limits: { memory: 768Mi }
+  # ~80k places: the places table is ~160 MB with ~40 MB of indexes, and a demo touches
+  # a few neighbourhoods of it. Connections: API pool 10 per replica (2 max), three Go
+  # workers with small pgx pools, the migrate Job, CNPG's own.
+  parameters:
+    shared_buffers: 128MB
+    effective_cache_size: 512MB
+    work_mem: 4MB
+    maintenance_work_mem: 64MB
+    max_connections: "50"
+
+redpanda:
+  # Single core; Seastar capped at 384M, the container at 512Mi. Measured ~7m / 103Mi.
+  smp: 1
+  memory: 384M
+  resources:
+    requests: { cpu: 50m, memory: 160Mi }
+    limits: { memory: 512Mi }
+
+workers:
+  # outbox-relay, taste-worker. Measured 1-8m / 5-6Mi each.
+  tasteReplicas: 1
+  resources:
+    requests: { cpu: 10m, memory: 24Mi }
+    limits: { memory: 128Mi }
+
+ingest:
+  # Measured: ~1m / 138Mi between ingests, 269m / 248Mi peak during one (DuckDB is
+  # capped at 384MB and one thread, so it spills rather than growing).
+  replicas: 1
+  duckdbMemory: 384MB
+  duckdbThreads: 1
+  resources:
+    requests: { cpu: 50m, memory: 160Mi }
+    limits: { memory: 768Mi }
+
+monitoring:
+  enabled: false

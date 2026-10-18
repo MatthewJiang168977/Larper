@@ -50,6 +50,8 @@ postgres:
   resources:
     requests: { cpu: 250m, memory: 256Mi }
     limits: { memory: 1Gi }
+  # Extra postgresql.conf settings, e.g. { shared_buffers: 64MB }. Empty: CNPG's defaults.
+  parameters: {}
   # Backups to an S3-compatible object store via the Barman Cloud plugin (needs the
   # plugin + cert-manager installed, and a Secret "pg-backup-s3"; scripts/oci-up.sh
   # does both for Oracle). Off locally.
@@ -111,6 +113,13 @@ redis:
 redpanda:
   image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
   storage: 2Gi
+  # Seastar's own limits (--smp cores, --memory for the process); the container limit
+  # sits above --memory for the allocator's overhead.
+  smp: 1
+  memory: 512M
+  resources:
+    requests: { cpu: 100m, memory: 640Mi }
+    limits: { memory: 800Mi }
 
 monitoring:
   # Needs kube-prometheus-stack's CRDs (scripts/monitoring.sh). Adds the api
