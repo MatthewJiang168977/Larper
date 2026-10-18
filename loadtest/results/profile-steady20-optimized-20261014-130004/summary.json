@@ -128,31 +128,17 @@
             "p(95)": 59.2226
         }
     },
-    "setup_data": {
-        "sessions": [
-            "sess_3Kh5yE3kopLuWNSTYnlX4sl9XpN",
-            "sess_3Kh5yFwac5TH31m3ngvUz2guOmW",
-            "sess_3Kh5yGu2mMYmTxG60LVjkPr3igJ",
-            "sess_3Kh5yLXVsbjbZwdjd17vftlolcp",
-            "sess_3Kh5yNzsOLUAcTZiCUkkgW4PPor",
-            "sess_3Kh5yJNZlZr24SLqLZvPrsSDZB8",
-            "sess_3Kh5yJtxMcCcphTWsC047UWboHI",
-            "sess_3Kh5yJa216aRetK9BbG2hO2a7DF",
-            "sess_3Kh5ySyrnlqZNcZD9nfGaBkN7ke",
-            "sess_3Kh5yWK3PQg5DgCrPBfImyliMdz"
-        ]
-    },
     "root_group": {
         "groups": {},
         "checks": {
-                "200": {
-                    "path": "::200",
-                    "id": "4230b0c1b1cb609da348fcf04ffd96f4",
-                    "passes": 4656,
-                    "fails": 0,
-                    "name": "200"
-                }
-            },
+            "200": {
+                "path": "::200",
+                "id": "4230b0c1b1cb609da348fcf04ffd96f4",
+                "passes": 4656,
+                "fails": 0,
+                "name": "200"
+            }
+        },
         "name": "",
         "path": "",
         "id": "d41d8cd98f00b204e9800998ecf8427e"

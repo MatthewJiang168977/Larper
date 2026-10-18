@@ -128,33 +128,19 @@
             "p(90)": 1.0231
         }
     },
-    "setup_data": {
-        "sessions": [
-            "sess_3Kh8H3qjG8ck2FeRNnhZCCAYMVi",
-            "sess_3Kh8H15LR6svOIAyWHstZRFeRjw",
-            "sess_3Kh8H6FBqlaDBmtVsgvqu9KSfqn",
-            "sess_3Kh8HA3JTRDEgv9MZWAuCM19DlQ",
-            "sess_3Kh8H8z4OrXFhmUHhBspKn3NabO",
-            "sess_3Kh8H9QA3XEUR7rXLF3jRVRGpvG",
-            "sess_3Kh8HBiM8uZBQAIrffMcIdZYPJQ",
-            "sess_3Kh8HG2rw1P30hM1x65MA0BIQkp",
-            "sess_3Kh8HI1ENhUDX0z8nottvuIfigh",
-            "sess_3Kh8HE3gQC3yAMtcmHekjcZOWA1"
-        ]
-    },
     "root_group": {
         "name": "",
         "path": "",
         "id": "d41d8cd98f00b204e9800998ecf8427e",
         "groups": {},
         "checks": {
-                "200": {
-                    "path": "::200",
-                    "id": "4230b0c1b1cb609da348fcf04ffd96f4",
-                    "passes": 23439,
-                    "fails": 143,
-                    "name": "200"
-                }
+            "200": {
+                "path": "::200",
+                "id": "4230b0c1b1cb609da348fcf04ffd96f4",
+                "passes": 23439,
+                "fails": 143,
+                "name": "200"
             }
+        }
     }
 }

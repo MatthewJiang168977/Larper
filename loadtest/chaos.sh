@@ -21,6 +21,8 @@ NS=${NS:-larper}
 VUS=${VUS:-60}
 OUT=loadtest/results/chaos-$(date +%Y%m%d-%H%M%S)
 mkdir -p "$OUT"
+# k6 writes the test users' Clerk session IDs into summary.json: strip them however the run ends.
+trap 'node loadtest/redact.js "$OUT"' EXIT
 EVENTS=$OUT/events.tsv
 : >"$EVENTS"
 

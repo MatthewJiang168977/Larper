@@ -21,6 +21,8 @@ WARMUP=${WARMUP:-90}
 PROFILE_S=${PROFILE_S:-60}
 OUT=loadtest/results/profile-$LABEL-$(date +%Y%m%d-%H%M%S)
 mkdir -p "$OUT"
+# k6 writes the test users' Clerk session IDs into summary.json: strip them however the run ends.
+trap 'node loadtest/redact.js "$OUT"' EXIT
 K6=${K6:-$(command -v k6 || command -v k6.exe)}
 [[ -n "$K6" ]] || { echo "k6 not found (set K6=path)"; exit 1; }
 

@@ -142,19 +142,5 @@
             "max": 5905.0429,
             "p(90)": 2810.5761100000004
         }
-    },
-    "setup_data": {
-        "sessions": [
-            "sess_3KfDgHfZX0kkuJFaU5bgKGUY1BI",
-            "sess_3KfDgR4ljVR9kWmTfCzRSbTm7UQ",
-            "sess_3KfDgUVhY4orSjEt6nciXyNJPnz",
-            "sess_3KfDgSYfILYkmMbFGQF9N1GUYVm",
-            "sess_3KfDgRJmThAI89uBJI4e9S9EZ0K",
-            "sess_3KfDgUYr7p8JMEd0MujxlBENKhy",
-            "sess_3KfDgZavL1OLxelJKAcuAL8tKI0",
-            "sess_3KfDgXVBXts5d0QNFHs7rt5kBze",
-            "sess_3KfDgamP0YNC3FtmknW9plgVqt0",
-            "sess_3KfDgXgJGcAK7vmqxqaSwcTAwNO"
-        ]
     }
 }

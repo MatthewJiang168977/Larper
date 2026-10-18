@@ -35,6 +35,7 @@ CLERK_USER=$(clerk GET "/users?email_address=$(node -e "process.stdout.write(enc
   json "JSON.parse(d)[0]?.id")
 [[ -n $CLERK_USER ]] || { echo "no Clerk user $USER_EMAIL (run a load test once to create it)"; exit 1; }
 SESSION=$(clerk POST /sessions "{\"user_id\":\"$CLERK_USER\"}" | json "JSON.parse(d).id")
+trap 'clerk POST "/sessions/$SESSION/revoke" >/dev/null' EXIT # nothing is saved, but don't leave it live
 token() { clerk POST "/sessions/$SESSION/tokens" | json "JSON.parse(d).jwt"; }
 api() { # method path [body] -> body, then "HTTP <code>" on the last line
   curl -s -X "$1" "$BASE_URL$2" -H "Authorization: Bearer $(token)" -H 'Content-Type: application/json' \

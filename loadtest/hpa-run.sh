@@ -14,6 +14,8 @@ LABEL=${1:?usage: hpa-run.sh <label>}
 NS=${NS:-larper}
 OUT=loadtest/results/hpa-$LABEL-$(date +%Y%m%d-%H%M%S)
 mkdir -p "$OUT"
+# k6 writes the test users' Clerk session IDs into summary.json: strip them however the run ends.
+trap 'node loadtest/redact.js "$OUT"' EXIT
 K6=${K6:-$(command -v k6 || command -v k6.exe)}
 [[ -n "$K6" ]] || { echo "k6 not found (set K6=path)"; exit 1; }
 
@@ -41,7 +43,7 @@ record() {
 }
 record &
 REC=$!
-trap 'kill $REC 2>/dev/null' EXIT
+trap 'kill $REC 2>/dev/null; node loadtest/redact.js "$OUT"' EXIT
 
 "$K6" run --quiet --out "csv=$OUT/k6.csv" --summary-export "$OUT/summary.json" loadtest/quests.js >"$OUT/k6.log" 2>&1
 echo "k6 exit $?" >>"$OUT/k6.log"

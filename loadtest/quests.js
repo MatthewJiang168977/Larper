@@ -149,6 +149,12 @@ export function setup() {
   return { sessions, cards };
 }
 
+// Revoke the run's sessions, so the IDs in setup_data are dead even if a summary
+// escapes redact.js.
+export function teardown(data) {
+  for (const session of data.sessions) clerk('POST', `/sessions/${session}/revoke`);
+}
+
 // The liked cards depend only on the user, so re-onboarding keeps the same taste
 // and only moves its version.
 function onboard(jwt, cards, i, name) {

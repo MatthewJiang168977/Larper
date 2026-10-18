@@ -15,6 +15,8 @@ SECONDS_TOTAL=${2:-180}
 INTERVAL=${3:-10}
 OUT=loadtest/results/footprint-$LABEL-$(date +%Y%m%d-%H%M%S)
 mkdir -p "$OUT"
+# Nothing here touches Clerk, but every saved output goes through the same scrub.
+trap 'node loadtest/redact.js "$OUT"' EXIT
 NODES=$(docker ps --filter name=k3d-larper- --format '{{.Names}}' | grep -E 'server-|agent-' | sort | tr '\n' ' ')
 
 end=$(( $(date +%s) + SECONDS_TOTAL ))

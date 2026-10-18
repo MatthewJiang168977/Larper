@@ -142,19 +142,5 @@
             "min": 18.5615,
             "med": 42.4354
         }
-    },
-    "setup_data": {
-        "sessions": [
-            "sess_3Ko36wHU1vCsSUCMmE9r704jjaj",
-            "sess_3Ko376SAirhzYVPucwoL2PZ1kaR",
-            "sess_3Ko376l9U96GA1SNJSo7NYzhX2y",
-            "sess_3Ko375U0jsXHK7q1ujbgOBith8h",
-            "sess_3Ko377bhMYcIJDJ0lPZcyFPNCB6",
-            "sess_3Ko3721kYdKapG3xq7UHVVBf8cH",
-            "sess_3Ko3792h667br1z7LjWORHuLJUW",
-            "sess_3Ko37BN5KiuB6YbWGLap1kiGSGi",
-            "sess_3Ko378P1IM1yyyLvKY9T6q4gUUJ",
-            "sess_3Ko379ffjPDksOoCh87wyDpbgO6"
-        ]
     }
 }
