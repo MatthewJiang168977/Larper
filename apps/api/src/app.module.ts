@@ -9,9 +9,10 @@ import { QuestsController } from './quests/quests.controller';
 import { JOB_QUEUE, PgJobQueue } from './jobs/job-queue';
 import { AreasService } from './quests/areas.service';
 import { QuestsService } from './quests/quests.service';
+import { ThrottleModule } from './throttle/throttle.module';
 
 @Module({
-  imports: [DbModule, AuthModule],
+  imports: [DbModule, AuthModule, ThrottleModule],
   controllers: [HealthController, ProfileController, QuestsController],
   providers: [
     TagsService,

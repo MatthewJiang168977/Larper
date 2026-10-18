@@ -31,6 +31,15 @@ describe("useApi", () => {
     await expect(call()).rejects.toMatchObject({ message: "lat must be a number; lng must be a number" });
   });
 
+  it("reads a 429's wait from the body, or else from Retry-After", async () => {
+    const message = "Too many requests. Try again in 42 s.";
+    fetchMock.mockResolvedValue(json(429, { message, code: "rate_limited", retryAfterS: 42 }));
+    await expect(call()).rejects.toMatchObject({ status: 429, message, code: "rate_limited", retryAfterS: 42 });
+
+    fetchMock.mockResolvedValue(new Response("{}", { status: 429, headers: { "Retry-After": "7" } }));
+    await expect(call()).rejects.toMatchObject({ status: 429, retryAfterS: 7 });
+  });
+
   it("reports a network failure as status 0", async () => {
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
     await expect(call()).rejects.toMatchObject({ status: 0, kind: "network" });

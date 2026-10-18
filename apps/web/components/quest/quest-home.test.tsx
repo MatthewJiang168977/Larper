@@ -215,6 +215,25 @@ describe("QuestHome: never stuck on 'Surveying…'", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("after a 429, waits as long as the API asks before polling again", async () => {
+    vi.useFakeTimers();
+    routes["/quests/today"] = ok(surveyingEmpty);
+    render(<QuestHome />);
+    await settle();
+
+    const limited = "Too many requests. Try again in 30 s.";
+    routes["/quests/today"] = fail(new ApiError(limited, 429, "http", "rate_limited", 30));
+    await advance(SURVEY_POLL_MS);
+    expect(screen.getByRole("alert").textContent).toContain(limited);
+    const after = todayCalls();
+
+    routes["/quests/today"] = ok(withQuest);
+    await advance(29_000);
+    expect(todayCalls()).toBe(after); // not every 4 s
+    await advance(1_000);
+    expect(screen.getByText("quest: Cafe Uno")).toBeTruthy();
+  });
+
   it("stops polling after SURVEY_MAX_MS and offers Check again", async () => {
     vi.useFakeTimers();
     routes["/quests/today"] = ok(surveyingEmpty); // the ingest never finishes

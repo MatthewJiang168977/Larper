@@ -28,6 +28,8 @@ export class ApiError extends Error {
     readonly kind: "http" | "network" | "timeout" = "http",
     /** The API's machine-readable reason, when it gives one (e.g. "too_rough" on a check-in). */
     readonly code?: string,
+    /** On a 429: how long until the limit lets this through again, in seconds. */
+    readonly retryAfterS?: number,
   ) {
     super(message);
     this.name = "ApiError";
@@ -43,6 +45,14 @@ export function describeError(e: unknown): string {
     return e.message;
   }
   return "Something went wrong.";
+}
+
+// A 429's wait: the body's retryAfterS, else the Retry-After header (seconds). The body
+// comes first because a browser only shows a cross-origin response's Retry-After when
+// the API lists it in Access-Control-Expose-Headers.
+function retryAfter(body: { retryAfterS?: unknown }, res: Response): number | undefined {
+  const s = Number(body.retryAfterS ?? res.headers.get("retry-after"));
+  return Number.isFinite(s) && s > 0 ? s : undefined;
 }
 
 // fetch() against the API with the Clerk session token attached. Clerk tokens are
@@ -72,7 +82,13 @@ export function useApi() {
         const body = await res.json().catch(() => ({}));
         // Nest's validation errors carry a list of messages.
         const message = Array.isArray(body.message) ? body.message.join("; ") : body.message;
-        throw new ApiError(message ?? `${res.status} ${res.statusText}`, res.status, "http", body.code);
+        throw new ApiError(
+          message ?? `${res.status} ${res.statusText}`,
+          res.status,
+          "http",
+          body.code,
+          res.status === 429 ? retryAfter(body, res) : undefined,
+        );
       }
       return res.json() as Promise<T>;
     },

@@ -26,6 +26,23 @@ export const cacheLookups = new Counter({
   registers: [registry],
 });
 
+// Requests refused with 429, by limit (ip, user) and route (Controller.handler).
+export const rateLimited = new Counter({
+  name: 'rate_limited_total',
+  help: 'Requests refused by a rate limit, by scope (ip, user) and route',
+  labelNames: ['scope', 'route'],
+  registers: [registry],
+});
+
+// Limit checks let through unchecked because Redis didn't answer (the limiter fails
+// open). Non-zero means limits aren't being enforced.
+export const rateLimitStorageErrors = new Counter({
+  name: 'rate_limit_storage_errors_total',
+  help: 'Rate-limit checks that failed open because Redis was down or slow, by limit window',
+  labelNames: ['throttler'],
+  registers: [registry],
+});
+
 // Express middleware. The route is read when the response finishes, after the
 // router has matched it; unmatched paths share one label.
 export function httpMetrics(req: Request, res: Response, next: NextFunction) {

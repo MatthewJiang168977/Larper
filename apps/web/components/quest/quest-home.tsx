@@ -84,15 +84,20 @@ export function QuestHome() {
 
   // While areas are being surveyed, check back until the ingest-worker finishes. Every
   // finished request, failed or not, schedules the next check, up to SURVEY_MAX_MS.
+  // After a 429 the next check waits as long as the API asked.
   const surveying = (today?.surveying?.pending.length ?? 0) > 0;
+  const pollDelay =
+    todayError instanceof ApiError && todayError.retryAfterS
+      ? Math.max(SURVEY_POLL_MS, todayError.retryAfterS * 1000)
+      : SURVEY_POLL_MS;
   useEffect(() => {
     if (!surveying || surveyOverdue || loading) return;
     const t = setTimeout(() => {
       if (surveyStart !== null && Date.now() - surveyStart > SURVEY_MAX_MS) setSurveyOverdue(true);
       else setReloads((n) => n + 1);
-    }, SURVEY_POLL_MS);
+    }, pollDelay);
     return () => clearTimeout(t);
-  }, [surveying, surveyOverdue, loading, surveyStart, answered]);
+  }, [surveying, surveyOverdue, loading, surveyStart, answered, pollDelay]);
 
   // Keep fly-to centering above the sheet as its height changes.
   useEffect(() => {
