@@ -142,19 +142,5 @@
             "count": 20373,
             "rate": 40.3141749089706
         }
-    },
-    "setup_data": {
-        "sessions": [
-            "sess_3KfFMsgRxqqqQO7KaAp4UK7iIQF",
-            "sess_3KfFMqBcFEl8Y3jKnbRJGHcv6Wc",
-            "sess_3KfFMqqI6MavE8cSaTyuxvUP3XD",
-            "sess_3KfFMzbhUswUvn2zee8EC6rKmt0",
-            "sess_3KfFN4lCuZMxwPQQJssbWValriO",
-            "sess_3KfFN0Soeo9wntB00TR6vrvJsHj",
-            "sess_3KfFMz7kfGNFmwDKjtCiLK5Yw2b",
-            "sess_3KfFN1w47qw4nIfn7megyc19ViZ",
-            "sess_3KfFN7NbGIUD5wipvAQejiyL2uu",
-            "sess_3KfFN7EWdTq8TMcse9V5MCVf9i6"
-        ]
     }
 }

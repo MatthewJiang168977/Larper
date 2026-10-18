@@ -407,7 +407,7 @@ proto/           Protobuf event schemas (generated into workers/gen and apps/api
 db/migrations/   SQL migrations (golang-migrate)
 data/            Python bulk extract of Overture places (shares workers/internal/places/overture_extract.sql)
 infra/           k3d config, Helm chart (+ values-aks/eks/oci.yaml, values-demo.yaml for one small VM), Postgres image, Terraform (azure, aws, eks), oci-k3s (VM bootstrap + rebuild runbook), monitoring values
-loadtest/        k6 script, end-to-end check (e2e-check.sh), footprint (footprint.sh), failure test (chaos.sh), autoscaler runs (hpa-run.sh), cache + CPU profile (cache-profile.sh), cache miss (cold-run.sh), reports in results/
+loadtest/        k6 script, end-to-end check (e2e-check.sh), footprint (footprint.sh), failure test (chaos.sh), autoscaler runs (hpa-run.sh), cache + CPU profile (cache-profile.sh), cache miss (cold-run.sh), output scrub (redact.js), reports in results/
 docs/decisions/  Decision records (0001: sizing the API's CPU request and autoscaler)
 scripts/         up.sh / down.sh (k3d), build-images.sh (amd64 + arm64), monitoring.sh, aks-up.sh, eks-up.sh / eks-down.sh, oci-capacity-probe.sh / oci-up.sh
 ```
@@ -487,6 +487,11 @@ loadtest/cold-run.sh <label>                    # cache miss: Redis flushed, fre
 The k6 script creates 10 `loadtest+N@example.com` users on the Clerk dev instance (once) and mints
 their session tokens itself; the cache-miss test uses its own 50 onboarded `loadtest-cold+N`
 users (a Clerk dev instance stops at 100). The secret key stays on the machine running k6.
+Sessions don't outlive the run: `quests.js` revokes them in `teardown()`, and every script
+runs its output through [`loadtest/redact.js`](loadtest/redact.js) on exit, which drops k6's
+`setup_data` (the session IDs) from `summary.json` and replaces anything shaped like a Clerk ID,
+JWT or secret key. Run it yourself after a bare `k6 run --summary-export`
+(`node loadtest/redact.js <file>`); CI fails if a committed result still has one.
 
 **Results at a glance** (milestone 8). Details and reports for each are below.
 

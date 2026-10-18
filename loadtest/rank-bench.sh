@@ -25,6 +25,8 @@ CELLS=${CELLS:-$(ls -d loadtest/results/cold-home-* 2>/dev/null | tail -1)/cells
 [[ -f $CELLS ]] || { echo "no cells file ($CELLS): run cold-run.sh or set CELLS"; exit 1; }
 OUT=loadtest/results/rank-bench-$(date +%Y%m%d-%H%M%S)
 mkdir -p "$OUT"
+# Nothing here touches Clerk, but every saved output goes through the same scrub.
+trap 'node loadtest/redact.js "$OUT"' EXIT
 VARIANTS=("$@")
 [[ ${#VARIANTS[@]} -gt 0 ]] || VARIANTS=($(ls loadtest/rank-bench/*.sql | xargs -n1 basename | sed 's/\.sql$//'))
 

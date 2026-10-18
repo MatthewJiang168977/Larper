@@ -142,19 +142,5 @@
             "p(90)": 1427.84815,
             "p(95)": 1478.0352349999998
         }
-    },
-    "setup_data": {
-        "sessions": [
-            "sess_3Kh6c5EqMpkKMugADgSXrsseFoF",
-            "sess_3Kh6cEupF8tMPNuafT6jniUErmF",
-            "sess_3Kh6cBAW7Sv0Shb32jsqsOuFrW4",
-            "sess_3Kh6cAlCao3JNKqszq2WGedKmlw",
-            "sess_3Kh6cGAuRHCPHaOsacvVseIjXj9",
-            "sess_3Kh6cMiTesD03Uqd1QtiQsEAfZX",
-            "sess_3Kh6cOKjB2KWYth1mQy9mINxTzl",
-            "sess_3Kh6cK8AObBO9IWGEMbmVeIPDfN",
-            "sess_3Kh6cHbdi9iKN1wx4vkYw2lJvIP",
-            "sess_3Kh6cJDSNbsPYVai5ijMslTZ0B9"
-        ]
     }
 }

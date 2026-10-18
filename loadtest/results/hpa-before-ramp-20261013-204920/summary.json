@@ -128,33 +128,19 @@
             "min": 0
         }
     },
-    "setup_data": {
-        "sessions": [
-            "sess_3KfBuqzBbJC5C3yb0QpBINVt7u1",
-            "sess_3KfBuwLSZ2xP1Y5lN4e7fwRtvPm",
-            "sess_3KfBv2kATBrZJYttRpYv7uCUGbL",
-            "sess_3KfBv1HPhJuf1buclaOo6lQtzpp",
-            "sess_3KfBuyNMEY3rO6o9yxuNCys28na",
-            "sess_3KfBv1Zdy2qLEWE6j3XGFtvIOQW",
-            "sess_3KfBv3Z2f2c8yEatazwGiHAzlYm",
-            "sess_3KfBv6dcsoM5XmIcFAevc49yDR8",
-            "sess_3KfBv5NjZnfIKju7v4oUbGZF0FL",
-            "sess_3KfBvAZVFjiUX7wjese96zTv42D"
-        ]
-    },
     "root_group": {
         "name": "",
         "path": "",
         "id": "d41d8cd98f00b204e9800998ecf8427e",
         "groups": {},
         "checks": {
-                "200": {
-                    "id": "4230b0c1b1cb609da348fcf04ffd96f4",
-                    "passes": 47623,
-                    "fails": 0,
-                    "name": "200",
-                    "path": "::200"
-                }
+            "200": {
+                "id": "4230b0c1b1cb609da348fcf04ffd96f4",
+                "passes": 47623,
+                "fails": 0,
+                "name": "200",
+                "path": "::200"
             }
+        }
     }
 }

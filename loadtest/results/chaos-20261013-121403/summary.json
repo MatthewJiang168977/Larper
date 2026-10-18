@@ -142,19 +142,5 @@
             "fails": 465,
             "value": 0.9788222434758846
         }
-    },
-    "setup_data": {
-        "sessions": [
-            "sess_3KeBF2tVxwpvOhKaVP7l1OrCJ6L",
-            "sess_3KeBF20zXCE94XhnbHj3W4bhgWt",
-            "sess_3KeBF17SFQHKXqUhacjAvQYgGqo",
-            "sess_3KeBF0frH6lPLWxTdGQL4PJpBSM",
-            "sess_3KeBF59PW2RdwQL998te2Q1YAqd",
-            "sess_3KeBFAG778Bq7fGVJy3ffob9WcO",
-            "sess_3KeBF4QajPwWyknBssxG2QeQonp",
-            "sess_3KeBF49KOnY9qKsXcxpNqagIAgN",
-            "sess_3KeBFFjYhQErOqlbahXEqfaZywC",
-            "sess_3KeBFH0auzxpegkb3WyR375TTUf"
-        ]
     }
 }

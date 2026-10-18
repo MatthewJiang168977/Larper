@@ -128,33 +128,19 @@
             "value": 0
         }
     },
-    "setup_data": {
-        "sessions": [
-            "sess_3KeMAfAg4huMUCjP9C7P7pO00IH",
-            "sess_3KeMAjGIm8Jijnk8QAScECwLGld",
-            "sess_3KeMAuHZjVMW8FR3RtSkgf8o7qP",
-            "sess_3KeMArkHt9bvCa6EMOKvmS08nJ4",
-            "sess_3KeMAqbtzqZStG6W8Q1UHIcuoIV",
-            "sess_3KeMAnHlfFmgWGPWUhZ6OYhpqEa",
-            "sess_3KeMAyU1FenPbSTzLG9nUdsBlof",
-            "sess_3KeMAxh5sBHvCsUadmoKklmO1ya",
-            "sess_3KeMAwBcILvuitJrcqIhNla63ZI",
-            "sess_3KeMAwmCWHSrQXaRQ5jazJz92qB"
-        ]
-    },
     "root_group": {
         "path": "",
         "id": "d41d8cd98f00b204e9800998ecf8427e",
         "groups": {},
         "checks": {
-                "200": {
-                    "passes": 3365,
-                    "fails": 0,
-                    "name": "200",
-                    "path": "::200",
-                    "id": "4230b0c1b1cb609da348fcf04ffd96f4"
-                }
-            },
+            "200": {
+                "passes": 3365,
+                "fails": 0,
+                "name": "200",
+                "path": "::200",
+                "id": "4230b0c1b1cb609da348fcf04ffd96f4"
+            }
+        },
         "name": ""
     }
 }

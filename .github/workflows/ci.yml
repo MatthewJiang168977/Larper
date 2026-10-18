@@ -1,6 +1,7 @@
 # Checks every pull request and every push to main: the API (typecheck, lint, unit
 # tests), the Go workers (gofmt, vet, unit tests), the database tests against a real
-# Postgres with PostGIS and pgvector, and the Helm chart.
+# Postgres with PostGIS and pgvector, the Helm chart, and that no committed load-test
+# result carries a Clerk session ID or token.
 #
 # No secrets and no cloud: nothing here deploys, and pull requests from forks run it
 # with read-only permissions. It doesn't touch oci-probe.yml (that one only runs on
@@ -134,3 +135,17 @@ jobs:
           helm template larper $chart -n larper -f $chart/values-demo.yaml > /dev/null
           helm template larper $chart -n larper -f $chart/values-oci.yaml -f $chart/values-demo.yaml \
             --set postgres.backup.endpointURL=https://objectstorage.example.invalid > /dev/null
+
+  results:
+    name: Load-test results (no session IDs or tokens)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      # The check itself must catch a k6 summary with setup_data in it.
+      - name: Check that the check fails on a leak
+        run: |
+          mkdir -p "$RUNNER_TEMP/leak"
+          echo '{"metrics":{},"setup_data":{"sessions":["sess_0123456789abcdefghijABCDEFG"]}}' >"$RUNNER_TEMP/leak/summary.json"
+          if node loadtest/redact.js --check "$RUNNER_TEMP/leak"; then echo "redact.js --check missed a leak"; exit 1; fi
+      - run: node loadtest/redact.js --check loadtest/results

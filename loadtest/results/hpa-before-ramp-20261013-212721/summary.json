@@ -128,33 +128,19 @@
             "rate": 328390.04916139203
         }
     },
-    "setup_data": {
-        "sessions": [
-            "sess_3KfGWuItIx9s3CWOTq8F5I5ocWl",
-            "sess_3KfGWtEBzArvsqXZVc1c2Nb7Vvm",
-            "sess_3KfGWuTcphz2WZw0rs9ebfCKVai",
-            "sess_3KfGWx6mgs61md1hCtIFSZ3YnDW",
-            "sess_3KfGX3j3tlV296G7aaw5ih1MeED",
-            "sess_3KfGX3PhqYbGW7HARsqgcm46jtH",
-            "sess_3KfGX152aijuLq97ssZ6L1adD8w",
-            "sess_3KfGWxhPcJ6Z7L7JLqHmqshGhH8",
-            "sess_3KfGX4SEFHuPs2o5JOD0Z62iOxL",
-            "sess_3KfGXC3zSDZCbNrCAsxuXexez61"
-        ]
-    },
     "root_group": {
         "name": "",
         "path": "",
         "id": "d41d8cd98f00b204e9800998ecf8427e",
         "groups": {},
         "checks": {
-                "200": {
-                    "name": "200",
-                    "path": "::200",
-                    "id": "4230b0c1b1cb609da348fcf04ffd96f4",
-                    "passes": 41208,
-                    "fails": 0
-                }
+            "200": {
+                "name": "200",
+                "path": "::200",
+                "id": "4230b0c1b1cb609da348fcf04ffd96f4",
+                "passes": 41208,
+                "fails": 0
             }
+        }
     }
 }

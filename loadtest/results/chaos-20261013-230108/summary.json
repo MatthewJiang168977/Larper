@@ -128,31 +128,17 @@
             "value": 0.007306704454875565
         }
     },
-    "setup_data": {
-        "sessions": [
-            "sess_3KfRvsQzEc2p6JdVZR8CgRukMHS",
-            "sess_3KfRvtCaq1VZCvgDv1xKmE49GDH",
-            "sess_3KfRvqwrFrFlvvd919kmligJsA8",
-            "sess_3KfRvxk1RwQyn5tsIARxDj1gI7t",
-            "sess_3KfRvzf8pJaEj4aHbEejs55idNP",
-            "sess_3KfRw4j4VShiwHx02IhQBNhOvhF",
-            "sess_3KfRvz5iUh8HJC2Mnpmlh9vmr5h",
-            "sess_3KfRvzP3KbFecRTVtJ7bBLV12mV",
-            "sess_3KfRwdA2ceaEDF6ySYCL6xcSFeC",
-            "sess_3KfRwc3nHhSOkOiqXpqgo1cuBSu"
-        ]
-    },
     "root_group": {
         "groups": {},
         "checks": {
-                "200": {
-                    "name": "200",
-                    "path": "::200",
-                    "id": "4230b0c1b1cb609da348fcf04ffd96f4",
-                    "passes": 21797,
-                    "fails": 165
-                }
-            },
+            "200": {
+                "name": "200",
+                "path": "::200",
+                "id": "4230b0c1b1cb609da348fcf04ffd96f4",
+                "passes": 21797,
+                "fails": 165
+            }
+        },
         "name": "",
         "path": "",
         "id": "d41d8cd98f00b204e9800998ecf8427e"

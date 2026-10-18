@@ -29,6 +29,8 @@ MIN_PLACES=${MIN_PLACES:-20}
 STAMP=cold-$COLD_MODE-$LABEL-$(date +%Y%m%d-%H%M%S)
 OUT=loadtest/results/$STAMP
 mkdir -p "$OUT"
+# k6 writes the test users' Clerk session IDs into summary.json: strip them however the run ends.
+trap 'node loadtest/redact.js "$OUT"' EXIT
 K6=${K6:-$(command -v k6 || command -v k6.exe)}
 [[ -n "$K6" ]] || { echo "k6 not found (set K6=path)"; exit 1; }
 
@@ -75,7 +77,7 @@ kubectl -n "$NS" exec "${REDIS#pod/}" -- redis-cli FLUSHALL
 counters start
 record &
 REC=$!
-trap 'kill $REC 2>/dev/null' EXIT
+trap 'kill $REC 2>/dev/null; node loadtest/redact.js "$OUT"' EXIT
 
 SCENARIO=cold COLD_MODE=$COLD_MODE PEAK_VUS=$PEAK_VUS HOLD=$HOLD CELLS="results/$STAMP/cells.json" \
   "$K6" run --quiet --out "csv=$OUT/k6.csv" --summary-export "$OUT/summary.json" loadtest/quests.js >"$OUT/k6.log" 2>&1

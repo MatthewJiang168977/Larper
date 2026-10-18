@@ -128,33 +128,19 @@
             "value": 0
         }
     },
-    "setup_data": {
-        "sessions": [
-            "sess_3KfPwH9TK2EWR1PezKygxxwXZHf",
-            "sess_3KfPwBT1ugJtFGCBurhJUUtPRwK",
-            "sess_3KfPwBchJz1eT5sNJOR5BDdCpBd",
-            "sess_3KfPwEFXNHSAPesQscjVtRz5DFu",
-            "sess_3KfPwFpEvOpCtEZYXQQuED7NsKv",
-            "sess_3KfPwPAwNs0OK8h1a129JVrX4iE",
-            "sess_3KfPwMcE6i02Ec6cREKNVAsq9He",
-            "sess_3KfPwPpi1LoGlEljYW3nnk2AueS",
-            "sess_3KfPwMd3L22ktDeP6tclOxf8U0D",
-            "sess_3KfPwM9ygHm7VvBbSXnK5aymRTn"
-        ]
-    },
     "root_group": {
         "name": "",
         "path": "",
         "id": "d41d8cd98f00b204e9800998ecf8427e",
         "groups": {},
         "checks": {
-                "200": {
-                    "id": "4230b0c1b1cb609da348fcf04ffd96f4",
-                    "passes": 65044,
-                    "fails": 0,
-                    "name": "200",
-                    "path": "::200"
-                }
+            "200": {
+                "id": "4230b0c1b1cb609da348fcf04ffd96f4",
+                "passes": 65044,
+                "fails": 0,
+                "name": "200",
+                "path": "::200"
             }
+        }
     }
 }
