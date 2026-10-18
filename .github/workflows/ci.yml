@@ -149,3 +149,20 @@ jobs:
           echo '{"metrics":{},"setup_data":{"sessions":["sess_0123456789abcdefghijABCDEFG"]}}' >"$RUNNER_TEMP/leak/summary.json"
           if node loadtest/redact.js --check "$RUNNER_TEMP/leak"; then echo "redact.js --check missed a leak"; exit 1; fi
       - run: node loadtest/redact.js --check loadtest/results
+
+  web-build:
+    name: Web (next build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # A production build: with Cache Components, a request-time read outside
+      # <Suspense> is a build error that dev mode and tsc don't catch (it broke
+      # /sign-in). Needs no Clerk keys: nothing at build time talks to Clerk.
+      - run: pnpm --filter @larper/web build
