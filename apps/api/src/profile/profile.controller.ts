@@ -1,7 +1,10 @@
 import { BadRequestException, Body, Controller, Get, Inject, Post, UseGuards } from '@nestjs/common';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { Pool } from 'pg';
 import { AuthUser, ClerkAuthGuard, CurrentUser } from '../auth/auth.guard';
 import { PG } from '../db/db.module';
+import { UserLimitGuard } from '../throttle/guards';
+import { LIMITS, OPT_IN_WINDOWS, USER_WINDOWS } from '../throttle/limits';
 import { VIBE_CARDS } from './cards';
 import { TAG_DIMS, TagsService } from './tags.service';
 import { seedTasteVector, topTags, toVectorLiteral } from './taste';
@@ -14,7 +17,8 @@ interface OnboardingBody {
 const cardsById = new Map(VIBE_CARDS.map((c) => [c.id, c]));
 
 @Controller()
-@UseGuards(ClerkAuthGuard)
+@UseGuards(ClerkAuthGuard, UserLimitGuard)
+@SkipThrottle(OPT_IN_WINDOWS)
 export class ProfileController {
   constructor(
     @Inject(PG) private readonly pg: Pool,
@@ -39,6 +43,7 @@ export class ProfileController {
 
   // Seeds (or re-seeds) the taste profile from one pass through the cards.
   @Post('onboarding')
+  @Throttle({ [USER_WINDOWS.minute]: { limit: LIMITS.onboarding.minute } })
   async onboard(@CurrentUser() user: AuthUser, @Body() body: OnboardingBody) {
     const liked = parseCardIds(body.liked, 'liked');
     const passed = parseCardIds(body.passed, 'passed');

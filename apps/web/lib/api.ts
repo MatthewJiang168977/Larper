@@ -20,6 +20,10 @@ export interface VibeCard {
 // only fires when the API or the network is stuck.
 export const REQUEST_TIMEOUT_MS = 15_000;
 
+// The API's base URL: NEXT_PUBLIC_API_URL (inlined at build time; required for a
+// production build, next.config.ts), else "/api", which only `next dev` proxies.
+export const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/+$/, "") || "/api";
+
 /** A failed API call. `status` is 0 when no response arrived (offline, timeout). */
 export class ApiError extends Error {
   constructor(
@@ -28,6 +32,8 @@ export class ApiError extends Error {
     readonly kind: "http" | "network" | "timeout" = "http",
     /** The API's machine-readable reason, when it gives one (e.g. "too_rough" on a check-in). */
     readonly code?: string,
+    /** On a 429: how long until the limit lets this through again, in seconds. */
+    readonly retryAfterS?: number,
   ) {
     super(message);
     this.name = "ApiError";
@@ -45,6 +51,14 @@ export function describeError(e: unknown): string {
   return "Something went wrong.";
 }
 
+// A 429's wait: the body's retryAfterS, else the Retry-After header (seconds). The body
+// comes first because a browser only shows a cross-origin response's Retry-After when
+// the API lists it in Access-Control-Expose-Headers.
+function retryAfter(body: { retryAfterS?: unknown }, res: Response): number | undefined {
+  const s = Number(body.retryAfterS ?? res.headers.get("retry-after"));
+  return Number.isFinite(s) && s > 0 ? s : undefined;
+}
+
 // fetch() against the API with the Clerk session token attached. Clerk tokens are
 // short-lived (60s); getToken() returns a cached one or refreshes it.
 export function useApi() {
@@ -55,8 +69,10 @@ export function useApi() {
       const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
       let res: Response;
       try {
-        res = await fetch(`/api${path}`, {
+        res = await fetch(`${API_BASE}${path}`, {
           ...init,
+          // Auth is the bearer token below, never a cookie: send none cross-origin.
+          credentials: "omit",
           signal: timeout,
           headers: {
             ...(init.body ? { "Content-Type": "application/json" } : {}),
@@ -72,7 +88,13 @@ export function useApi() {
         const body = await res.json().catch(() => ({}));
         // Nest's validation errors carry a list of messages.
         const message = Array.isArray(body.message) ? body.message.join("; ") : body.message;
-        throw new ApiError(message ?? `${res.status} ${res.statusText}`, res.status, "http", body.code);
+        throw new ApiError(
+          message ?? `${res.status} ${res.statusText}`,
+          res.status,
+          "http",
+          body.code,
+          res.status === 429 ? retryAfter(body, res) : undefined,
+        );
       }
       return res.json() as Promise<T>;
     },

@@ -17,6 +17,11 @@ ingress:
   className: traefik
 
 api:
+  # Public traffic will come only through a Cloudflare Tunnel (cloudflared -> Traefik
+  # -> API), where CF-Connecting-IP is the visitor. Until then, and for an admin on the
+  # SSH tunnel, there's no such header and X-Forwarded-For is used.
+  rateLimit:
+    clientIp: cloudflare
   hpa:
     # On 2 OCPU: ~1.1 cores requested by the rest of the stack, so three API pods at
     # 300m fit and a fourth would stay Pending. values-demo.yaml takes it to 1-2.

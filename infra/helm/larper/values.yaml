@@ -15,6 +15,27 @@ api:
   resources:
     requests: { cpu: 300m, memory: 128Mi }
     limits: { memory: 256Mi }
+  # Request limits per client IP and per signed-in user (apps/api/src/throttle/limits.ts),
+  # counted in Redis so they hold across replicas; 429 with Retry-After past them.
+  # Load tests that drive one user or one IP harder than a person could turn them off
+  # with --set api.rateLimit.enabled=false (README, "Load test and monitoring").
+  rateLimit:
+    enabled: true
+    # Where the per-IP limit reads the client's address: "forwarded" (X-Forwarded-For,
+    # as far as trustProxy allows) or "cloudflare" (CF-Connecting-IP, set by Cloudflare's
+    # edge; believed only from a proxy trustProxy trusts).
+    clientIp: forwarded
+    # The proxies in front of the API whose X-Forwarded-For is believed: a hop count, or
+    # their addresses/CIDRs. Locally one: Traefik (k3d's load balancer passes TCP through).
+    trustProxy: "1"
+  # Browser origins allowed to call the API cross-origin (the web app: on Vercel in
+  # production, the dev server locally). Exact scheme://host[:port], no wildcard: the
+  # chart refuses anything else, and each must also be in clerk.authorizedParties (or
+  # its tokens are rejected anyway). Empty: no CORS, same-origin only.
+  cors:
+    origins: ["http://localhost:3001"]
+    # How long a browser may reuse a preflight's answer (Chrome caps it at 7200).
+    maxAgeSeconds: 7200
   hpa:
     enabled: true
     minReplicas: 2

@@ -79,7 +79,7 @@ jobs:
       - run: go test ./...
 
   db:
-    name: Database tests (Postgres 17 + PostGIS + pgvector)
+    name: Database tests (Postgres 17 + PostGIS + pgvector, Redis)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
@@ -91,6 +91,12 @@ jobs:
         ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 30
+      # The stack's Redis image, for the rate limits' counters (throttle.redis.spec).
+      redis:
+        image: redis:7.4-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 2s --health-timeout 5s --health-retries 30
     # Roles as on the stack (migration 0010, db/test): migrations run as the owner, each
     # service's tests as that service's role, fixtures and cleanup as the owner. Test
     # passwords, set by db/test/*.sql; nothing here is a real credential.
@@ -156,6 +162,12 @@ jobs:
           TEST_DATABASE_URL: ${{ env.TEST_API_DATABASE_URL }}
           TEST_NYC_DATA: '0'
         run: pnpm --filter @larper/api test db.spec
+      # The rate limits against Redis: counters shared by two API instances, one Lua
+      # script per limit window per request, and failing open with Redis unreachable.
+      - name: API rate-limit tests (Redis)
+        env:
+          TEST_REDIS_URL: redis://localhost:6379
+        run: pnpm --filter @larper/api test redis.spec
 
   helm:
     name: Helm chart (lint, render)
@@ -196,6 +208,21 @@ jobs:
           refuses 'below pool' -f $chart/values-eks.yaml --set api.hpa.maxReplicas=8
           refuses 'below pool' --set ingest.replicas=3
           refuses 'over max_connections' -f $chart/values-demo.yaml --set postgres.roles.api.connectionLimit=30
+          # CORS: exact origins only, and each must be a Clerk authorized party.
+          refuses 'is not an origin' --set 'api.cors.origins={*}'
+          refuses 'is not an origin' --set 'api.cors.origins={https://larper.example/}'
+          refuses "isn't in clerk.authorizedParties" --set 'api.cors.origins={https://larper.example}'
+      # Rate limits are on unless a load test turns them off: no profile may ship them off.
+      - name: Rate limits on in every profile
+        run: |
+          chart=infra/helm/larper
+          oci="-f $chart/values-oci.yaml --set postgres.backup.endpointURL=https://objectstorage.example.invalid"
+          for values in "" "-f $chart/values-aks.yaml" "-f $chart/values-eks.yaml" "$oci" \
+                        "-f $chart/values-demo.yaml" "$oci -f $chart/values-demo.yaml"; do
+            # shellcheck disable=SC2086
+            helm template larper $chart -n larper $values | grep -q 'name: RATE_LIMIT_ENABLED, value: "1"' ||
+              { echo "rate limits off with: ${values:-defaults}"; exit 1; }
+          done
 
   secrets:
     name: Secret scan (gitleaks, full history)
@@ -243,7 +270,23 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Production calls the API directly at NEXT_PUBLIC_API_URL; the /api proxy is
+      # dev-only (next.config.ts). A build without the URL must fail.
+      - name: Refuse a production build without NEXT_PUBLIC_API_URL
+        run: |
+          if out=$(pnpm --filter @larper/web build 2>&1); then
+            echo "built without NEXT_PUBLIC_API_URL"; exit 1
+          fi
+          grep -q "NEXT_PUBLIC_API_URL is not set" <<<"$out" || { echo "$out"; exit 1; }
       # A production build: with Cache Components, a request-time read outside
       # <Suspense> is a build error that dev mode and tsc don't catch (it broke
-      # /sign-in). Needs no Clerk keys: nothing at build time talks to Clerk.
-      - run: pnpm --filter @larper/web build
+      # /sign-in). Needs no Clerk keys: nothing at build time talks to Clerk. Then: no
+      # rewrites in it, so nothing proxies to the API.
+      - name: Build
+        env:
+          NEXT_PUBLIC_API_URL: https://api.example.invalid
+        run: |
+          pnpm --filter @larper/web build
+          node -e "const r = require('./apps/web/.next/routes-manifest.json').rewrites;
+            const n = [r.beforeFiles, r.afterFiles, r.fallback].flat().length;
+            if (n) { console.error('production build has rewrites:', JSON.stringify(r)); process.exit(1); }"

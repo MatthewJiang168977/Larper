@@ -442,6 +442,13 @@ cd workers && DATABASE_URL="postgres://larper_ingest:$PW@127.0.0.1:55432/larper?
 ```
 
 ### Auth
+The browser calls the API directly at `NEXT_PUBLIC_API_URL`, cross-origin. Auth is a Clerk session
+token in the `Authorization` header, never a cookie, so CORS needs no credentials: the API allows the
+origins in `api.cors.origins` (exact, no wildcard; each must also be in `clerk.authorizedParties`) and
+caches preflights for `api.cors.maxAgeSeconds`. A production build (Vercel) fails without
+`NEXT_PUBLIC_API_URL`. Locally you can leave it unset: `next dev` then proxies `/api/*` to the k3d
+ingress, a dev-only fallback.
+
 Clerk handles sign-in in `apps/web` (keys in `apps/web/.env.local`, gitignored; template in
 `apps/web/.env.example`). The API only needs the public publishable key: `scripts/up.sh` passes
 yours from `.env.local`, and `infra/helm/larper/values.yaml` holds a default.
@@ -470,8 +477,8 @@ TEST_DATABASE_URL=postgres://... pnpm --filter @larper/api test candidates.db  #
 |---|---|
 | API | `pnpm install` (cached), `tsc --noEmit`, ESLint (`apps/api/eslint.config.mjs`), Jest unit tests |
 | Go workers | `gofmt -l`, `go vet ./...`, `go test ./...` (unit tests; the integration tests skip) |
-| Database | Postgres 17 + PostGIS 3.6 + pgvector 0.8 as a service container, set up with the owner and service roles as CloudNativePG does (`db/test`), all migrations applied as the owner with the Helm Job's `migrate` image (and the last one re-run). Then, each as its service's role: the Go integration tests (queue, stats refresh, the lost-update race) as the ingest-worker's, and the API's `*.db` specs (check-in, candidates, and `roles.db`: exact grants, denials) as the API's |
-| Helm | `helm lint`, the chart rendered with the default, monitoring, AKS, EKS, OCI and demo values, and refusing database connection limits that don't cover pool × pods |
+| Database | Postgres 17 + PostGIS 3.6 + pgvector 0.8 and Redis 7.4 as service containers, set up with the owner and service roles as CloudNativePG does (`db/test`), all migrations applied as the owner with the Helm Job's `migrate` image (and the last one re-run). Then, each as its service's role: the Go integration tests (queue, stats refresh, the lost-update race) as the ingest-worker's, and the API's `*.db` specs (check-in, candidates, and `roles.db`: exact grants, denials) as the API's. Then the rate limits against Redis (`throttle.redis`: shared across two API instances, one Lua script per window, failing open) |
+| Helm | `helm lint`, the chart rendered with the default, monitoring, AKS, EKS, OCI and demo values, refusing database connection limits that don't cover pool × pods, and rate limits on in every profile |
 | Secret scan | gitleaks (pinned image) over **every commit**, default rules plus [`.gitleaks.toml`](.gitleaks.toml), which allows only Clerk publishable keys (public by design). Before a commit: `scripts/secret-scan.sh` (staged changes) or `--history` (what CI runs) |
 | Load-test results | `loadtest/redact.js --check`: no Clerk session IDs, tokens or k6 `setup_data` in `loadtest/results` |
 
@@ -490,7 +497,14 @@ SCENARIO=steps loadtest/hpa-run.sh sizing       # HPA off: 20..100 VUs, finds re
 loadtest/chaos.sh                               # steady load while killing api, workers, Redis, Postgres in turn
 loadtest/cache-profile.sh <label>               # cache hit rate + 60 s CPU profile (needs --set api.cpuProfiling=true)
 loadtest/cold-run.sh <label>                    # cache miss: Redis flushed, fresh cells per user (COLD_MODE=relocate adds offer churn)
+CLERK_SECRET_KEY=sk_test_... k6 run loadtest/rate-limit.js  # limits on: expects 429 + Retry-After per user, per IP; run it alone
 ```
+**Rate limits** ([decision 0004](docs/decisions/0004-rate-limits.md)): the API limits each client IP
+(600/min) and each user per route (check-in 6/min). The load tests above drive one user at ~1 req/s
+and every VU from one IP, so turn the limits off for them:
+`helm upgrade ... --set api.rateLimit.enabled=false`, and back on after. `quests.js` with
+`THINK_S=1` paces each user under every limit (how the limiter's cost was measured).
+
 The k6 script creates 10 `loadtest+N@example.com` users on the Clerk dev instance (once) and mints
 their session tokens itself; the cache-miss test uses its own 50 onboarded `loadtest-cold+N`
 users (a Clerk dev instance stops at 100). The secret key stays on the machine running k6.
