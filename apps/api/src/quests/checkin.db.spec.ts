@@ -2,13 +2,15 @@ import { Logger, UnprocessableEntityException } from '@nestjs/common';
 import { Pool } from 'pg';
 import type { CacheService } from '../cache/cache.service';
 import { createPool } from '../db/db.module';
+import { assertDisposableDatabase } from '../db/test-guard';
 import type { TagsService } from '../profile/tags.service';
 import type { AreasService } from './areas.service';
 import { QuestsService } from './quests.service';
 
 // The check-in path end to end against a real database: the geofence query, the 422
 // bodies the web app reads, and one structured log line per attempt. Skipped unless
-// TEST_DATABASE_URL is set (CI's db job sets it). It brings its own user, place and
+// TEST_DATABASE_URL is set (CI's db job sets it), and refuses to run (fails) unless that
+// is a disposable database with no outbox relay. It brings its own user, place and
 // quest, and deletes them (and the outbox rows its check-ins write) afterwards.
 const URL = process.env.TEST_DATABASE_URL;
 const describeDb = URL ? describe : describe.skip;
@@ -26,6 +28,8 @@ describeDb('check-in (real database)', () => {
 
   beforeAll(async () => {
     pool = createPool(URL);
+    // Before writing anything: never against a live stack (see db/test-guard.ts).
+    await assertDisposableDatabase(pool, 'checkin.db.spec');
     quests = new QuestsService(pool, {} as CacheService, {} as TagsService, {} as AreasService);
     const u = await pool.query<{ id: string }>(
       `INSERT INTO users (clerk_id) VALUES ('test_checkin_' || gen_random_uuid()) RETURNING id::text`,
@@ -43,6 +47,7 @@ describeDb('check-in (real database)', () => {
   });
 
   afterAll(async () => {
+    if (!userId) return pool.end(); // refused before writing anything
     await pool.query('DELETE FROM outbox WHERE key = $1', [userId]);
     await pool.query('DELETE FROM users WHERE id = $1', [userId]); // cascades to quests
     await pool.query('DELETE FROM places WHERE id = $1', [placeId]);
@@ -85,7 +90,8 @@ describeDb('check-in (real database)', () => {
       id: questId,
       status: 'completed',
     });
-    expect(logged()).toMatchObject({ questId, userId, outcome: 'accepted', accuracyM: 12, allowedM: 87 });
+    expect(logged()).toMatchObject({ questId, outcome: 'accepted', accuracyM: 12, allowedM: 87 });
+    expect(logged()).not.toHaveProperty('userId');
     expect(logged().distanceM).toBeCloseTo(30, 0);
   });
 

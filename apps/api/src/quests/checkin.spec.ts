@@ -53,24 +53,22 @@ describe('rejection', () => {
 });
 
 describe('checkInLogLine', () => {
-  it('logs outcome, distance, accuracy and the allowance as JSON, without coordinates', () => {
+  it('logs outcome, distance, accuracy and the allowance as JSON, with no coordinates or user id', () => {
     const line = checkInLogLine({ questId: '7', userId: '3', outcome: 'too_rough', geofence: judgeCheckIn(200.04, 300.06) });
     expect(line.startsWith('checkin {')).toBe(true);
     expect(JSON.parse(line.slice('checkin '.length))).toEqual({
       questId: '7',
-      userId: '3',
       outcome: 'too_rough',
       distanceM: 200,
       accuracyM: 300.1,
       allowedM: 125,
     });
-    expect(line).not.toMatch(/lat|lng/);
+    expect(line).not.toMatch(/lat|lng|user/i);
   });
 
   it('logs attempts that never reached the geofence too', () => {
     expect(JSON.parse(checkInLogLine({ questId: '7', userId: '3', outcome: 'no_position' }).slice(8))).toEqual({
       questId: '7',
-      userId: '3',
       outcome: 'no_position',
       distanceM: null,
       accuracyM: null,
