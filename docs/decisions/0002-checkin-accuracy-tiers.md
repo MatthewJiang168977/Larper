@@ -38,9 +38,10 @@ Two problems with that rule alone:
     rough to tell (±813 m). Turn on precise location or step outside, then try again."
   - Both get a Try again that takes a new reading.
 - **A log line per attempt.** Every check-in attempt logs
-  `checkin {"questId","userId","outcome","distanceM","accuracyM","allowedM"}`, with outcome
+  `checkin {"questId","outcome","distanceM","accuracyM","allowedM"}`, with outcome
   `accepted | too_far | too_rough | no_position | not_found | conflict | error`. It holds no
-  coordinates: the distance to the place is all the rule uses.
+  coordinates (the distance to the place is all the rule uses) and no user id. The quest id
+  ties a Try again to its first attempt.
 
 This fixes stale and coarse positions and says what's wrong. It still rejects an honest user
 whose phone genuinely can't do better than ±300 m indoors.

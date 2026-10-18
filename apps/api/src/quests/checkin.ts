@@ -58,13 +58,14 @@ export interface CheckInAttempt {
 }
 
 // One line per attempt, JSON after a fixed prefix, so `grep checkin` + a JSON parser
-// gives distance / accuracy / outcome over time. No coordinates: distance to the place
-// is all the rule needs, and it says nothing about where the user lives.
+// gives distance / accuracy / outcome over time. Nothing that identifies the user: no
+// coordinates (distance to the place is all the rule needs) and no user id. The quest id
+// is enough to tie a Try again to its first attempt; tying it back to a person takes the
+// database, not the logs.
 export function checkInLogLine(a: CheckInAttempt): string {
   const g = a.geofence;
   return `checkin ${JSON.stringify({
     questId: a.questId,
-    userId: a.userId,
     outcome: a.outcome,
     distanceM: g ? Math.round(g.distanceM * 10) / 10 : null,
     accuracyM: g?.accuracyM != null ? Math.round(g.accuracyM * 10) / 10 : null,

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -57,7 +58,25 @@ func Postgres(ctx context.Context) (*pgxpool.Pool, error) {
 	if url == "" {
 		return nil, fmt.Errorf("DATABASE_URL is not set")
 	}
-	return pgxpool.New(ctx, url)
+	cfg, err := PoolConfig(url, filepath.Base(os.Args[0]))
+	if err != nil {
+		return nil, err
+	}
+	return pgxpool.NewWithConfig(ctx, cfg)
+}
+
+// PoolConfig parses a Postgres URL and names the connections after the service (the
+// binary: outbox-relay, taste-worker, ...), so pg_stat_activity shows who is connected.
+// An application_name already in the URL wins.
+func PoolConfig(url, service string) (*pgxpool.Config, error) {
+	cfg, err := pgxpool.ParseConfig(url)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.ConnConfig.RuntimeParams["application_name"] == "" {
+		cfg.ConnConfig.RuntimeParams["application_name"] = service
+	}
+	return cfg, nil
 }
 
 // Kafka builds a franz-go client against KAFKA_BROKERS plus any extra options.
