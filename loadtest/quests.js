@@ -18,6 +18,9 @@ const SECRET = __ENV.CLERK_SECRET_KEY;
 const USERS = Number(__ENV.USERS || 10);
 const PEAK = Number(__ENV.PEAK_VUS || 200);
 const TOKEN_TTL_MS = 45_000; // re-mint well before Clerk's 60 s expiry
+// Each VU waits THINK_S + up to 1 s between requests. The default (~1 req/s) is right at
+// the API's per-user limit; THINK_S=1 stays under every limit (loadtest/rate-limit.js).
+const THINK_S = Number(__ENV.THINK_S || 0.5);
 
 // Spread over NYC, which is fully ingested: no request here should trigger an
 // ingest job. Each test user stays near one home spot, like a person walking around
@@ -218,5 +221,5 @@ export default function (data) {
     tags: { name: 'today' },
   });
   check(res, { '200': (r) => r.status === 200 });
-  sleep(0.5 + Math.random());
+  sleep(THINK_S + Math.random());
 }

@@ -1,5 +1,8 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { AuthUser, ClerkAuthGuard, CurrentUser } from '../auth/auth.guard';
+import { UserLimitGuard, userKey } from '../throttle/guards';
+import { actionOf, isCheckIn, LIMITS, OPT_IN_WINDOWS, USER_WINDOWS } from '../throttle/limits';
 import { QuestsService } from './quests.service';
 import { isAction } from './transitions';
 
@@ -7,13 +10,24 @@ const DEFAULT_RADIUS_M = 1500;
 const MIN_RADIUS_M = 300;
 const MAX_RADIUS_M = 3000;
 
+// Accept, skip and check-in share a handler but not their counters: each action has its own.
+const byAction = (ctx: Parameters<typeof actionOf>[0], userId: string, name: string) =>
+  userKey(ctx, userId, name, actionOf(ctx));
+
 @Controller('quests')
-@UseGuards(ClerkAuthGuard)
+@UseGuards(ClerkAuthGuard, UserLimitGuard)
+@SkipThrottle(OPT_IN_WINDOWS)
 export class QuestsController {
   constructor(private readonly quests: QuestsService) {}
 
   // GET /quests/today?lat=40.7295&lng=-73.9965[&radius=1500]
+  // The survey poll calls this every 4 s while an area is being ingested.
   @Get('today')
+  @SkipThrottle({ [USER_WINDOWS.tenSeconds]: false })
+  @Throttle({
+    [USER_WINDOWS.minute]: { limit: LIMITS.questsToday.minute },
+    [USER_WINDOWS.tenSeconds]: { limit: LIMITS.questsToday.tenSeconds },
+  })
   today(
     @CurrentUser() user: AuthUser,
     @Query('lat') latQ: string,
@@ -40,6 +54,17 @@ export class QuestsController {
   // POST /quests/:id/accept | skip | complete
   // Body for complete: { lat, lng, accuracy? } (the geofenced check-in).
   @Post(':id/:action')
+  @SkipThrottle({ [USER_WINDOWS.hour]: false })
+  @Throttle({
+    [USER_WINDOWS.minute]: {
+      limit: (ctx) => (isCheckIn(ctx) ? LIMITS.checkIn.minute : LIMITS.questAction.minute),
+      generateKey: byAction,
+    },
+    [USER_WINDOWS.hour]: {
+      limit: (ctx) => (isCheckIn(ctx) ? LIMITS.checkIn.hour : LIMITS.questAction.hour),
+      generateKey: byAction,
+    },
+  })
   act(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,

@@ -15,6 +15,19 @@ api:
   resources:
     requests: { cpu: 300m, memory: 128Mi }
     limits: { memory: 256Mi }
+  # Request limits per client IP and per signed-in user (apps/api/src/throttle/limits.ts),
+  # counted in Redis so they hold across replicas; 429 with Retry-After past them.
+  # Load tests that drive one user or one IP harder than a person could turn them off
+  # with --set api.rateLimit.enabled=false (README, "Load test and monitoring").
+  rateLimit:
+    enabled: true
+    # Where the per-IP limit reads the client's address: "forwarded" (X-Forwarded-For,
+    # as far as trustProxy allows) or "cloudflare" (CF-Connecting-IP, set by Cloudflare's
+    # edge; believed only from a proxy trustProxy trusts).
+    clientIp: forwarded
+    # The proxies in front of the API whose X-Forwarded-For is believed: a hop count, or
+    # their addresses/CIDRs. Locally one: Traefik (k3d's load balancer passes TCP through).
+    trustProxy: "1"
   hpa:
     enabled: true
     minReplicas: 2

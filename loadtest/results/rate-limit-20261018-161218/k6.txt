@@ -1,0 +1,46 @@
+
+
+  █ THRESHOLDS 
+
+    checks
+    ✓ 'rate==1.0' rate=100.00%
+
+    rate_limited
+    ✓ 'count>=3' count=3
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 13      0.390636/s
+    checks_succeeded...: 100.00% 13 out of 13
+    checks_failed......: 0.00%   0 out of 13
+
+    ✓ 20 quests/today answered before the 429
+    ✓ 429
+    ✓ Retry-After within the window
+    ✓ body says rate_limited, with the same wait
+    ✓ 6 check-ins answered before the 429
+    ✓ about 600 unauthenticated requests answered before the 429
+    ✓ probes are never limited
+
+    CUSTOM
+    rate_limited...................: 3      0.090147/s
+
+    HTTP
+    http_req_duration..............: avg=5.83ms  min=1.9ms    med=4.04ms   max=193.44ms p(90)=5.77ms  p(95)=10.36ms 
+      { expected_response:true }...: avg=38.31ms min=2.97ms   med=12.57ms  max=193.44ms p(90)=92.24ms p(95)=166.75ms
+    http_req_failed................: 95.90% 609 out of 635
+    http_reqs......................: 635    19.081059/s
+
+    EXECUTION
+    iteration_duration.............: avg=1.22s   min=466.83ms med=467.98ms max=2.74s    p(90)=2.29s   p(95)=2.51s   
+    iterations.....................: 3      0.090147/s
+    vus............................: 1      min=0          max=1
+    vus_max........................: 3      min=3          max=3
+
+    NETWORK
+    data_received..................: 306 kB 9.2 kB/s
+    data_sent......................: 84 kB  2.5 kB/s
+
+
+
