@@ -1,14 +1,20 @@
 # Oracle Always Free target: k3s on one A1 VM
 
-The whole stack on a single Ampere A1 VM (2 OCPU / 12 GB, arm64, Ubuntu 24.04) in
-us-sanjose-1, at $0. The VM comes from `scripts/oci-capacity-probe.sh` (or its GitHub
-Actions twin), this folder prepares it, and `scripts/oci-up.sh` deploys.
+The whole stack on a single Ampere A1 VM (1 OCPU / 6 GB, arm64, Ubuntu 24.04) in
+us-sanjose-1, at $0, running the [demo profile](../../README.md#demo-profile-one-small-vm)
+(`values-oci.yaml` + `values-demo.yaml`), which fits in 4 GB. The VM comes from
+`scripts/oci-capacity-probe.sh` (or its GitHub Actions twin), this folder prepares it,
+and `scripts/oci-up.sh` deploys.
+
+The probe used to ask for 2 OCPU / 12 GB. Asking for half of that is more likely to find
+room in a region that's usually out of A1 capacity, and still leaves 3 OCPU / 18 GB of
+the Always Free allowance unused.
 
 ## What runs where (all Always Free)
 
 | Resource | Always Free limit | Used |
 |---|---|---|
-| A1 compute | 4 OCPU / 24 GB total | 2 OCPU / 12 GB |
+| A1 compute | 4 OCPU / 24 GB total | 1 OCPU / 6 GB (`VM.Standard.A1.Flex`) |
 | Boot volume | 200 GB total block storage | 50 GB |
 | VCN, internet gateway, security list | free | 1 each |
 | Object Storage (backups) | 20 GB, 50k API requests/month | bucket `larper-pg-backups`, ~1–2 GB, a few k requests (below) |
@@ -85,7 +91,31 @@ Status: `kubectl -n larper get backup` (one per run, `completed`), and
 ```bash
 scripts/oci-capacity-probe.sh   # once the VM exists: saves its address to ~/larper-oci-instance.env
 scripts/oci-up.sh               # bootstrap + images + operators + app (~20–30 min the first time)
+MONITORING=1 scripts/oci-up.sh  # the same, plus Prometheus + Grafana (~0.8 GiB more; fits in 6 GB)
 ```
+
+`oci-up.sh` deploys the chart with `-f values-oci.yaml -f values-demo.yaml`. The demo layer
+comes last, so it sets the sizes: 1 API replica (HPA max 2), one taste-worker and one
+ingest-worker, smaller Postgres, Redpanda and DuckDB, and monitoring off. `values-oci.yaml`
+alone is sized for 2 OCPU and doesn't fit this VM's CPU requests.
+
+**CPU is the tight part, not memory.** An A1 OCPU is one Ampere core, so this VM has one
+vCPU, half the 2 vCPU the demo profile was sized for. On k3d (a laptop's x86 cores, three
+nodes) the whole cluster (pods and k3s) used about 0.3 core idle and 0.6 core on average at 8 req/s (8× the demo's load). It
+peaked at ~1.9 cores at 8 req/s and ~3 cores during an area ingest. On one core, those
+peaks get spread out instead: expect an ingest of a new area to take longer than the ~56 s
+measured on k3d, and slower responses while it runs.
+
+If it's too slow, resize in place. The instance stays, with its disk and IP, and it
+reboots. That also needs Oracle to have the capacity, so it can fail the same way a
+launch does.
+
+```bash
+oci compute instance update --instance-id <id> --shape-config '{"ocpus": 2, "memoryInGBs": 12}'
+```
+
+To launch at another size in the first place, run `OCPUS=2 MEMORY_GB=12
+scripts/oci-capacity-probe.sh`, or change `OCPUS` / `MEMORY_GB` in `oci-probe.yml`.
 
 Then load the place data (repo README, "Load place data", against the
 `larper-oci` context through the tunnel `oci-up.sh` prints).
@@ -197,8 +227,19 @@ infra/oci-k3s/test/run.sh up        # stand-in VM + S3, oci-up.sh, then checks (
 infra/oci-k3s/test/run.sh reboot    # restart the VM (as after an unattended-upgrades reboot), check again
 infra/oci-k3s/test/run.sh k3s-restart  # re-apply the firewall + restart k3s under requests, check again
 infra/oci-k3s/test/run.sh restore   # new VM, empty disks, restore Postgres from the last backup folder
-infra/oci-k3s/test/run.sh down      # remove it all (the VM may use up to 12 GB of memory)
+infra/oci-k3s/test/run.sh down      # remove it all
 ```
+
+The stand-in VM is capped like the real one: 1 CPU and 6 GB (`VM_CPUS` and `VM_MEMORY`
+override; the rehearsals up to 2026-10-17 ran at 2 CPU / 12 GB with the full profile).
+
+Passed on 2026-10-18 at that size, with the demo profile (`up`, fresh VM): every check
+above. Right after the deploy (no place data loaded yet, so Postgres is small), the VM
+held 2.3 GiB of its 6 GiB, k3s itself 0.86 GiB of it. CPU requests summed to 570m of the
+one core, and idle use ran 0.2–0.35 core. The stand-in's CPU cap is a quota, so the
+kubelet still sees the host's cores: it shows that the stack runs within one core, but it
+can't show the scheduler refusing a pod that wouldn't fit. Loading NYC's places adds
+~0.3 GiB of Postgres cache (the README's demo measurements).
 
 The checks: sshd's effective config and a refused password login, the rollback
 disarmed, ports from a neighbour on the network (22 open; 6443, 10250, 80, 443 and

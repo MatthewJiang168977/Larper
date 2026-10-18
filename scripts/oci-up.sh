@@ -4,6 +4,7 @@
 #   scripts/oci-up.sh                        # first deploy, or update
 #   RESTORE_FROM=pg scripts/oci-up.sh        # new VM: restore Postgres from backup
 #                                            # (infra/oci-k3s/README.md, "rebuild")
+#   MONITORING=1 scripts/oci-up.sh           # also Prometheus + Grafana (~0.8 GiB more)
 #
 # Needs: ~/larper-oci-instance.env (scripts/oci-capacity-probe.sh writes it), the SSH
 # key ~/.ssh/larper_oci, the OCI CLI, docker buildx (builder larper-multi), helm,
@@ -16,8 +17,9 @@
 #   3. builds arm64 images and imports them into k3s (no registry)
 #   4. Object Storage: bucket larper-pg-backups + an S3 key for CNPG (Always Free:
 #      20 GB, 50k requests/month; see the README for the numbers)
-#   5. installs cert-manager, CloudNativePG + its Barman Cloud plugin, monitoring,
-#      then the larper chart with values-oci.yaml
+#   5. installs cert-manager, CloudNativePG + its Barman Cloud plugin, then the larper
+#      chart with values-oci.yaml + values-demo.yaml (the VM is 1 OCPU / 6 GB);
+#      monitoring only with MONITORING=1
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -37,6 +39,7 @@ OCI_CONFIG=${OCI_CLI_CONFIG_FILE:-$HOME/.oci/config}
 SSH_PORT=${SSH_PORT:-22}
 IMAGE_PLATFORM=${IMAGE_PLATFORM:-linux/arm64}
 BACKUP_ENDPOINT_URL=${BACKUP_ENDPOINT_URL:-} # set: skip Object Storage, use this S3 endpoint and $S3_ENV
+MONITORING=${MONITORING:-0}
 
 log() { echo "==> $*"; }
 [[ -f $ENV_FILE ]] || { echo "no $ENV_FILE: run scripts/oci-capacity-probe.sh (it saves the VM's address)" >&2; exit 1; }
@@ -140,9 +143,14 @@ helm upgrade --install cert-manager jetstack/cert-manager --version "$CERT_MANAG
 log "CloudNativePG + Barman Cloud plugin"
 helm upgrade --install cnpg cnpg/cloudnative-pg --version "$CNPG_CHART" -n cnpg-system --create-namespace --wait
 helm upgrade --install barman-cloud cnpg/plugin-barman-cloud --version "$BARMAN_CHART" -n cnpg-system --wait
-log "monitoring"
-helm upgrade --install monitoring prometheus-community/kube-prometheus-stack --version "$MONITORING_CHART" \
-  -n monitoring --create-namespace -f infra/monitoring/values.yaml --wait --timeout 10m
+# The demo profile leaves monitoring off: kube-prometheus-stack alone takes ~0.8 GiB.
+monitoring=()
+if [[ $MONITORING == 1 ]]; then
+  log "monitoring"
+  helm upgrade --install monitoring prometheus-community/kube-prometheus-stack --version "$MONITORING_CHART" \
+    -n monitoring --create-namespace -f infra/monitoring/values.yaml --wait --timeout 10m
+  monitoring=(--set monitoring.enabled=true)
+fi
 
 # Backups: keep writing where the existing cluster writes. A restore writes to a new
 # folder (pg-2, pg-3, ...) so it never mixes with the backup it restores from.
@@ -164,6 +172,7 @@ fi
 
 log "larper"
 helm upgrade --install larper infra/helm/larper -n larper -f infra/helm/larper/values-oci.yaml \
+  -f infra/helm/larper/values-demo.yaml \
   --set postgres.image="$REG/larper-postgres:$PG_TAG" \
   --set migrate.image="$REG/larper-migrate:$TAG" \
   --set workers.image="$REG/larper-workers:$TAG" \
@@ -171,7 +180,7 @@ helm upgrade --install larper infra/helm/larper -n larper -f infra/helm/larper/v
   --set api.image="$REG/larper-api:$TAG" \
   --set postgres.backup.endpointURL="$ENDPOINT" \
   --set postgres.backup.serverName="$SERVER_NAME" \
-  "${restore[@]}" \
+  "${restore[@]}" "${monitoring[@]}" \
   --wait --timeout 20m
 
 log "backups"
