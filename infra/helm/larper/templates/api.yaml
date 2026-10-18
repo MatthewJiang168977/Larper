@@ -40,6 +40,8 @@ spec:
             - { name: RATE_LIMIT_ENABLED, value: {{ ternary "1" "0" .Values.api.rateLimit.enabled | quote }} }
             - { name: CLIENT_IP_SOURCE, value: {{ .Values.api.rateLimit.clientIp | quote }} }
             - { name: TRUST_PROXY, value: {{ .Values.api.rateLimit.trustProxy | quote }} }
+            - { name: CORS_ORIGINS, value: {{ include "larper.corsOrigins" . | quote }} }
+            - { name: CORS_MAX_AGE_S, value: {{ .Values.api.cors.maxAgeSeconds | quote }} }
             {{- if .Values.api.cpuProfiling }}
             # GET :9464/debug/cpu-profile?seconds=30 (metrics port, never routed publicly).
             - { name: CPU_PROFILING, value: "1" }

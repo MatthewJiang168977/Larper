@@ -83,12 +83,16 @@ keys, would avoid it if it ever matters.
   - A request without the header (an admin through the SSH tunnel) falls back to
     `forwarded`.
 
-The web app today does **not** call the API directly. `next.config.ts` rewrites `/api/*`
-to `API_URL`, so in that setup every browser's request reaches the API from the Next
-server's address. Per-user limits aren't affected, but the per-IP limit would count
-every user as one client. It needs either the browser calling the API (CORS, and an
-API hostname behind the tunnel) or the rewrite's hop trusted (`trustProxy: "2"`, only
-safe if the API can't be reached except through Next).
+The browser calls the API directly, so the address the API sees is the visitor's.
+
+- **The web app** (on Vercel in production) calls `NEXT_PUBLIC_API_URL` cross-origin.
+- **The API** allows that origin with CORS: `api.cors.origins`, exact origins and no
+  wildcard, each also a Clerk authorized party.
+- **The old `/api` rewrite** survives only under `next dev`, when the variable is unset.
+  A production build without the variable fails.
+- **Why not proxy through Next:** it would put every visitor behind Vercel's addresses,
+  one client as far as the per-IP limit is concerned. It would also add a second public
+  path to the API.
 
 ### Off switch
 
@@ -129,5 +133,6 @@ nothing measurable to p95.
   `@Throttle`. It's under the per-IP limit unless it skips it.
 - **One machine running `loadtest/rate-limit.js`** exhausts its address for a minute.
   Every local client behind Traefik shares that address.
-- **Open: whether the web app calls the API directly** (see Client IP). Until that's
-  settled, the per-IP limit is only meaningful for clients that call the API directly.
+- **Local dev through the proxy:** with `next dev` and no `NEXT_PUBLIC_API_URL`, every
+  local browser shares the dev server's address for the per-IP limit. That's harmless
+  for one developer.

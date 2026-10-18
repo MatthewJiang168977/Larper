@@ -442,6 +442,13 @@ cd workers && DATABASE_URL="postgres://larper_ingest:$PW@127.0.0.1:55432/larper?
 ```
 
 ### Auth
+The browser calls the API directly at `NEXT_PUBLIC_API_URL`, cross-origin. Auth is a Clerk session
+token in the `Authorization` header, never a cookie, so CORS needs no credentials: the API allows the
+origins in `api.cors.origins` (exact, no wildcard; each must also be in `clerk.authorizedParties`) and
+caches preflights for `api.cors.maxAgeSeconds`. A production build (Vercel) fails without
+`NEXT_PUBLIC_API_URL`. Locally you can leave it unset: `next dev` then proxies `/api/*` to the k3d
+ingress, a dev-only fallback.
+
 Clerk handles sign-in in `apps/web` (keys in `apps/web/.env.local`, gitignored; template in
 `apps/web/.env.example`). The API only needs the public publishable key: `scripts/up.sh` passes
 yours from `.env.local`, and `infra/helm/larper/values.yaml` holds a default.

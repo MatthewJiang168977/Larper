@@ -11,7 +11,10 @@ import { ThrottleModule } from './throttle.module';
 // The real QuestsController and HealthController with their real limit decorators
 // and guards, but no database or Clerk: X-Test-User stands in for a signed-in user
 // (none: 401), and the services answer with stubs. Tests for the limits only.
-export async function limitTestApp(storage?: ThrottlerStorage): Promise<{ app: INestApplication; url: string }> {
+export async function limitTestApp(
+  storage?: ThrottlerStorage,
+  configure?: (app: NestExpressApplication) => void,
+): Promise<{ app: INestApplication; url: string }> {
   let builder = Test.createTestingModule({
     imports: [ThrottleModule],
     controllers: [QuestsController, HealthController],
@@ -47,6 +50,7 @@ export async function limitTestApp(storage?: ThrottlerStorage): Promise<{ app: I
   }
   const app = (await builder.compile()).createNestApplication<NestExpressApplication>({ logger: ['error'] });
   app.set('trust proxy', 1); // as behind Traefik
+  configure?.(app); // e.g. CORS, as main.ts does
   await app.listen(0, '127.0.0.1');
   return { app, url: await app.getUrl() };
 }

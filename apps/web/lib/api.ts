@@ -20,6 +20,10 @@ export interface VibeCard {
 // only fires when the API or the network is stuck.
 export const REQUEST_TIMEOUT_MS = 15_000;
 
+// The API's base URL: NEXT_PUBLIC_API_URL (inlined at build time; required for a
+// production build, next.config.ts), else "/api", which only `next dev` proxies.
+export const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/+$/, "") || "/api";
+
 /** A failed API call. `status` is 0 when no response arrived (offline, timeout). */
 export class ApiError extends Error {
   constructor(
@@ -65,8 +69,10 @@ export function useApi() {
       const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
       let res: Response;
       try {
-        res = await fetch(`/api${path}`, {
+        res = await fetch(`${API_BASE}${path}`, {
           ...init,
+          // Auth is the bearer token below, never a cookie: send none cross-origin.
+          credentials: "omit",
           signal: timeout,
           headers: {
             ...(init.body ? { "Content-Type": "application/json" } : {}),

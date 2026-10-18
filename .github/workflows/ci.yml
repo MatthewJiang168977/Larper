@@ -208,6 +208,10 @@ jobs:
           refuses 'below pool' -f $chart/values-eks.yaml --set api.hpa.maxReplicas=8
           refuses 'below pool' --set ingest.replicas=3
           refuses 'over max_connections' -f $chart/values-demo.yaml --set postgres.roles.api.connectionLimit=30
+          # CORS: exact origins only, and each must be a Clerk authorized party.
+          refuses 'is not an origin' --set 'api.cors.origins={*}'
+          refuses 'is not an origin' --set 'api.cors.origins={https://larper.example/}'
+          refuses "isn't in clerk.authorizedParties" --set 'api.cors.origins={https://larper.example}'
       # Rate limits are on unless a load test turns them off: no profile may ship them off.
       - name: Rate limits on in every profile
         run: |
@@ -266,7 +270,23 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Production calls the API directly at NEXT_PUBLIC_API_URL; the /api proxy is
+      # dev-only (next.config.ts). A build without the URL must fail.
+      - name: Refuse a production build without NEXT_PUBLIC_API_URL
+        run: |
+          if out=$(pnpm --filter @larper/web build 2>&1); then
+            echo "built without NEXT_PUBLIC_API_URL"; exit 1
+          fi
+          grep -q "NEXT_PUBLIC_API_URL is not set" <<<"$out" || { echo "$out"; exit 1; }
       # A production build: with Cache Components, a request-time read outside
       # <Suspense> is a build error that dev mode and tsc don't catch (it broke
-      # /sign-in). Needs no Clerk keys: nothing at build time talks to Clerk.
-      - run: pnpm --filter @larper/web build
+      # /sign-in). Needs no Clerk keys: nothing at build time talks to Clerk. Then: no
+      # rewrites in it, so nothing proxies to the API.
+      - name: Build
+        env:
+          NEXT_PUBLIC_API_URL: https://api.example.invalid
+        run: |
+          pnpm --filter @larper/web build
+          node -e "const r = require('./apps/web/.next/routes-manifest.json').rewrites;
+            const n = [r.beforeFiles, r.afterFiles, r.fallback].flat().length;
+            if (n) { console.error('production build has rewrites:', JSON.stringify(r)); process.exit(1); }"
