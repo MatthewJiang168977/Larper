@@ -9,7 +9,7 @@
     "lint": "eslint",
     "postinstall": "node scripts/copy-maplibre-worker.mjs",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.9.14",
