@@ -76,3 +76,22 @@ And when the limits together don't fit in max_connections.
 {{- fail (printf "the roles' connection limits plus postgres.reservedConnections add up to %v, over max_connections (%v): raise postgres.parameters.max_connections or lower the limits" $total $max) }}
 {{- end }}
 {{- end -}}
+
+
+{{/*
+api.cors.origins, checked and comma-joined. Refuses to render a wildcard or anything
+but an exact origin, and an origin missing from clerk.authorizedParties: its calls
+would pass CORS and then fail the token's azp check.
+*/}}
+{{- define "larper.corsOrigins" -}}
+{{- $parties := splitList "," (.Values.clerk.authorizedParties | nospace) -}}
+{{- range .Values.api.cors.origins }}
+{{- if not (regexMatch "^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$" .) }}
+{{- fail (printf "api.cors.origins: %q is not an origin (scheme://host[:port], no path, no wildcard)" .) }}
+{{- end }}
+{{- if not (has . $parties) }}
+{{- fail (printf "api.cors.origins: %q isn't in clerk.authorizedParties, so its requests would be rejected; add it there too" .) }}
+{{- end }}
+{{- end }}
+{{- join "," .Values.api.cors.origins -}}
+{{- end -}}

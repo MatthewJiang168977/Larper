@@ -40,6 +40,27 @@ describe("useApi", () => {
     await expect(call()).rejects.toMatchObject({ status: 429, retryAfterS: 7 });
   });
 
+  it("calls /api (the dev proxy) when NEXT_PUBLIC_API_URL is unset, sending no cookies", async () => {
+    fetchMock.mockResolvedValue(json(200, {}));
+    await call("/me");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/me");
+    expect(fetchMock.mock.calls[0][1]?.credentials).toBe("omit");
+  });
+
+  it("calls the API directly at NEXT_PUBLIC_API_URL", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_URL", "https://api.larper.example/");
+    vi.resetModules();
+    try {
+      const { useApi: direct } = await import("./api");
+      fetchMock.mockResolvedValue(json(200, {}));
+      await renderHook(() => direct()).result.current("/quests/today?lat=1&lng=2");
+      expect(fetchMock.mock.calls[0][0]).toBe("https://api.larper.example/quests/today?lat=1&lng=2");
+      expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({ Authorization: "Bearer tok" });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("reports a network failure as status 0", async () => {
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
     await expect(call()).rejects.toMatchObject({ status: 0, kind: "network" });

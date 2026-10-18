@@ -3,6 +3,7 @@ import { type LogLevel } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { corsOptions } from './cors';
 import { httpMetrics, serveMetrics } from './metrics/metrics';
 
 // Nest logs debug and verbose by default. In the image (NODE_ENV=production) that
@@ -19,6 +20,8 @@ async function bootstrap() {
   // throttle/client-ip.ts): a hop count (1: Traefik) or their addresses/CIDRs. Unset,
   // none: req.ip is the socket's peer.
   app.set('trust proxy', trustProxy(process.env.TRUST_PROXY));
+  const cors = corsOptions();
+  if (cors) app.enableCors(cors);
   app.use(httpMetrics);
   app.enableShutdownHooks();
   const metrics = serveMetrics(Number(process.env.METRICS_PORT ?? 9464));
