@@ -5,7 +5,8 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, type Located } from "@/hooks/use-location";
-import { describeError, useApi, type Me, type Today } from "@/lib/api";
+import { ApiError, describeError, useApi, type Me, type Today } from "@/lib/api";
+import { getPreciseFix } from "@/lib/precise-fix";
 import { QuestSheet, type QuestAction } from "./quest-sheet";
 
 export const SURVEY_POLL_MS = 4000;
@@ -31,7 +32,8 @@ export function QuestHome() {
   const [surveyOverdue, setSurveyOverdue] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<{ text: string; retry: (() => void) | null } | null>(null);
+  const [fixing, setFixing] = useState(false);
   const [sheetH, setSheetH] = useState(280);
   const [reloads, setReloads] = useState(0);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -117,13 +119,29 @@ export function QuestHome() {
     setBusy(true);
     setActionError(null);
     try {
-      // Checking in sends where you are; the API only accepts it near the place.
-      const body = action === "complete" && loc ? { lat: loc.lat, lng: loc.lng, accuracy: loc.accuracyM } : undefined;
+      // Checking in sends where you are; the API only accepts it near the place. The
+      // map's position can be stale or coarse, so take one fresh, precise reading
+      // first (not for a ?at= override: that's the position on purpose).
+      let body: { lat: number; lng: number; accuracy?: number } | undefined;
+      if (action === "complete") {
+        let fix = null;
+        if (loc?.source !== "override") {
+          setFixing(true);
+          fix = await getPreciseFix();
+          setFixing(false);
+        }
+        const at = fix ?? (loc ? { lat: loc.lat, lng: loc.lng, accuracyM: loc.accuracyM } : null);
+        if (at) body = { lat: at.lat, lng: at.lng, accuracy: at.accuracyM };
+      }
       await api(`/quests/${today.quest.id}/${action}`, { method: "POST", body: body && JSON.stringify(body) });
       reload();
     } catch (e) {
-      setActionError(describeError(e));
+      // A rejected check-in (too far, or a fix too rough to tell) is worth another go
+      // after a few steps or with precise location on.
+      const retry = action === "complete" && e instanceof ApiError && e.status === 422 ? () => act("complete") : null;
+      setActionError({ text: describeError(e), retry });
     } finally {
+      setFixing(false);
       setBusy(false);
     }
   };
@@ -143,9 +161,9 @@ export function QuestHome() {
 
   // A failed refresh while a deck is already on screen: keep the deck, say so above it.
   const banner = actionError
-    ? { text: actionError, retry: null }
+    ? { text: actionError.text, retry: actionError.retry, label: "Try again", pending: busy }
     : today && todayError
-      ? { text: describeError(todayError), retry: reload }
+      ? { text: describeError(todayError), retry: reload, label: "Retry", pending: loading }
       : null;
 
   return (
@@ -177,6 +195,12 @@ export function QuestHome() {
           loc?.note && <p className="field-label self-start rounded bg-paper/90 px-2 py-1">{loc.note}</p>
         )}
 
+        {fixing && (
+          <p role="status" className="field-label animate-pulse rounded border border-rule bg-paper/95 px-3 py-1.5">
+            Getting a precise fix…
+          </p>
+        )}
+
         {surveying && (
           <p
             role="status"
@@ -194,8 +218,8 @@ export function QuestHome() {
           >
             <p className="flex-1">{banner.text}</p>
             {banner.retry && (
-              <button onClick={banner.retry} disabled={loading} className="font-medium underline disabled:opacity-50">
-                {loading ? "Retrying…" : "Retry"}
+              <button onClick={banner.retry} disabled={banner.pending} className="font-medium underline disabled:opacity-50">
+                {banner.pending ? "Retrying…" : banner.label}
               </button>
             )}
             <button

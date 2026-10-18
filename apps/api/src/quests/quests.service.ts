@@ -3,6 +3,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -13,6 +14,7 @@ import { enqueueQuestEvent } from '../events/outbox';
 import { QuestAction as EventAction } from '../gen/larper/events/v1/events_pb';
 import { TagsService } from '../profile/tags.service';
 import { AreasService } from './areas.service';
+import { CheckInAttempt, checkInLogLine, judgeCheckIn, rejection } from './checkin';
 import { cellOf, cellsCovering, haversineM } from './geo';
 import { AreaStats, Candidate, mmr, Reasons, score, Scored, weightsFromEnv } from './scoring';
 import { QuestAction, QuestStatus, TRANSITIONS } from './transitions';
@@ -25,8 +27,6 @@ const AREA_TTL_S = 3600;
 const EXCLUDE_DAYS = 30; // don't re-offer a place skipped/completed this recently
 const OFFER_STALE_AFTER = '20 hours';
 const OFFER_STALE_METERS = 5000;
-const CHECKIN_RADIUS_M = 75;
-const MAX_ACCURACY_BONUS_M = 50;
 
 const EVENT_ACTION: Record<QuestAction, EventAction> = {
   accept: EventAction.ACCEPTED,
@@ -71,6 +71,8 @@ export interface DeckItem {
 @Injectable()
 export class QuestsService {
   private readonly weights = weightsFromEnv();
+
+  private readonly logger = new Logger(QuestsService.name);
 
   constructor(
     @Inject(PG) private readonly pg: Pool,
@@ -119,10 +121,13 @@ export class QuestsService {
   // the UPDATE and the outbox INSERT share one transaction (see events/outbox.ts).
   async act(userId: string, questId: string, action: QuestAction, at?: CheckInPosition) {
     const t = TRANSITIONS[action];
+    // Every check-in attempt is logged once with how it ended (see checkin.ts).
+    const checkIn: CheckInAttempt | undefined =
+      action === 'complete' ? { questId, userId, outcome: 'error' } : undefined;
     const tx = await this.pg.connect();
     try {
       await tx.query('BEGIN');
-      if (action === 'complete') await this.checkGeofence(tx, userId, questId, at);
+      if (checkIn) await this.checkGeofence(tx, checkIn, at);
 
       const { rows } = await tx.query<{ status: QuestStatus; placeId: string }>(
         `UPDATE quests SET status = $4, updated_at = now()
@@ -135,37 +140,49 @@ export class QuestsService {
           'SELECT status FROM quests WHERE id = $1 AND user_id = $2',
           [questId, userId],
         );
-        if (!cur.rows.length) throw new NotFoundException('no such quest');
+        if (!cur.rows.length) {
+          if (checkIn) checkIn.outcome = 'not_found';
+          throw new NotFoundException('no such quest');
+        }
+        if (checkIn) checkIn.outcome = 'conflict';
         throw new ConflictException(`cannot ${action} a quest that is ${cur.rows[0].status}`);
       }
 
       await enqueueQuestEvent(tx, { userId, questId, placeId: rows[0].placeId, action: EVENT_ACTION[action] });
       await tx.query('COMMIT');
+      if (checkIn) checkIn.outcome = 'accepted';
       return { id: questId, status: rows[0].status };
     } catch (err) {
       await tx.query('ROLLBACK');
       throw err;
     } finally {
       tx.release();
+      if (checkIn) this.logger.log(checkInLogLine(checkIn));
     }
   }
 
-  // A check-in counts only near the place. The allowance grows with the phone's
-  // reported GPS accuracy, capped so a vague fix can't check in from blocks away.
-  private async checkGeofence(tx: PoolClient, userId: string, questId: string, at?: CheckInPosition) {
-    if (!at) throw new BadRequestException('completing a quest needs your position (lat, lng)');
+  // A check-in counts only near the place (the rule and its messages: checkin.ts).
+  private async checkGeofence(tx: PoolClient, attempt: CheckInAttempt, at?: CheckInPosition) {
+    const { userId, questId } = attempt;
+    if (!at) {
+      attempt.outcome = 'no_position';
+      throw new BadRequestException('completing a quest needs your position (lat, lng)');
+    }
     const { rows } = await tx.query<{ d: number }>(
       `SELECT ST_Distance(p.geom, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography)::float8 AS d
        FROM quests q JOIN places p ON p.id = q.place_id
        WHERE q.id = $1 AND q.user_id = $2`,
       [questId, userId, at.lng, at.lat],
     );
-    if (!rows.length) throw new NotFoundException('no such quest');
-    const allowed = CHECKIN_RADIUS_M + Math.min(at.accuracyM ?? 0, MAX_ACCURACY_BONUS_M);
-    if (rows[0].d > allowed) {
-      throw new UnprocessableEntityException(
-        `You're ${Math.round(rows[0].d)} m away. Check in when you're there.`,
-      );
+    if (!rows.length) {
+      attempt.outcome = 'not_found';
+      throw new NotFoundException('no such quest');
+    }
+    const geofence = judgeCheckIn(rows[0].d, at.accuracyM);
+    attempt.geofence = geofence;
+    if (geofence.outcome !== 'accepted') {
+      attempt.outcome = geofence.outcome;
+      throw new UnprocessableEntityException(rejection(geofence));
     }
   }
 

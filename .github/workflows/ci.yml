@@ -122,12 +122,13 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # The two 200-pair equivalence checks need the NYC places and the bench's users,
-      # so they're skipped here (TEST_NYC_DATA=0) and run locally against the stack.
+      # Every *.db.spec.ts: the check-in path (brings its own rows) and the candidate
+      # query. Its two 200-pair equivalence checks need the NYC places and the bench's
+      # users, so they're skipped here (TEST_NYC_DATA=0) and run locally against the stack.
       - name: API database tests
         env:
           TEST_NYC_DATA: '0'
-        run: pnpm --filter @larper/api test candidates.db
+        run: pnpm --filter @larper/api test db.spec
 
   helm:
     name: Helm chart (lint, render)

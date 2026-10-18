@@ -26,6 +26,8 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly kind: "http" | "network" | "timeout" = "http",
+    /** The API's machine-readable reason, when it gives one (e.g. "too_rough" on a check-in). */
+    readonly code?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -70,7 +72,7 @@ export function useApi() {
         const body = await res.json().catch(() => ({}));
         // Nest's validation errors carry a list of messages.
         const message = Array.isArray(body.message) ? body.message.join("; ") : body.message;
-        throw new ApiError(message ?? `${res.status} ${res.statusText}`, res.status);
+        throw new ApiError(message ?? `${res.status} ${res.statusText}`, res.status, "http", body.code);
       }
       return res.json() as Promise<T>;
     },

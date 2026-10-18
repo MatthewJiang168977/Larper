@@ -6,7 +6,7 @@ export type QuestAction = 'accept' | 'skip' | 'complete';
 export const TRANSITIONS: Record<QuestAction, { from: QuestStatus[]; to: QuestStatus }> = {
   accept: { from: ['offered'], to: 'accepted' },
   skip: { from: ['offered', 'accepted'], to: 'skipped' },
-  // Geofenced check-in arrives with milestone 6; for now completing is on trust.
+  // Completing is a geofenced check-in (checkin.ts).
   complete: { from: ['accepted'], to: 'completed' },
 };
 
