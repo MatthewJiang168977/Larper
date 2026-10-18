@@ -26,8 +26,10 @@ vi.mock("@/hooks/use-location", () => ({ useLocation: () => ({ loc: location, re
 type Route = (path: string, init?: RequestInit) => Promise<unknown>;
 const routes: Record<string, Route> = {};
 const calls: string[] = [];
+const bodies: { path: string; body: unknown }[] = [];
 const api = vi.fn((path: string, init?: RequestInit) => {
   calls.push(path);
+  if (init?.body) bodies.push({ path, body: JSON.parse(String(init.body)) });
   const route = Object.keys(routes).find((p) => path.startsWith(p));
   return route ? routes[route](path, init) : Promise.reject(new Error(`no route for ${path}`));
 });
@@ -35,6 +37,10 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
   useApi: () => api,
 }));
+
+// The fresh check-in reading: each test decides what it returns (default: none).
+const preciseFix = vi.fn<() => Promise<{ lat: number; lng: number; accuracyM: number } | null>>();
+vi.mock("@/lib/precise-fix", () => ({ getPreciseFix: () => preciseFix() }));
 
 // The sheet itself is tested by eye; here it only has to show what it got and act.
 vi.mock("./quest-sheet", () => ({
@@ -91,6 +97,9 @@ beforeEach(() => {
   location = HERE;
   retrying = false;
   retryLocation.mockClear();
+  preciseFix.mockReset();
+  preciseFix.mockResolvedValue(null);
+  bodies.length = 0;
   calls.length = 0;
   for (const k of Object.keys(routes)) delete routes[k];
   routes["/me"] = ok(ME);
@@ -305,5 +314,87 @@ describe("QuestHome: the demo area is labelled as such", () => {
     rerender(<QuestHome />);
     await settle();
     expect(todayCalls()).toBe(before);
+  });
+});
+
+describe("QuestHome: checking in", () => {
+  it("gets a precise fix first, saying so, and sends that reading", async () => {
+    let answer!: (f: { lat: number; lng: number; accuracyM: number }) => void;
+    preciseFix.mockReturnValue(new Promise((r) => (answer = r)));
+    routes["/quests/today"] = ok(withQuest);
+    routes["/quests/q1/complete"] = ok({ id: "q1", status: "completed" });
+    render(<QuestHome />);
+    await settle();
+
+    fireEvent.click(screen.getByText("I went"));
+    await settle();
+    expect(screen.getByText("Getting a precise fix…")).toBeTruthy();
+    expect(calls).not.toContain("/quests/q1/complete"); // waits for the reading
+
+    answer({ lat: 40.7301, lng: -73.9951, accuracyM: 8 });
+    await settle();
+    expect(screen.queryByText("Getting a precise fix…")).toBeNull();
+    expect(bodies).toEqual([{ path: "/quests/q1/complete", body: { lat: 40.7301, lng: -73.9951, accuracy: 8 } }]);
+  });
+
+  it("falls back to the map's position when no precise reading comes", async () => {
+    routes["/quests/today"] = ok(withQuest);
+    routes["/quests/q1/complete"] = ok({ id: "q1", status: "completed" });
+    render(<QuestHome />);
+    await settle();
+    fireEvent.click(screen.getByText("I went"));
+    await settle();
+    expect(bodies[0].body).toEqual({ lat: HERE.lat, lng: HERE.lng, accuracy: HERE.accuracyM });
+  });
+
+  it("uses a ?at= override as is, without asking the GPS", async () => {
+    location = { lat: 40.7, lng: -74, source: "override", note: "Location set by ?at=" };
+    routes["/quests/today"] = ok(withQuest);
+    routes["/quests/q1/complete"] = ok({ id: "q1", status: "completed" });
+    render(<QuestHome />);
+    await settle();
+    fireEvent.click(screen.getByText("I went"));
+    await settle();
+    expect(preciseFix).not.toHaveBeenCalled();
+    expect(bodies[0].body).toEqual({ lat: 40.7, lng: -74 });
+  });
+
+  it("explains a fix too rough to tell, and Try again takes a new reading", async () => {
+    routes["/quests/today"] = ok(withQuest);
+    const rough = "Your location is too rough to tell (±900 m). Turn on precise location or step outside, then try again.";
+    routes["/quests/q1/complete"] = fail(new ApiError(rough, 422, "http", "too_rough"));
+    render(<QuestHome />);
+    await settle();
+
+    fireEvent.click(screen.getByText("I went"));
+    await settle();
+    expect(screen.getByRole("alert").textContent).toContain(rough);
+
+    preciseFix.mockResolvedValue({ lat: 40.7311, lng: -73.997, accuracyM: 6 });
+    routes["/quests/q1/complete"] = ok({ id: "q1", status: "completed" });
+    fireEvent.click(screen.getByText("Try again"));
+    await settle();
+    expect(preciseFix).toHaveBeenCalledTimes(2);
+    expect(bodies.at(-1)?.body).toEqual({ lat: 40.7311, lng: -73.997, accuracy: 6 });
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("offers Try again for 'too far' too, but not for other failures", async () => {
+    routes["/quests/today"] = ok(withQuest);
+    routes["/quests/q1/complete"] = fail(new ApiError("You're 300 m away. Check in when you're there.", 422, "http", "too_far"));
+    const { unmount } = render(<QuestHome />);
+    await settle();
+    fireEvent.click(screen.getByText("I went"));
+    await settle();
+    expect(screen.getByText("Try again")).toBeTruthy();
+    unmount();
+
+    routes["/quests/q1/complete"] = fail(new ApiError("Internal server error", 500));
+    render(<QuestHome />);
+    await settle();
+    fireEvent.click(screen.getByText("I went"));
+    await settle();
+    expect(screen.getByRole("alert").textContent).toContain("Something went wrong on our end.");
+    expect(screen.queryByText("Try again")).toBeNull();
   });
 });

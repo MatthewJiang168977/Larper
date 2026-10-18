@@ -408,7 +408,7 @@ db/migrations/   SQL migrations (golang-migrate)
 data/            Python bulk extract of Overture places (shares workers/internal/places/overture_extract.sql)
 infra/           k3d config, Helm chart (+ values-aks/eks/oci.yaml, values-demo.yaml for one small VM), Postgres image, Terraform (azure, aws, eks), oci-k3s (VM bootstrap + rebuild runbook), monitoring values
 loadtest/        k6 script, end-to-end check (e2e-check.sh), footprint (footprint.sh), failure test (chaos.sh), autoscaler runs (hpa-run.sh), cache + CPU profile (cache-profile.sh), cache miss (cold-run.sh), output scrub (redact.js), reports in results/
-docs/decisions/  Decision records (0001: sizing the API's CPU request and autoscaler)
+docs/decisions/  Decision records (0001: sizing the API's CPU request and autoscaler; 0002: check-in accuracy tiers, deferred)
 scripts/         up.sh / down.sh (k3d), build-images.sh (amd64 + arm64), monitoring.sh, aks-up.sh, eks-up.sh / eks-down.sh, oci-capacity-probe.sh / oci-up.sh
 ```
 
