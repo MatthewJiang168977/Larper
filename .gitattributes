@@ -1,2 +1,4 @@
 # Shell scripts must keep LF endings: Git Bash fails on CRLF ("$'\r': command not found").
 *.sh text eol=lf
+# Copied into the Oracle stand-in VM as-is: iptables-restore rejects CRLF ("table name 'filter' invalid").
+infra/oci-k3s/test/oracle-rules.* text eol=lf

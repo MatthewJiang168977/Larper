@@ -1,6 +1,7 @@
 # Overrides for the Oracle Always Free target: single-node k3s on an Ampere A1 VM
-# (2 OCPU / 12 GB, arm64), set up by infra/oci-k3s/bootstrap.sh and deployed by
-# scripts/oci-up.sh. There is no registry: oci-up.sh builds arm64 images and imports
+# (arm64), set up by infra/oci-k3s/bootstrap.sh and deployed by scripts/oci-up.sh with
+# values-demo.yaml layered on top (the VM is 1 OCPU / 6 GB; this file alone is sized
+# for 2 OCPU / 12 GB). There is no registry: oci-up.sh builds arm64 images and imports
 # them straight into k3s's containerd, tagged with the git commit, e.g.
 #   --set api.image=larper.local/larper-api:3f9c2e1
 # ("larper.local" is not a real registry, so a missing image fails loudly instead of
@@ -17,8 +18,8 @@ ingress:
 
 api:
   hpa:
-    # 2 OCPU allocatable, ~1.1 cores requested by the rest of the stack: three API
-    # pods at 300m fit, a fourth would stay Pending.
+    # On 2 OCPU: ~1.1 cores requested by the rest of the stack, so three API pods at
+    # 300m fit and a fourth would stay Pending. values-demo.yaml takes it to 1-2.
     minReplicas: 2
     maxReplicas: 3
 

@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Retry launching an Always Free Ampere A1 instance (2 OCPU / 12 GB) until Oracle has
-# capacity, then KEEP it: it becomes the single-node k3s host (infra/oci-k3s).
+# Retry launching an Always Free Ampere A1 instance (1 OCPU / 6 GB) until Oracle has
+# capacity, then KEEP it: it becomes the single-node k3s host (infra/oci-k3s), running
+# the demo profile (values-demo.yaml), which fits in 4 GB. A smaller ask than the old
+# 2 OCPU / 12 GB, so more likely to find room; the instance can be resized later.
 #
 #   scripts/oci-capacity-probe.sh                 # every 10 min until success
-#   INTERVAL=300 OCPUS=1 MEMORY_GB=6 scripts/oci-capacity-probe.sh
+#   INTERVAL=300 OCPUS=2 MEMORY_GB=12 scripts/oci-capacity-probe.sh   # other sizes (Always Free: 4 / 24 total)
 #   NTFY_TOPIC=some-long-random-name scripts/oci-capacity-probe.sh   # also push to phone (ntfy.sh)
 #   ONCE=1 scripts/oci-capacity-probe.sh          # one attempt (GitHub Actions: .github/workflows/oci-probe.yml)
 #
@@ -43,8 +45,8 @@ RETRY_DELAY=${RETRY_DELAY:-60}
 MAX_TRANSIENT=${MAX_TRANSIENT:-5}
 SETUP_TRIES=${SETUP_TRIES:-3}
 LONG_GAP=${LONG_GAP:-900}
-OCPUS=${OCPUS:-2}
-MEMORY_GB=${MEMORY_GB:-12}
+OCPUS=${OCPUS:-1}
+MEMORY_GB=${MEMORY_GB:-6}
 ONCE=${ONCE:-0}
 NAME=larper-k3s
 OLD_NAME=larper-a1-probe

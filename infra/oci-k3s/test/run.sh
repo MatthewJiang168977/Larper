@@ -92,7 +92,7 @@ vm_up() {
   docker run -d --name "$VM" --hostname larper-k3s --privileged --cgroupns=private \
     --tmpfs /run --tmpfs /run/lock \
     -v larper-oci-vm-rancher:/var/lib/rancher -v larper-oci-vm-kubelet:/var/lib/kubelet \
-    --memory 12g --cpus 2 --network "$NET" --ip "$VM_IP" -p 127.0.0.1:$SSH_PORT:22 \
+    --memory "${VM_MEMORY:-6g}" --cpus "${VM_CPUS:-1}" --network "$NET" --ip "$VM_IP" -p 127.0.0.1:$SSH_PORT:22 \
     larper-oci-vm >/dev/null
   rm -f "$STATE/known_hosts"
   for _ in $(seq 1 60); do vm true 2>/dev/null && break; sleep 2; done

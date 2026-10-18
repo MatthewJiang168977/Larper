@@ -510,7 +510,8 @@ JWT or secret key. Run it yourself after a bare `k6 run --summary-export`
   requests didn't fit one `t4g.large`, so Karpenter got room for two extra nodes).
 - **Pending Oracle capacity:** the always-free A1 VM. Its bootstrap, firewall, backups and
   restore are rehearsed on the stand-in; what's left is anything only the real VM has (arm64
-  images in place, Oracle's S3 endpoint, the VCN). A probe asks for capacity every 10 minutes.
+  images in place, Oracle's S3 endpoint, the VCN). A probe asks for capacity every 10 minutes,
+  for 1 OCPU / 6 GB running the [demo profile](#demo-profile-one-small-vm).
 - **Optional, not run:** the failure test on EKS. The k3d run covers the app's behaviour when
   each component dies; on EKS it would add the managed pieces (EBS reattach, NLB). An attempt
   was cut short by tearing the cluster down mid-run, so there are no EKS chaos numbers.
@@ -870,8 +871,12 @@ On 4 GB that leaves ~1.3 GB for the page cache (Postgres reads through it) and s
 leaves room to turn monitoring back on. CPU stays under half a core for the pods at 8× the
 demo's load, so 2 vCPU leaves the rest for k3s. The k3s figure is from this k3d cluster, whose
 API server also carries kube-prometheus-stack's CRDs; without them it should be lower, but it
-wasn't measured that way. Nothing here was measured on an actual 4 GB VM; the Oracle A1
-target (2 OCPU / 12 GB) has room either way.
+wasn't measured that way. Nothing here was measured on an actual 4 GB VM.
+
+The Oracle A1 target runs this profile on 1 OCPU / 6 GB (`scripts/oci-up.sh` layers
+`values-demo.yaml` over `values-oci.yaml`). Memory has room there. An A1 OCPU is a single
+core, though, so CPU is the tight side; see
+[infra/oci-k3s](infra/oci-k3s/README.md#deploy).
 
 ---
 
