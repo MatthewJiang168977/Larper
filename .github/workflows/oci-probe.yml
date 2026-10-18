@@ -42,8 +42,8 @@ jobs:
     timeout-minutes: 25
     env:
       OCI_REGION: us-sanjose-1
-      # The shape to ask for (VM.Standard.A1.Flex; Always Free covers 4 OCPU / 24 GB in
-      # total). The demo profile (values-demo.yaml) fits in 4 GB.
+      # The shape to ask for (VM.Standard.A1.Flex): half the Always Free A1 allowance of
+      # 2 OCPU / 12 GB per tenancy. The demo profile (values-demo.yaml) fits in 4 GB.
       OCPUS: '1'
       MEMORY_GB: '6'
     steps:

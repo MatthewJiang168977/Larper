@@ -5,7 +5,7 @@
 # 2 OCPU / 12 GB, so more likely to find room; the instance can be resized later.
 #
 #   scripts/oci-capacity-probe.sh                 # every 10 min until success
-#   INTERVAL=300 OCPUS=2 MEMORY_GB=12 scripts/oci-capacity-probe.sh   # other sizes (Always Free: 4 / 24 total)
+#   INTERVAL=300 OCPUS=2 MEMORY_GB=12 scripts/oci-capacity-probe.sh   # other sizes, up to the Always Free 2 / 12
 #   NTFY_TOPIC=some-long-random-name scripts/oci-capacity-probe.sh   # also push to phone (ntfy.sh)
 #   ONCE=1 scripts/oci-capacity-probe.sh          # one attempt (GitHub Actions: .github/workflows/oci-probe.yml)
 #
@@ -114,6 +114,11 @@ die() {
   [[ $CI == true ]] || notify "Larper OCI probe stopped" "$*"
   exit 1
 }
+
+# Always Free A1 is 2 OCPU / 12 GB per tenancy (1,500 OCPU-hours and 9,000 GB-hours a
+# month; halved from 4 / 24 in 2026). Never ask for more: the instance runs all month.
+(( OCPUS >= 1 && OCPUS <= 2 && MEMORY_GB >= 1 && MEMORY_GB <= 12 )) ||
+  die "OCPUS=$OCPUS MEMORY_GB=$MEMORY_GB is over the Always Free A1 allowance (2 OCPU / 12 GB)"
 
 # The CLI prints "ServiceError:" or "RequestException:" followed by pretty JSON, one
 # field per line. Pull out the fields that say what happened (not the tips).

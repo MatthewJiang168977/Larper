@@ -6,15 +6,18 @@ us-sanjose-1, at $0, running the [demo profile](../../README.md#demo-profile-one
 `scripts/oci-capacity-probe.sh` (or its GitHub Actions twin), this folder prepares it,
 and `scripts/oci-up.sh` deploys.
 
-The probe used to ask for 2 OCPU / 12 GB. Asking for half of that is more likely to find
-room in a region that's usually out of A1 capacity, and still leaves 3 OCPU / 18 GB of
-the Always Free allowance unused.
+The probe used to ask for 2 OCPU / 12 GB, which is now the whole Always Free A1
+allowance: Oracle halved it from 4 OCPU / 24 GB in 2026 (enforced from 18 August). Asking
+for half of that is more likely to find room in a region that's usually out of A1
+capacity, and leaves the other half free (resizing to 2 / 12 stays at $0; anything above
+is billed on a pay-as-you-go account, or refused on a Free Tier one). The probe refuses
+to ask for more than 2 / 12.
 
 ## What runs where (all Always Free)
 
 | Resource | Always Free limit | Used |
 |---|---|---|
-| A1 compute | 4 OCPU / 24 GB total | 1 OCPU / 6 GB (`VM.Standard.A1.Flex`) |
+| A1 compute | 2 OCPU / 12 GB total (1,500 OCPU-hours, 9,000 GB-hours a month) | 1 OCPU / 6 GB (`VM.Standard.A1.Flex`) |
 | Boot volume | 200 GB total block storage | 50 GB |
 | VCN, internet gateway, security list | free | 1 each |
 | Object Storage (backups) | 20 GB, 50k API requests/month | bucket `larper-pg-backups`, ~1–2 GB, a few k requests (below) |
