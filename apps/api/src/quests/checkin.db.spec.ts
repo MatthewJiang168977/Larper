@@ -12,7 +12,12 @@ import { QuestsService } from './quests.service';
 // TEST_DATABASE_URL is set (CI's db job sets it), and refuses to run (fails) unless that
 // is a disposable database with no outbox relay. It brings its own user, place and
 // quest, and deletes them (and the outbox rows its check-ins write) afterwards.
+//
+// The service runs as TEST_DATABASE_URL's role (the API's, larper_api, in CI), so its
+// grants are tested too. The fixtures and the cleanup need more than the API may do
+// (it never deletes), so they use TEST_OWNER_DATABASE_URL, the schema owner, when set.
 const URL = process.env.TEST_DATABASE_URL;
+const OWNER_URL = process.env.TEST_OWNER_DATABASE_URL ?? URL;
 const describeDb = URL ? describe : describe.skip;
 
 // A place at Washington Square Arch, and points measured from it.
@@ -21,6 +26,7 @@ const metersNorth = (m: number) => ({ lat: PLACE.lat + m / 111_320, lng: PLACE.l
 
 describeDb('check-in (real database)', () => {
   let pool: Pool;
+  let owner: Pool;
   let quests: QuestsService;
   let userId: string;
   let placeId: string;
@@ -28,14 +34,15 @@ describeDb('check-in (real database)', () => {
 
   beforeAll(async () => {
     pool = createPool(URL);
+    owner = createPool(OWNER_URL);
     // Before writing anything: never against a live stack (see db/test-guard.ts).
-    await assertDisposableDatabase(pool, 'checkin.db.spec');
+    await assertDisposableDatabase(owner, 'checkin.db.spec');
     quests = new QuestsService(pool, {} as CacheService, {} as TagsService, {} as AreasService);
-    const u = await pool.query<{ id: string }>(
+    const u = await owner.query<{ id: string }>(
       `INSERT INTO users (clerk_id) VALUES ('test_checkin_' || gen_random_uuid()) RETURNING id::text`,
     );
     userId = u.rows[0].id;
-    const p = await pool.query<{ id: string }>(
+    const p = await owner.query<{ id: string }>(
       `INSERT INTO places (overture_id, name, geom, categories, chain_key, tags, tag_vec, confidence)
        VALUES ('test-checkin-' || gen_random_uuid(), 'Test Arch',
                ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, '{cafe}', 'test-arch', '{cafe}',
@@ -47,19 +54,21 @@ describeDb('check-in (real database)', () => {
   });
 
   afterAll(async () => {
-    if (!userId) return pool.end(); // refused before writing anything
-    await pool.query('DELETE FROM outbox WHERE key = $1', [userId]);
-    await pool.query('DELETE FROM users WHERE id = $1', [userId]); // cascades to quests
-    await pool.query('DELETE FROM places WHERE id = $1', [placeId]);
+    if (userId) {
+      await owner.query('DELETE FROM outbox WHERE key = $1', [userId]);
+      await owner.query('DELETE FROM users WHERE id = $1', [userId]); // cascades to quests
+      await owner.query('DELETE FROM places WHERE id = $1', [placeId]);
+    } // else refused before writing anything
     await pool.end();
+    await owner.end();
   });
 
   let questId: string;
   beforeEach(async () => {
     lines = [];
     jest.spyOn(Logger.prototype, 'log').mockImplementation((m: unknown) => void lines.push(String(m)));
-    await pool.query(`DELETE FROM quests WHERE user_id = $1`, [userId]);
-    const q = await pool.query<{ id: string }>(
+    await owner.query(`DELETE FROM quests WHERE user_id = $1`, [userId]);
+    const q = await owner.query<{ id: string }>(
       `INSERT INTO quests (user_id, place_id, status, score, reasons, origin)
        VALUES ($1, $2, 'accepted', 1, '{}', ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography)
        RETURNING id::text`,

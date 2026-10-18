@@ -96,8 +96,8 @@ Load the NYC places (Overture data, read straight from its public S3 bucket):
 ```bash
 python data/extract_overture.py --out data/nyc.parquet       # "wrote 566… places", ~1 min, ~35 MB
 kubectl -n larper port-forward svc/pg-rw 55432:5432 &
-PW=$(kubectl -n larper get secret pg-app -o jsonpath='{.data.password}' | base64 -d)
-(cd workers && DATABASE_URL="postgres://larper:$PW@127.0.0.1:55432/larper?sslmode=require" \
+PW=$(kubectl -n larper get secret pg-ingest -o jsonpath='{.data.password}' | base64 -d)   # the ingest-worker's role
+(cd workers && DATABASE_URL="postgres://larper_ingest:$PW@127.0.0.1:55432/larper?sslmode=require&pool_max_conns=4" \
   go run ./cmd/load-places -in ../data/nyc.parquet)          # ends "INFO done read=… kept=…" (~80k kept)
 kill %1                                                      # stop the port-forward
 ```
@@ -430,12 +430,14 @@ for i in 1 2 3 4; do curl -s localhost:8080/healthz; echo; done   # pod name cha
 
 ### Load place data (NYC)
 Migrations run automatically as a Helm Job (pre-upgrade, or post-install on a fresh install).
+Each service logs in as its own Postgres role, granted only what it needs
+([decision 0003](docs/decisions/0003-service-db-roles.md)); `load-places` uses the ingest-worker's.
 ```bash
 pip install duckdb
 python data/extract_overture.py --out data/nyc.parquet        # ~566k places, ~1 min, 27 MB
 kubectl -n larper port-forward svc/pg-rw 55432:5432 &
-PW=$(kubectl -n larper get secret pg-app -o jsonpath='{.data.password}' | base64 -d)
-cd workers && DATABASE_URL="postgres://larper:$PW@127.0.0.1:55432/larper?sslmode=require" \
+PW=$(kubectl -n larper get secret pg-ingest -o jsonpath='{.data.password}' | base64 -d)    # the ingest-worker's role
+cd workers && DATABASE_URL="postgres://larper_ingest:$PW@127.0.0.1:55432/larper?sslmode=require&pool_max_conns=4" \
   go run ./cmd/load-places -in ../data/nyc.parquet           # ~80k quest-worthy places, idempotent
 ```
 
@@ -451,6 +453,9 @@ kubectl -n larper exec redpanda-0 -- rpk group describe taste-worker    # partit
 kubectl -n larper logs -l app=taste-worker -f                           # applied / duplicate / dead-lettered
 pnpm proto:gen                                                          # regenerate event types (needs buf)
 kubectl -n larper logs -l app=ingest-worker -f                          # area ingests: leased, ingested, retries
+# DB tests: TEST_DATABASE_URL is the role the code under test runs as; TEST_OWNER_DATABASE_URL
+# (the owner, larper, from pg-app) makes the fixtures and cleans up. CI sets both, plus
+# TEST_{API,RELAY,TASTE,INGEST}_DATABASE_URL for roles.db (db/test has its setup).
 TEST_DATABASE_URL=postgres://... go test ./internal/queue/              # queue integration tests (in workers/)
 TEST_DATABASE_URL=postgres://... go test ./internal/stats/              # stats refresh vs the stack's Postgres, incl. Midtown + all NYC at full size; rolled back
 TEST_DATABASE_URL=postgres://... pnpm --filter @larper/api test candidates.db  # ranking query vs the old one on real data (pg port-forward; TEST_NYC_DATA=0 skips the 200-pair checks)
@@ -459,14 +464,14 @@ TEST_DATABASE_URL=postgres://... pnpm --filter @larper/api test candidates.db  #
 ### CI
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request and push to
-`main`, in four parallel jobs (each capped at 10 minutes, no secrets, nothing deployed):
+`main`, in parallel jobs (each capped at 10 minutes, no secrets, nothing deployed):
 
 | Job | What it checks |
 |---|---|
 | API | `pnpm install` (cached), `tsc --noEmit`, ESLint (`apps/api/eslint.config.mjs`), Jest unit tests |
 | Go workers | `gofmt -l`, `go vet ./...`, `go test ./...` (unit tests; the integration tests skip) |
-| Database | Postgres 17 + PostGIS 3.6 + pgvector 0.8 as a service container, all migrations applied with the Helm Job's `migrate` image, then the Go integration tests (queue, stats refresh, the lost-update race) and the API's `candidates.db` spec |
-| Helm | `helm lint`, and the chart rendered with the default, monitoring, AKS, EKS and OCI values |
+| Database | Postgres 17 + PostGIS 3.6 + pgvector 0.8 as a service container, set up with the owner and service roles as CloudNativePG does (`db/test`), all migrations applied as the owner with the Helm Job's `migrate` image (and the last one re-run). Then, each as its service's role: the Go integration tests (queue, stats refresh, the lost-update race) as the ingest-worker's, and the API's `*.db` specs (check-in, candidates, and `roles.db`: exact grants, denials) as the API's |
+| Helm | `helm lint`, the chart rendered with the default, monitoring, AKS, EKS, OCI and demo values, and refusing database connection limits that don't cover pool × pods |
 | Secret scan | gitleaks (pinned image) over **every commit**, default rules plus [`.gitleaks.toml`](.gitleaks.toml), which allows only Clerk publishable keys (public by design). Before a commit: `scripts/secret-scan.sh` (staged changes) or `--history` (what CI runs) |
 | Load-test results | `loadtest/redact.js --check`: no Clerk session IDs, tokens or k6 `setup_data` in `loadtest/results` |
 

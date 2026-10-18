@@ -8,7 +8,8 @@ export const PG = Symbol('PG');
 export function createPool(connectionString = process.env.DATABASE_URL): Pool {
   const pool = new Pool({
     connectionString,
-    max: 10,
+    // Per profile (Helm's postgres.roles.api.pool), under the API role's connection limit.
+    max: Number(process.env.DB_POOL_MAX) || 10,
     // Fail a request after 5 s instead of queueing it forever while Postgres is down.
     connectionTimeoutMillis: 5_000,
     // No parallel workers for request queries. The candidate query got 3 of them on

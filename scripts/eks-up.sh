@@ -91,6 +91,8 @@ helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
   --version 92.2.0 -n monitoring --create-namespace \
   -f infra/monitoring/values.yaml --wait --timeout 10m
 
+# A cluster from before the per-service DB roles needs this once (see the script).
+scripts/pg-owner-createrole.sh
 helm upgrade --install larper infra/helm/larper -n larper --create-namespace \
   -f infra/helm/larper/values-eks.yaml \
   --set queue.awsRegion="$REGION" \

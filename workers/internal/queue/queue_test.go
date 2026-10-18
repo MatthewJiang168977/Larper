@@ -25,23 +25,36 @@ func TestBackoff(t *testing.T) {
 //	TEST_DATABASE_URL=postgres://... go test ./internal/queue/
 //
 // One pool for the package (connections are reused across tests), and each test
-// uses its own queue name, so they never touch real jobs.
-var testPool *pgxpool.Pool
+// uses its own queue name, so they never touch real jobs. The queue runs as
+// TEST_DATABASE_URL's role (the ingest-worker's, larper_ingest, in CI). Enqueueing is
+// the API's job and cleanup needs DELETE, which the worker doesn't have, so those use
+// TEST_OWNER_DATABASE_URL, the schema owner, when set.
+var testPool, ownerPool *pgxpool.Pool
 
 func TestMain(m *testing.M) {
 	if url := os.Getenv("TEST_DATABASE_URL"); url != "" {
-		pool, err := pgxpool.New(context.Background(), url)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+		testPool = connect(url)
+		ownerPool = testPool
+		if owner := os.Getenv("TEST_OWNER_DATABASE_URL"); owner != "" {
+			ownerPool = connect(owner)
 		}
-		testPool = pool
 	}
 	code := m.Run()
-	if testPool != nil {
-		testPool.Close()
+	for _, p := range []*pgxpool.Pool{testPool, ownerPool} {
+		if p != nil {
+			p.Close()
+		}
 	}
 	os.Exit(code)
+}
+
+func connect(url string) *pgxpool.Pool {
+	pool, err := pgxpool.New(context.Background(), url)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	return pool
 }
 
 func testQueue(t *testing.T) (Postgres, string) {
@@ -50,13 +63,13 @@ func testQueue(t *testing.T) (Postgres, string) {
 		t.Skip("TEST_DATABASE_URL not set")
 	}
 	name := fmt.Sprintf("test-%s-%d", t.Name(), time.Now().UnixNano())
-	t.Cleanup(func() { testPool.Exec(context.Background(), `DELETE FROM jobs WHERE queue = $1`, name) })
+	t.Cleanup(func() { ownerPool.Exec(context.Background(), `DELETE FROM jobs WHERE queue = $1`, name) })
 	return Postgres{Pool: testPool}, name
 }
 
-func enqueue(t *testing.T, q Postgres, queue, key string, maxAttempts int) {
+func enqueue(t *testing.T, queue, key string, maxAttempts int) {
 	t.Helper()
-	_, err := q.Pool.Exec(context.Background(),
+	_, err := ownerPool.Exec(context.Background(),
 		`INSERT INTO jobs (queue, dedupe_key, payload, max_attempts) VALUES ($1, $2, '{}', $3)`, queue, key, maxAttempts)
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +87,7 @@ func status(t *testing.T, q Postgres, id int64) (s string, attempts int) {
 func TestClaimCompleteAndEmpty(t *testing.T) {
 	q, name := testQueue(t)
 	ctx := context.Background()
-	enqueue(t, q, name, "a", 3)
+	enqueue(t, name, "a", 3)
 
 	j, err := q.Claim(ctx, name, time.Minute)
 	if err != nil || j == nil || j.Attempt != 1 {
@@ -92,9 +105,9 @@ func TestClaimCompleteAndEmpty(t *testing.T) {
 }
 
 func TestDedupeOneLiveJobPerKey(t *testing.T) {
-	q, name := testQueue(t)
-	enqueue(t, q, name, "same", 3)
-	_, err := q.Pool.Exec(context.Background(),
+	_, name := testQueue(t)
+	enqueue(t, name, "same", 3)
+	_, err := ownerPool.Exec(context.Background(),
 		`INSERT INTO jobs (queue, dedupe_key, payload) VALUES ($1, 'same', '{}')`, name)
 	if err == nil {
 		t.Fatal("second live job with the same key was accepted")
@@ -106,7 +119,7 @@ func TestDedupeOneLiveJobPerKey(t *testing.T) {
 func TestLapsedLeaseIsRedeliveredAndFenced(t *testing.T) {
 	q, name := testQueue(t)
 	ctx := context.Background()
-	enqueue(t, q, name, "k", 3)
+	enqueue(t, name, "k", 3)
 
 	first, _ := q.Claim(ctx, name, 50*time.Millisecond)
 	time.Sleep(150 * time.Millisecond)
@@ -125,7 +138,7 @@ func TestLapsedLeaseIsRedeliveredAndFenced(t *testing.T) {
 func TestFailRetriesWithBackoffThenDeadLetters(t *testing.T) {
 	q, name := testQueue(t)
 	ctx := context.Background()
-	enqueue(t, q, name, "k", 2)
+	enqueue(t, name, "k", 2)
 
 	j, _ := q.Claim(ctx, name, time.Minute)
 	if err := q.Fail(ctx, j, errors.New("boom"), false); err != nil {
@@ -151,7 +164,7 @@ func TestFailRetriesWithBackoffThenDeadLetters(t *testing.T) {
 func TestPermanentFailureDeadLettersImmediately(t *testing.T) {
 	q, name := testQueue(t)
 	ctx := context.Background()
-	enqueue(t, q, name, "k", 5)
+	enqueue(t, name, "k", 5)
 	j, _ := q.Claim(ctx, name, time.Minute)
 	if err := q.Fail(ctx, j, errors.New("bad payload"), true); err != nil {
 		t.Fatal(err)
@@ -164,7 +177,7 @@ func TestPermanentFailureDeadLettersImmediately(t *testing.T) {
 func TestCrashLoopingJobIsDeadLetteredOnClaim(t *testing.T) {
 	q, name := testQueue(t)
 	ctx := context.Background()
-	enqueue(t, q, name, "k", 1)
+	enqueue(t, name, "k", 1)
 	j, _ := q.Claim(ctx, name, 50*time.Millisecond) // attempt 1 of 1, then the worker "dies"
 	time.Sleep(150 * time.Millisecond)
 	if next, err := q.Claim(ctx, name, time.Minute); err != nil || next != nil {

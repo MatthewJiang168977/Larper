@@ -91,30 +91,55 @@ jobs:
         ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 30
+    # Roles as on the stack (migration 0010, db/test): migrations run as the owner, each
+    # service's tests as that service's role, fixtures and cleanup as the owner. Test
+    # passwords, set by db/test/*.sql; nothing here is a real credential.
     env:
-      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/larper?sslmode=disable
+      TEST_OWNER_DATABASE_URL: postgres://larper:owner-pw@localhost:5432/larper?sslmode=disable
+      TEST_API_DATABASE_URL: postgres://larper_api:api-pw@localhost:5432/larper?sslmode=disable
+      TEST_RELAY_DATABASE_URL: postgres://larper_relay:relay-pw@localhost:5432/larper?sslmode=disable
+      TEST_TASTE_DATABASE_URL: postgres://larper_taste:taste-pw@localhost:5432/larper?sslmode=disable
+      TEST_INGEST_DATABASE_URL: postgres://larper_ingest:ingest-pw@localhost:5432/larper?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       # The stack's image is CloudNativePG's with PostGIS added; this is the same pair
       # of extensions on the stock postgres image, which CI can start as a service.
-      - name: Add PostGIS and create the extensions (CNPG does this at initdb)
+      - name: Add PostGIS
         run: |
           docker exec ${{ job.services.postgres.id }} sh -c \
             'apt-get update -qq && apt-get install -y -qq --no-install-recommends postgresql-17-postgis-3 >/dev/null'
-          docker exec ${{ job.services.postgres.id }} psql -U postgres -d larper \
-            -c 'CREATE EXTENSION postgis' -c 'CREATE EXTENSION vector'
-      - name: Apply the migrations (same image as the Helm migrate Job)
+      # What CNPG does at initdb (the owner, the extensions), plus two of the four
+      # service roles created before the migrations, as CNPG may on a fresh install.
+      - name: Set up the owner and roles as CloudNativePG does
         run: |
-          docker run --rm --network host -v "$PWD/db/migrations:/migrations:ro" migrate/migrate:v4.19.0 \
-            -path /migrations -database "$TEST_DATABASE_URL" up
+          docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d larper -v ON_ERROR_STOP=1 -q \
+            < db/test/before-migrate.sql
+      # As the owner, with the same image as the Helm migrate Job. Then the last
+      # migration down and up again: re-running it must be clean.
+      - name: Apply the migrations (and re-run the last one)
+        run: |
+          migrate() {
+            docker run --rm --network host -v "$PWD/db/migrations:/migrations:ro" migrate/migrate:v4.19.0 \
+              -path /migrations -database "$TEST_OWNER_DATABASE_URL" "$@"
+          }
+          migrate up
+          migrate down 1
+          migrate up
+      - name: Log in the roles the migration created, as CloudNativePG does
+        run: |
+          docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d larper -v ON_ERROR_STOP=1 -q \
+            < db/test/after-migrate.sql
       - uses: actions/setup-go@v5
         with:
           go-version-file: workers/go.mod
           cache-dependency-path: workers/go.sum
       # Queue tests, the stats refresh and the lost-update race test bring their own
-      # rows. The Midtown / all-NYC refresh tests skip: they need the NYC places.
+      # rows. The Midtown / all-NYC refresh tests skip: they need the NYC places. As the
+      # ingest-worker's role, which runs that code.
       - name: Go integration tests
         working-directory: workers
+        env:
+          TEST_DATABASE_URL: ${{ env.TEST_INGEST_DATABASE_URL }}
         run: go test -count=1 ./internal/...
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -122,11 +147,13 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Every *.db.spec.ts: the check-in path (brings its own rows) and the candidate
-      # query. Its two 200-pair equivalence checks need the NYC places and the bench's
+      # Every *.db.spec.ts, as the API's role: the check-in path (brings its own rows),
+      # the candidate query, and the roles test (logs in as each role). The candidate
+      # query's two 200-pair equivalence checks need the NYC places and the bench's
       # users, so they're skipped here (TEST_NYC_DATA=0) and run locally against the stack.
       - name: API database tests
         env:
+          TEST_DATABASE_URL: ${{ env.TEST_API_DATABASE_URL }}
           TEST_NYC_DATA: '0'
         run: pnpm --filter @larper/api test db.spec
 
@@ -154,6 +181,21 @@ jobs:
           helm template larper $chart -n larper -f $chart/values-demo.yaml > /dev/null
           helm template larper $chart -n larper -f $chart/values-oci.yaml -f $chart/values-demo.yaml \
             --set postgres.backup.endpointURL=https://objectstorage.example.invalid > /dev/null
+      # The database roles' connection limits must cover each service at full scale and
+      # fit in max_connections (templates/_helpers.tpl): check the chart still refuses.
+      - name: Refuse connection limits that don't fit
+        run: |
+          chart=infra/helm/larper
+          refuses() {
+            local expect=$1; shift
+            if out=$(helm template larper $chart -n larper "$@" 2>&1); then
+              echo "rendered, but should have refused: $*"; exit 1
+            fi
+            grep -q "$expect" <<<"$out" || { echo "unexpected error for $*: $out"; exit 1; }
+          }
+          refuses 'below pool' -f $chart/values-eks.yaml --set api.hpa.maxReplicas=8
+          refuses 'below pool' --set ingest.replicas=3
+          refuses 'over max_connections' -f $chart/values-demo.yaml --set postgres.roles.api.connectionLimit=30
 
   secrets:
     name: Secret scan (gitleaks, full history)

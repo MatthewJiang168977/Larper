@@ -18,6 +18,29 @@ spec:
   template:
     spec:
       restartPolicy: OnFailure
+      # Migration 0010 creates the service roles if CNPG hasn't yet, which needs
+      # CREATEROLE, and a migration that fails halfway leaves golang-migrate "dirty"
+      # until someone forces the version. So wait until it can't fail that way: the
+      # owner has CREATEROLE (CNPG's managed role, or scripts/pg-owner-createrole.sh on
+      # a cluster from before 0010) or the roles all exist. Also waits out the first
+      # minute of a fresh install, before Postgres accepts connections.
+      initContainers:
+        - name: wait-for-roles
+          image: {{ .Values.postgres.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              q="SELECT rolcreaterole OR (SELECT count(*) = 4 FROM pg_roles
+                   WHERE rolname IN ('larper_api', 'larper_relay', 'larper_taste', 'larper_ingest'))
+                 FROM pg_roles WHERE rolname = current_user"
+              until [ "$(psql "$DATABASE_URL" -XAtqc "$q" 2>/dev/null)" = t ]; do
+                echo "waiting: Postgres not up yet, or larper lacks CREATEROLE (on a cluster from before migration 0010, run scripts/pg-owner-createrole.sh)"
+                sleep 5
+              done
+          env:
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: pg-app, key: uri } }
       containers:
         - name: migrate
           image: {{ .Values.migrate.image }}

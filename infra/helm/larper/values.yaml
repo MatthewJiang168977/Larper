@@ -50,8 +50,30 @@ postgres:
   resources:
     requests: { cpu: 250m, memory: 256Mi }
     limits: { memory: 1Gi }
-  # Extra postgresql.conf settings, e.g. { shared_buffers: 64MB }. Empty: CNPG's defaults.
-  parameters: {}
+  # Extra postgresql.conf settings, e.g. { shared_buffers: 64MB }; CNPG's defaults
+  # otherwise. max_connections (CNPG's default is 100) must hold every role's limit
+  # below plus reservedConnections, or the chart refuses to render.
+  parameters:
+    max_connections: "150"
+  # A login role per service, granted only what it needs (migration 0010,
+  # docs/decisions/0003-service-db-roles.md). pool: the most connections one pod
+  # opens. connectionLimit: the role's cap in Postgres. The chart refuses to render
+  # unless each cap covers pool x the service's most pods (replicas or the HPA's max,
+  # plus a rolling update's 25% surge; ingest one more, for a load-places run).
+  roles:
+    # Default: API max 6 + 2 surge = 8 pods x 10 = 80.
+    api: { pool: 10, connectionLimit: 80 }
+    # One pod, Recreate. Uses one connection at a time.
+    relay: { pool: 2, connectionLimit: 4 }
+    # 2 + 1 surge = 3 pods x 2. Handles one record at a time.
+    taste: { pool: 2, connectionLimit: 8 }
+    # (2 + 1 surge + load-places) x 4. A job, its lease renewals, the stats refresh.
+    ingest: { pool: 4, connectionLimit: 16 }
+    # The schema owner: the migrate Job (and psql by hand).
+    owner: { connectionLimit: 10 }
+  # Connections outside the roles: CNPG's instance manager and the superuser
+  # (superuser_reserved_connections is 3).
+  reservedConnections: 10
   # Backups to an S3-compatible object store via the Barman Cloud plugin (needs the
   # plugin + cert-manager installed, and a Secret "pg-backup-s3"; scripts/oci-up.sh
   # does both for Oracle). Off locally.

@@ -18,6 +18,17 @@ api:
 
 postgres:
   storage: 4Gi # gp3 (eks-up.sh makes it the default StorageClass)
+  parameters:
+    max_connections: "150"
+  # Every pod at the HPA's max can get its whole pool: API 6 + 2 surge = 8 pods x 10.
+  # One replica each of taste-worker and ingest-worker, + 1 surge. 104 of the 150,
+  # plus 10 reserved.
+  roles:
+    api: { pool: 10, connectionLimit: 80 }
+    relay: { pool: 2, connectionLimit: 4 }
+    taste: { pool: 2, connectionLimit: 4 }
+    ingest: { pool: 4, connectionLimit: 12 }
+    owner: { connectionLimit: 10 }
 
 redpanda:
   storage: 4Gi

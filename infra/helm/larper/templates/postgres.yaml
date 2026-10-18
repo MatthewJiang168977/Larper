@@ -1,5 +1,7 @@
 # Managed by the CloudNativePG operator (installed by scripts/bootstrap.sh).
-# CNPG creates the secret "pg-app" with the app user's connection URI.
+# CNPG creates the secret "pg-app" with the app user's connection URI. Only the migrate
+# Job uses it: the services log in as their own roles (managed below).
+{{- include "larper.checkConnections" . }}
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -34,6 +36,26 @@ spec:
       {{ $name }}: {{ $value | quote }}
       {{- end }}
   {{- end }}
+  # The roles, as CNPG keeps them: it creates any that are missing, and resets login,
+  # attributes, connection limit and password (from the Secret) to these on every
+  # reconcile. Grants are the migrations' (0010). A restore brings the roles back.
+  managed:
+    roles:
+      # The owner, from initdb: only the migrate Job logs in as it. CREATEROLE lets
+      # migration 0010 create the service roles if CNPG hasn't yet. No passwordSecret:
+      # CNPG leaves the password it generated for pg-app alone.
+      - name: larper
+        login: true
+        createrole: true
+        connectionLimit: {{ .Values.postgres.roles.owner.connectionLimit }}
+        comment: schema owner (migrations)
+      {{- range $role, $name := fromYaml (include "larper.dbRoles" .) }}
+      - name: {{ $name }}
+        login: true
+        connectionLimit: {{ (index $.Values.postgres.roles $role).connectionLimit }}
+        passwordSecret: { name: pg-{{ $role }} }
+        comment: {{ $role }} service
+      {{- end }}
   bootstrap:
     {{- if .Values.postgres.restore.enabled }}
     # Rebuild from the object store instead of an empty database (infra/oci-k3s/README.md).
