@@ -17,6 +17,10 @@ const DEMO = { lat: 40.7308, lng: -73.9973 };
 const NO_GPS: Located = { ...DEMO, source: "demo", note: "No GPS on this device. Showing Washington Square." };
 // Ignore GPS jitter; only report a new position after a real move.
 const MIN_MOVE_M = 40;
+// The browser's own `timeout` only starts once the permission prompt is answered, so a
+// prompt the user ignores would leave "Finding you…" up forever. After this long without
+// a fix, show the demo spot; a real fix still replaces it whenever it arrives.
+export const LOCATE_TIMEOUT_MS = 12_000;
 
 function metersBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
   const rad = Math.PI / 180;
@@ -46,6 +50,13 @@ export function useLocation(): Located | null {
 
   useEffect(() => {
     if (forced || !hasGeo) return;
+    const fallback = setTimeout(
+      () =>
+        setGps(
+          (prev) => prev ?? { ...DEMO, source: "demo", note: "Still waiting for your location. Showing Washington Square." },
+        ),
+      LOCATE_TIMEOUT_MS,
+    );
     const id = navigator.geolocation.watchPosition(
       (pos) => {
         const next = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracyM: pos.coords.accuracy };
@@ -53,20 +64,22 @@ export function useLocation(): Located | null {
           prev?.source === "gps" && metersBetween(prev, next) < MIN_MOVE_M ? prev : { ...next, source: "gps" },
         );
       },
-      (err) =>
-        setGps((prev) =>
-          prev ?? {
-            ...DEMO,
-            source: "demo",
-            note:
-              err.code === err.PERMISSION_DENIED
-                ? "Location is off. Showing Washington Square."
-                : "Couldn't get a GPS fix. Showing Washington Square.",
-          },
-        ),
+      // Keep a real fix through a later error; otherwise say why we're on the demo spot.
+      // Same note, same object: the watch can report errors repeatedly, and a new object
+      // would refetch the deck each time.
+      (err) => {
+        const note =
+          err.code === err.PERMISSION_DENIED
+            ? "Location is off. Showing Washington Square."
+            : "Couldn't get a GPS fix. Showing Washington Square.";
+        setGps((prev) => (prev?.source === "gps" || prev?.note === note ? prev : { ...DEMO, source: "demo", note }));
+      },
       { enableHighAccuracy: false, maximumAge: 30_000, timeout: 10_000 },
     );
-    return () => navigator.geolocation.clearWatch(id);
+    return () => {
+      clearTimeout(fallback);
+      navigator.geolocation.clearWatch(id);
+    };
   }, [forced, hasGeo]);
 
   if (forced) return forced;
