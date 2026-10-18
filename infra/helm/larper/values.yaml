@@ -95,6 +95,11 @@ postgres:
 migrate:
   # Built from db/Dockerfile: golang-migrate + db/migrations.
   image: larper-registry:5111/larper-migrate:dev
+  # How long the Job waits for the owner's CREATEROLE (or the service roles) before
+  # failing with the reason; and the most the whole Job, retries included, may take.
+  # A fresh install's first wait includes Postgres's initdb.
+  waitForRolesSeconds: 600
+  deadlineSeconds: 1200
 
 workers:
   # Built from workers/Dockerfile: every Go command in one image.

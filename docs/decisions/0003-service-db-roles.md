@@ -63,7 +63,10 @@ CNPG gives `larper` CREATEROLE. A migration that fails halfway leaves golang-mig
 "dirty", needing a manual `force`. So:
 
 - The migrate Job has an init container that waits until `larper` has CREATEROLE or the
-  four roles all exist, and prints what to run while it waits.
+  four roles all exist, and prints what to run while it waits. It gives up after
+  `migrate.waitForRolesSeconds` (10 min) with the reason, and the Job has an
+  `activeDeadlineSeconds` (`migrate.deadlineSeconds`, 20 min), so an upgrade fails
+  instead of hanging.
 - `scripts/pg-owner-createrole.sh` runs `ALTER ROLE larper CREATEROLE` as the superuser
   on an existing cluster. The up scripts (`up.sh`, `oci-up.sh`, `aks-up.sh`, `eks-up.sh`)
   run it before `helm upgrade`. It's a no-op on a fresh install and after the first
