@@ -1,5 +1,5 @@
-# Checks every pull request and every push to main: the API (typecheck, lint, unit
-# tests), the Go workers (gofmt, vet, unit tests), the database tests against a real
+# Checks every pull request and every push to main: the API and the web app (typecheck,
+# lint, unit tests), the Go workers (gofmt, vet, unit tests), the database tests against a real
 # Postgres with PostGIS and pgvector, the Helm chart, and that no committed load-test
 # result carries a Clerk session ID or token; gitleaks scans every commit for secrets.
 #
@@ -38,6 +38,24 @@ jobs:
       - run: pnpm --filter @larper/api lint
       # The database specs skip themselves without TEST_DATABASE_URL; the db job runs them.
       - run: pnpm --filter @larper/api test
+
+  web:
+    name: Web (typecheck, lint, tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @larper/web typecheck
+      - run: pnpm --filter @larper/web lint
+      # Vitest + Testing Library in jsdom: the home screen's loading, error, empty and
+      # surveying states, the location fallback and the API client.
+      - run: pnpm --filter @larper/web test
 
   workers:
     name: Go workers (gofmt, vet, unit tests)
