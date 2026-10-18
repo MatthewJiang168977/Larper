@@ -19,8 +19,12 @@ export default function config(phase: string): NextConfig {
         "(e.g. https://api.example.com); the /api proxy exists only in `next dev`.",
     );
   }
-  const devProxy = phase === PHASE_DEVELOPMENT_SERVER && !apiUrl;
+  const dev = phase === PHASE_DEVELOPMENT_SERVER;
+  const devProxy = dev && !apiUrl;
   return {
+    // Pages named page.dev.tsx (dev tools like app/dev/map-style) are routes only in
+    // `next dev`; a production build doesn't see them as pages and never bundles them.
+    pageExtensions: dev ? ["dev.tsx", "tsx", "ts", "jsx", "js"] : ["tsx", "ts", "jsx", "js"],
     ...(devProxy && {
       rewrites: async () => [
         { source: "/api/:path*", destination: `${process.env.API_URL ?? "http://localhost:8080"}/:path*` },
