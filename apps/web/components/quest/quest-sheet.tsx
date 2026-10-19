@@ -38,7 +38,7 @@ export const QuestSheet = forwardRef<HTMLDivElement, Props>(function QuestSheet(
       <div aria-hidden className="mx-auto mb-3 h-1 w-10 rounded-full bg-rule" />
 
       {deck.length > 0 && (
-        <nav aria-label="Leads" className="-mx-5 mb-3 flex gap-2 overflow-x-auto px-5 pb-2 [scrollbar-color:var(--rule)_transparent] [scrollbar-width:thin]">
+        <nav aria-label="Leads" className="-mx-5 -mt-2.5 mb-2.5 flex gap-2 overflow-x-auto px-5 pb-2.5 pt-2.5 [scrollbar-color:var(--rule)_transparent] [scrollbar-width:thin]">
           {quest && (
             <Tab active={focusedIsQuest} onClick={() => onSelect(quest.place.id)} seal>
               Quest
@@ -94,13 +94,15 @@ function Tab({
     : active
       ? "bg-ink text-paper border-ink"
       : "text-ink border-ink-faint";
+  // The text truncates in its own span: overflow on the button would clip its hit area.
+  // The strip's vertical padding leaves room for that hit area inside its scroll box.
   return (
     <button
       onClick={onClick}
       aria-pressed={active}
-      className={`shrink-0 max-w-[11rem] truncate rounded-full border px-3 py-1 font-mono text-xs ${tone}`}
+      className={`hit-target shrink-0 max-w-[11rem] rounded-full border px-3 py-1 font-mono text-xs ${tone}`}
     >
-      {children}
+      <span className="block truncate">{children}</span>
     </button>
   );
 }
@@ -153,7 +155,7 @@ function PlaceNotes({ label, place, reasons }: { label: string; place: PlaceView
           </a>
         )}
       </div>
-      <p className="mt-2 text-xs text-ink-faint">No opening hours yet. Check before you go.</p>
+      <p className="mt-2 text-xs text-ink-label">No opening hours yet. Check before you go.</p>
     </div>
   );
 }
@@ -188,7 +190,7 @@ function QuestButtons({
           I went
         </button>
         <button className={secondary} disabled={busy} onClick={() => onAction("skip")}>
-          Abandon
+          Not today
         </button>
       </>
     );
