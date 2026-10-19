@@ -4,7 +4,8 @@ import type { DeckItem, QuestView } from "@/lib/api";
 // OpenStreetMap; Google Photorealistic 3D Tiles can implement the same props later
 // without touching the quest UI.
 export interface QuestMapProps {
-  me: { lat: number; lng: number };
+  /** Where the user is; `accuracyM` (the fix's radius) sizes the halo around the dot. */
+  me: { lat: number; lng: number; accuracyM?: number };
   quest: QuestView | null;
   deck: DeckItem[];
   /** Place id of the pin in focus; the map flies to it. */

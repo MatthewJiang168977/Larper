@@ -65,6 +65,18 @@ describe("useLocation", () => {
     expect(result.current.loc).toBe(first);
   });
 
+  it("ignores jitter, but reports a fix that sharpened in place (same coordinates)", () => {
+    const { result } = renderHook(() => useLocation());
+    act(() => onFix(fix(40.7, -74, 120)));
+    const first = result.current.loc!;
+
+    act(() => onFix(fix(40.70005, -74, 118))); // ~6 m away, ±2 m: nothing new
+    expect(result.current.loc).toBe(first);
+
+    act(() => onFix(fix(40.70005, -74, 12))); // same spot, much sharper
+    expect(result.current.loc).toMatchObject({ lat: first.lat, lng: first.lng, accuracyM: 12 });
+  });
+
   it("keeps a real fix through a later error", () => {
     const { result } = renderHook(() => useLocation());
     act(() => onFix(fix(40.7, -74)));

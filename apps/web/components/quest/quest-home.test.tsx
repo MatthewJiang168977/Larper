@@ -7,7 +7,8 @@ import { QuestHome, SURVEY_MAX_MS, SURVEY_POLL_MS } from "./quest-home";
 
 // --- the component's world, replaced -------------------------------------------
 
-vi.mock("@clerk/nextjs", () => ({ UserButton: () => null }));
+const userButton = vi.fn<(props: { appearance?: unknown }) => null>(() => null);
+vi.mock("@clerk/nextjs", () => ({ UserButton: (p: { appearance?: unknown }) => userButton(p) }));
 vi.mock("next/dynamic", () => ({ default: () => () => null })); // the WebGL map
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
@@ -333,6 +334,21 @@ describe("QuestHome: the demo area is labelled as such", () => {
     rerender(<QuestHome />);
     await settle();
     expect(todayCalls()).toBe(before);
+  });
+});
+
+describe("QuestHome: touch targets", () => {
+  it("gives the avatar, the Journal link and Dismiss a 44 px hit area", async () => {
+    routes["/quests/today"] = ok(withQuest);
+    routes["/quests/q1/complete"] = fail(new ApiError("You're 110 m away", 422));
+    render(<QuestHome />);
+    await settle();
+    expect(userButton).toHaveBeenLastCalledWith({ appearance: { elements: { userButtonTrigger: "hit-target" } } });
+    expect(screen.getByRole("link", { name: "Journal" }).classList).toContain("hit-target");
+
+    fireEvent.click(screen.getByText("I went"));
+    await settle();
+    expect(screen.getByLabelText("Dismiss").classList).toContain("hit-target");
   });
 });
 

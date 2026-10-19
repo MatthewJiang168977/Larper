@@ -49,6 +49,12 @@ function metersBetween(a: { lat: number; lng: number }, b: { lat: number; lng: n
   return Math.hypot(x, y) * 6_371_000;
 }
 
+// Accuracy wobbles by a few meters on every reading; only a real change redraws the halo.
+function accuracyChanged(prev: number | undefined, next: number) {
+  if (prev === undefined) return true;
+  return Math.abs(next - prev) >= Math.max(5, prev * 0.2);
+}
+
 function parseAt(at: string | null): Located | null {
   const [lat, lng] = (at ?? "").split(",").map(Number);
   if (!at || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
@@ -81,9 +87,12 @@ export function useLocation(): LocationState {
     const id = navigator.geolocation.watchPosition(
       (pos) => {
         const next = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracyM: pos.coords.accuracy };
-        setGps((prev) =>
-          prev?.source === "gps" && metersBetween(prev, next) < MIN_MOVE_M ? prev : { ...next, source: "gps" },
-        );
+        setGps((prev) => {
+          if (prev?.source !== "gps" || metersBetween(prev, next) >= MIN_MOVE_M) return { ...next, source: "gps" };
+          // Not a move, but the halo should still show a fix that sharpened or blurred.
+          // Same coordinates, so the deck isn't refetched.
+          return accuracyChanged(prev.accuracyM, next.accuracyM) ? { ...prev, accuracyM: next.accuracyM } : prev;
+        });
         setAnswered(attempt);
       },
       // Keep a real fix through a later error; otherwise say why we're on the demo spot.

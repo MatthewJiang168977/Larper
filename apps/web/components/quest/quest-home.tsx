@@ -15,6 +15,9 @@ export const SURVEY_POLL_MS = 4000;
 // area as pending while its job waits or retries.
 export const SURVEY_MAX_MS = 3 * 60_000;
 
+// Clerk's avatar is a 28 px button; this gives it the same 44 px hit area as everything else.
+export const USER_BUTTON_APPEARANCE = { elements: { userButtonTrigger: "hit-target" } };
+
 // WebGL map: client only, and loaded after the shell so first paint isn't blocked on it.
 const QuestMap = dynamic(() => import("@/components/map/maplibre-quest-map"), { ssr: false });
 
@@ -185,10 +188,13 @@ export function QuestHome() {
       <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start gap-2 p-3">
         <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-paper-edge bg-paper/90 py-1 pl-4 pr-1 shadow-sm backdrop-blur">
           <span className="text-lg font-semibold tracking-tight">Larper</span>
-          <Link href="/journal" className="font-mono text-xs uppercase tracking-wider text-ink-soft underline-offset-4 hover:underline">
+          <Link
+            href="/journal"
+            className="hit-target font-mono text-xs uppercase tracking-wider text-ink-soft underline-offset-4 hover:underline"
+          >
             Journal
           </Link>
-          <UserButton />
+          <UserButton appearance={USER_BUTTON_APPEARANCE} />
         </div>
       </header>
 
@@ -230,7 +236,7 @@ export function QuestHome() {
             <button
               onClick={() => (actionError ? setActionError(null) : setTodayError(null))}
               aria-label="Dismiss"
-              className="px-1"
+              className="hit-target px-1"
             >
               ×
             </button>

@@ -9,8 +9,8 @@ const STAMP: Record<JournalEntry["status"], { label: string; cls: string }> = {
   completed: { label: "Done", cls: "border-moss text-moss" },
   accepted: { label: "On it", cls: "border-oxblood text-oxblood" },
   offered: { label: "Offered", cls: "border-ink-faint text-ink-soft" },
-  skipped: { label: "Skipped", cls: "border-ink-faint text-ink-faint line-through" },
-  expired: { label: "Expired", cls: "border-ink-faint text-ink-faint" },
+  skipped: { label: "Skipped", cls: "border-ink-faint text-ink-label line-through" },
+  expired: { label: "Expired", cls: "border-ink-faint text-ink-label" },
 };
 
 const fmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
@@ -35,7 +35,7 @@ function Journal() {
 
   return (
     <main className="mx-auto w-full max-w-xl flex-1 px-4 py-8">
-      <Link href="/" className="font-mono text-xs uppercase tracking-wider text-ink-soft underline-offset-4 hover:underline">
+      <Link href="/" className="hit-target font-mono text-xs uppercase tracking-wider text-ink-soft underline-offset-4 hover:underline">
         ← Map
       </Link>
       <h1 className="mt-4 text-4xl font-semibold tracking-tight">Field journal</h1>

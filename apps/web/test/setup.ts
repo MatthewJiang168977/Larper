@@ -9,6 +9,20 @@ class NoopResizeObserver {
 }
 globalThis.ResizeObserver ??= NoopResizeObserver as unknown as typeof ResizeObserver;
 
+// Nor IntersectionObserver (motion's in-view animations in the quest sheet use one).
+class NoopIntersectionObserver {
+  readonly root = null;
+  readonly rootMargin = "";
+  readonly thresholds = [];
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords() {
+    return [];
+  }
+}
+globalThis.IntersectionObserver ??= NoopIntersectionObserver as unknown as typeof IntersectionObserver;
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
