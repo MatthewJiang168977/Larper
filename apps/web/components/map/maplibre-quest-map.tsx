@@ -124,6 +124,9 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
     })();
     return () => {
       cancelled = true;
+      // A remount (Fast Refresh) keeps state: without this, ready stays true and the
+      // marker effects never re-run for the new map.
+      setReady(false);
       mapRef.current?.remove();
       mapRef.current = null;
       meMarkerRef.current = null;
