@@ -46,7 +46,7 @@ function flagIcon() {
 
 // MapLibre markers own the root element's transform for positioning, so each pin is
 // an inner element inside a plain wrapper; the inner one can scale freely.
-function pinElement(className: string, content: string | Node, title: string, onClick?: () => void) {
+function pinElement(className: string, content: string | Node, title: string, onClick?: (e: MouseEvent) => void) {
   const root = document.createElement("div");
   const pin = document.createElement(onClick ? "button" : "div");
   pin.className = className;
@@ -56,7 +56,7 @@ function pinElement(className: string, content: string | Node, title: string, on
     pin.setAttribute("aria-label", title);
     pin.addEventListener("click", (e) => {
       e.stopPropagation();
-      onClick();
+      onClick(e as MouseEvent);
     });
   }
   root.appendChild(pin);
@@ -172,8 +172,24 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
     const lib = libRef.current;
     const map = mapRef.current;
     if (!ready || !lib || !map) return;
+    // Hit areas are 44 px, so close pins overlap and the one added later (the quest, or
+    // the scaled-up selected pin) would take every tap in the overlap. A tap picks the
+    // pin whose centre is nearest instead. A keyboard click has no position (detail 0,
+    // clientX/Y 0): it keeps the focused pin.
+    const nearestPin = (e: MouseEvent) => {
+      if (e.detail === 0 || (e.clientX === 0 && e.clientY === 0)) return null;
+      let best: { placeId: string; d: number } | null = null;
+      for (const m of markersRef.current) {
+        const r = m.pin.getBoundingClientRect();
+        const d = Math.hypot(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2));
+        if (!best || d < best.d) best = { placeId: m.placeId, d };
+      }
+      return best?.placeId ?? null;
+    };
     const add = (cls: string, content: string | Node, p: { id: string; name: string; lat: number; lng: number }) => {
-      const { root, pin } = pinElement(`${cls} hit-target`, content, p.name, () => onSelectRef.current(p.id));
+      const { root, pin } = pinElement(`${cls} hit-target`, content, p.name, (e) =>
+        onSelectRef.current(nearestPin(e) ?? p.id),
+      );
       const marker = new lib.Marker({ element: root, anchor: "center" }).setLngLat([p.lng, p.lat]).addTo(map);
       return { marker, pin, placeId: p.id };
     };
