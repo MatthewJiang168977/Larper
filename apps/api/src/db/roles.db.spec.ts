@@ -200,10 +200,13 @@ describeDb('per-service database roles (real database)', () => {
     it("backup check: its heartbeat and the archiver's status, and no table at all", async () => {
       const c = as.larper_backup_check;
       // What backup-check.ts runs, as it runs it: each statement its own transaction.
-      const before = await c.query<{ lsn: string }>('SELECT pg_current_wal_lsn()::text AS lsn');
+      // The insert position: a transaction that wrote nothing else commits like an
+      // asynchronous one (the WAL writer flushes the record within wal_writer_delay),
+      // so the write position (pg_current_wal_lsn) can lag for a moment.
+      const before = await c.query<{ lsn: string }>('SELECT pg_current_wal_insert_lsn()::text AS lsn');
       await c.query(HEARTBEAT_SQL);
       const after = await c.query<{ moved: boolean }>(
-        'SELECT pg_current_wal_lsn() > $1::pg_lsn AS moved',
+        'SELECT pg_current_wal_insert_lsn() > $1::pg_lsn AS moved',
         [before.rows[0].lsn],
       );
       expect(after.rows[0].moved).toBe(true); // the heartbeat wrote WAL
