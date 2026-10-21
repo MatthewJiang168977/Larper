@@ -322,14 +322,49 @@ came back on their own); the mangle guard was still in place; and every check ab
 passed afterwards. The earlier stand-in that broke here shared the host's cgroup
 namespace; with `--cgroupns=private` the kubelet keeps track of running containers.
 
-## To do
+## Backup check
 
-- **Alert when the latest backup is older than 48 h.** The weekly base backup plus
-  continuous WAL means a healthy cluster always has an archive newer than an hour or so.
-  Alert if the newest completed CNPG `Backup` or the last archived WAL is older than 48 h
-  (CNPG's `cnpg_pg_stat_archiver_seconds_since_last_archival` metric, or the newest
-  object's time in the bucket). Without it, a silent backup failure only shows up when
-  the lifecycle rule above starts deleting the last good backup.
+The CronJob `backup-check` runs hourly at :17 (`postgres.backup.check`, on in `values-oci.yaml`;
+code in `apps/api/src/ops/backup-check.ts`). It asks whether the backups are fresh enough
+to restore from, and reports to a dead-man's switch on healthchecks.io.
+
+- **Fresh:** the job pings the URL.
+- **Stale:** the job pings `URL/fail` with the reasons, and the Job fails (`kubectl -n larper get jobs`).
+- **The check stops running** (VM down, k3s broken, CronJob gone): no pings arrive, and
+  healthchecks.io alerts when the period plus grace runs out.
+
+**What counts as stale:**
+
+- **WAL:** the last segment reached the bucket more than **48 h** ago
+  (`pg_stat_archiver.last_archived_time`). That is the recovery point.
+- **Base backup:** the last one is older than **8 days** (the weekly schedule plus a day),
+  read from the Barman Cloud plugin's `ObjectStore` status. The 60-day lifecycle rule
+  would eventually delete a base backup that is never replaced.
+- A failing archiver is named in the alert, but on its own it doesn't raise one. Postgres
+  retries every minute, and a blip clears.
+
+**Why an idle database doesn't false-alarm.** Postgres archives a WAL segment when it
+fills, or after `archive_timeout` (1 h) *only if WAL was written since the last switch*.
+An idle cluster writes no WAL at all (measured below), so its last archive time would
+age without anything being at risk. Each run of the check therefore commits a
+transaction with a transaction id (`SELECT pg_current_xact_id()`), which writes a commit
+record. `archive_timeout` then ships it within the hour. On a healthy cluster the WAL age
+stays under ~2 h however quiet the app is, and only a broken archiver lets it reach 48 h.
+That's one 16 MB segment an hour, gzipped to a few KB: the ~720 a month already counted in
+"Free-tier budget".
+
+**Setup (once):**
+
+1. On healthchecks.io, create a check with a period of 1 h and a grace of 2 h, and email
+   alerts on.
+2. Save its ping URL as `pingURL=https://hc-ping.com/<uuid>` in
+   `~/.oci/larper-backup-check.env` (mode 600). The URL is a credential: anyone with it can
+   ping, so it isn't in the repo.
+3. `oci-up.sh` stores it in the Secret `backup-check`. Without the file the check still
+   runs and logs, but alerts nobody.
+
+Check by hand: `kubectl -n larper create job --from=cronjob/backup-check backup-check-now`,
+then `kubectl -n larper logs job/backup-check-now` (one `backup-check {...}` line).
 
 ## On the real VM (2026-10-21)
 

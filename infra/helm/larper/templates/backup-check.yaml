@@ -1,0 +1,79 @@
+{{- with .Values.postgres.backup }}
+{{- if and .enabled .check.enabled }}
+# Hourly: are the backups fresh enough to restore from? (apps/api/src/ops/backup-check.ts)
+# Writes a WAL heartbeat, then checks the last archived WAL and the last base backup
+# against the limits, and pings a dead-man's switch: the URL when fresh, URL/fail when
+# stale. If the job stops running, the missing pings are the alert. The URL lives in the
+# Secret "backup-check" (key pingURL), created outside the chart; without it the job
+# only logs and fails.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backup-check
+automountServiceAccountToken: true
+---
+# Read the Barman Cloud plugin's ObjectStore (its status has the last base backup).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: backup-check
+rules:
+  - apiGroups: [barmancloud.cnpg.io]
+    resources: [objectstores]
+    resourceNames: [pg-backups]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: backup-check
+subjects:
+  - kind: ServiceAccount
+    name: backup-check
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: backup-check
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup-check
+spec:
+  schedule: {{ .check.schedule | quote }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0 # one verdict per hour; the next run is the retry
+      activeDeadlineSeconds: 300
+      template:
+        spec:
+          serviceAccountName: backup-check
+          restartPolicy: Never
+          containers:
+            - name: check
+              image: {{ $.Values.api.image }}
+              imagePullPolicy: {{ $.Values.imagePullPolicy }}
+              command: ["node", "dist/ops/backup-check.js"]
+              env:
+                # The owner role, as the migrate Job uses: the check needs only
+                # pg_stat_archiver and a transaction id, and the service roles'
+                # connection limits are sized for their own pools.
+                - name: DATABASE_URL
+                  valueFrom: { secretKeyRef: { name: pg-app, key: uri } }
+                - name: PING_URL
+                  valueFrom: { secretKeyRef: { name: backup-check, key: pingURL, optional: true } }
+                - name: NODE_EXTRA_CA_CERTS
+                  value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                - { name: OBJECT_STORE, value: pg-backups }
+                - { name: SERVER_NAME, value: {{ .serverName | quote }} }
+                - { name: WAL_MAX_AGE_HOURS, value: {{ .check.walMaxAgeHours | quote }} }
+                - { name: BASE_BACKUP_MAX_AGE_DAYS, value: {{ .check.baseBackupMaxAgeDays | quote }} }
+              resources:
+                requests: { cpu: 10m, memory: 48Mi }
+                limits: { memory: 128Mi }
+{{- end }}
+{{- end }}

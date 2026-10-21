@@ -110,6 +110,15 @@ postgres:
     schedule: "0 0 3 * * 0" # weekly base backup, Sunday 03:00 (seconds first)
     # Extra environment for the barman-cloud sidecar, as name: value.
     sidecarEnv: {}
+    # Hourly freshness check reporting to a dead-man's switch (templates/backup-check.yaml).
+    check:
+      enabled: false
+      schedule: "17 * * * *"
+      # The recovery point. The check's own WAL heartbeat keeps it under ~2 h on a
+      # healthy cluster, idle or not.
+      walMaxAgeHours: 48
+      # Weekly base backups, plus a day.
+      baseBackupMaxAgeDays: 8
   # Start from a backup instead of an empty database (infra/oci-k3s/README.md).
   restore:
     enabled: false

@@ -26,6 +26,7 @@ cd "$(dirname "$0")/.."
 ENV_FILE=${OCI_ENV_FILE:-$HOME/larper-oci-instance.env}
 SSH_KEY=${SSH_KEY:-$HOME/.ssh/larper_oci}
 S3_ENV=${S3_ENV:-$HOME/.oci/larper-pg-backup-s3.env} # the CNPG backup key; needed again to restore
+CHECK_ENV=${CHECK_ENV:-$HOME/.oci/larper-backup-check.env} # the backup check's ping URL
 KUBECONFIG_OCI=${KUBECONFIG_OCI:-$HOME/.kube/larper-oci.yaml}
 TUNNEL_PORT=${TUNNEL_PORT:-16443}
 REGION=${OCI_REGION:-us-sanjose-1}
@@ -136,6 +137,13 @@ kubectl -n larper create secret generic aws-sqs \
   --from-literal=access_key_id="$(terraform -chdir=infra/terraform/aws output -raw access_key_id)" \
   --from-literal=secret_access_key="$(terraform -chdir=infra/terraform/aws output -raw secret_access_key)" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+# The backup check's dead-man's switch (healthchecks.io ping URL, one line: pingURL=...).
+if [[ -s $CHECK_ENV ]]; then
+  kubectl -n larper create secret generic backup-check --from-env-file="$(winpath "$CHECK_ENV")" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+else
+  log "no $CHECK_ENV: the backup check will run but alert nobody (infra/oci-k3s/README.md, \"Backup check\")"
+fi
 
 # --- 5. operators and the app -----------------------------------------------------
 helm repo add jetstack https://charts.jetstack.io >/dev/null 2>&1 || true
