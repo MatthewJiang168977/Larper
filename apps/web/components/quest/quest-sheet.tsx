@@ -5,7 +5,8 @@ import { NumberTicker } from "@/components/ui/number-ticker";
 import type { DeckItem, PlaceView, QuestView, Reasons } from "@/lib/api";
 import { forwardRef } from "react";
 
-export type QuestAction = "accept" | "skip" | "complete";
+// "not-today" sets an accepted quest aside without counting against the place.
+export type QuestAction = "accept" | "skip" | "not-today" | "complete";
 
 interface Props {
   quest: QuestView | null;
@@ -189,7 +190,7 @@ function QuestButtons({
         <button className={primary} disabled={busy} onClick={() => onAction("complete")}>
           I went
         </button>
-        <button className={secondary} disabled={busy} onClick={() => onAction("skip")}>
+        <button className={secondary} disabled={busy} onClick={() => onAction("not-today")}>
           Not today
         </button>
       </>

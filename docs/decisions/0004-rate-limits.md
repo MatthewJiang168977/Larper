@@ -28,7 +28,7 @@ limit holds across API replicas. Two guards, both subclasses of the library's gu
 | Route | Limit |
 |---|---|
 | `POST /quests/:id/complete` (check-in) | 6 a minute and 30 an hour |
-| `POST /quests/:id/accept`, `/skip` | 30 a minute (each action its own counter) |
+| `POST /quests/:id/accept`, `/skip`, `/not-today`, `/reason` | 30 a minute (each action its own counter) |
 | `GET /quests/today` | 60 a minute and 20 per 10 s (the survey poll is 15 a minute) |
 | `POST /onboarding` | 10 a minute |
 | everything else (`/me`, `/onboarding/cards`, the journal) | 30 a minute |

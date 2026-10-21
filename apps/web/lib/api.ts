@@ -125,6 +125,9 @@ export interface Reasons {
 
 export type QuestStatus = "offered" | "accepted" | "completed" | "skipped" | "expired";
 
+/** Why a quest was set aside with "Not today" (POST /quests/:id/reason). */
+export type SkipReason = "not_my_thing" | "too_far" | "not_today" | "closed";
+
 export interface QuestView {
   id: string;
   status: QuestStatus;

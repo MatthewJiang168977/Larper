@@ -23,7 +23,7 @@ export const LIMITS = {
   // POST /quests/:id/complete. 6 a minute is a check-in plus five Try agains; the hourly
   // cap stops a script walking a fake position around a place.
   checkIn: { minute: 6, hour: 30 },
-  // POST /quests/:id/accept and /skip: going through a deck.
+  // POST /quests/:id/accept, /skip, /not-today and /reason: going through a deck.
   questAction: { minute: 30, hour: 600 },
   onboarding: { minute: 10 },
 } as const;

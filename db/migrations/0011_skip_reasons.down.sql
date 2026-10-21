@@ -1,0 +1,2 @@
+ALTER TABLE quests DROP COLUMN IF EXISTS skip_reason;
+DROP TYPE IF EXISTS skip_reason;

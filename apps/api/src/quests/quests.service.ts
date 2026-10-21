@@ -11,13 +11,13 @@ import { Pool, PoolClient } from 'pg';
 import { CacheService } from '../cache/cache.service';
 import { PG } from '../db/db.module';
 import { enqueueQuestEvent } from '../events/outbox';
-import { QuestAction as EventAction } from '../gen/larper/events/v1/events_pb';
+import { QuestAction as EventAction, SkipReason as EventSkipReason } from '../gen/larper/events/v1/events_pb';
 import { TagsService } from '../profile/tags.service';
 import { AreasService } from './areas.service';
 import { CheckInAttempt, checkInLogLine, judgeCheckIn, rejection } from './checkin';
 import { cellOf, cellsCovering, haversineM } from './geo';
 import { AreaStats, Candidate, mmr, Reasons, score, Scored, weightsFromEnv } from './scoring';
-import { QuestAction, QuestStatus, TRANSITIONS } from './transitions';
+import { QuestAction, QuestStatus, SkipReason, TRANSITIONS } from './transitions';
 
 const DECK_SIZE = 10;
 const CACHED_TOP_N = 200; // enough headroom to survive exclusions + MMR
@@ -31,7 +31,18 @@ const OFFER_STALE_METERS = 5000;
 const EVENT_ACTION: Record<QuestAction, EventAction> = {
   accept: EventAction.ACCEPTED,
   skip: EventAction.SKIPPED,
+  'not-today': EventAction.NOT_TODAY,
   complete: EventAction.COMPLETED,
+};
+
+// For messages: "cannot set aside a quest that is offered".
+const VERB: Record<QuestAction, string> = { accept: 'accept', skip: 'skip', 'not-today': 'set aside', complete: 'complete' };
+
+const EVENT_SKIP_REASON: Record<SkipReason, EventSkipReason> = {
+  not_my_thing: EventSkipReason.NOT_MY_THING,
+  too_far: EventSkipReason.TOO_FAR,
+  not_today: EventSkipReason.NOT_TODAY,
+  closed: EventSkipReason.CLOSED,
 };
 
 export interface CheckInPosition {
@@ -129,11 +140,12 @@ export class QuestsService {
       await tx.query('BEGIN');
       if (checkIn) await this.checkGeofence(tx, checkIn, at);
 
+      // "Not today" leaves the reason 'unstated' until the user gives one (giveReason).
       const { rows } = await tx.query<{ status: QuestStatus; placeId: string }>(
-        `UPDATE quests SET status = $4, updated_at = now()
+        `UPDATE quests SET status = $4, updated_at = now(), skip_reason = coalesce($5::skip_reason, skip_reason)
          WHERE id = $1 AND user_id = $2 AND status = ANY($3::quest_status[])
          RETURNING status, place_id::text AS "placeId"`,
-        [questId, userId, t.from, t.to],
+        [questId, userId, t.from, t.to, action === 'not-today' ? 'unstated' : null],
       );
       if (!rows.length) {
         const cur = await tx.query<{ status: QuestStatus }>(
@@ -145,7 +157,7 @@ export class QuestsService {
           throw new NotFoundException('no such quest');
         }
         if (checkIn) checkIn.outcome = 'conflict';
-        throw new ConflictException(`cannot ${action} a quest that is ${cur.rows[0].status}`);
+        throw new ConflictException(`cannot ${VERB[action]} a quest that is ${cur.rows[0].status}`);
       }
 
       await enqueueQuestEvent(tx, { userId, questId, placeId: rows[0].placeId, action: EVENT_ACTION[action] });
@@ -158,6 +170,49 @@ export class QuestsService {
     } finally {
       tx.release();
       if (checkIn) this.logger.log(checkInLogLine(checkIn));
+    }
+  }
+
+  // After "Not today": the one reason the user gives, if any. "Not my thing" is a real
+  // skip (a SKIPPED event, which taste-worker turns into the usual penalty); the other
+  // reasons are only recorded. Either way the event carries the reason.
+  async giveReason(userId: string, questId: string, reason: SkipReason) {
+    const tx = await this.pg.connect();
+    try {
+      await tx.query('BEGIN');
+      const { rows } = await tx.query<{ placeId: string }>(
+        `UPDATE quests SET skip_reason = $3
+         WHERE id = $1 AND user_id = $2 AND status = 'skipped' AND skip_reason = 'unstated'
+         RETURNING place_id::text AS "placeId"`,
+        [questId, userId, reason],
+      );
+      if (!rows.length) {
+        const cur = await tx.query<{ status: QuestStatus; reason: string | null }>(
+          'SELECT status, skip_reason AS reason FROM quests WHERE id = $1 AND user_id = $2',
+          [questId, userId],
+        );
+        if (!cur.rows.length) throw new NotFoundException('no such quest');
+        const { status, reason: had } = cur.rows[0];
+        throw new ConflictException(
+          status !== 'skipped' || had === null
+            ? 'only a quest set aside with Not today takes a reason'
+            : 'this quest already has a reason',
+        );
+      }
+      await enqueueQuestEvent(tx, {
+        userId,
+        questId,
+        placeId: rows[0].placeId,
+        action: reason === 'not_my_thing' ? EventAction.SKIPPED : EventAction.NOT_TODAY,
+        skipReason: EVENT_SKIP_REASON[reason],
+      });
+      await tx.query('COMMIT');
+      return { id: questId, status: 'skipped' as const, reason };
+    } catch (err) {
+      await tx.query('ROLLBACK');
+      throw err;
+    } finally {
+      tx.release();
     }
   }
 

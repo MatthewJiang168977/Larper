@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, type Located } from "@/hooks/use-location";
-import { ApiError, describeError, useApi, type Me, type Today } from "@/lib/api";
+import { ApiError, describeError, useApi, type Me, type SkipReason, type Today } from "@/lib/api";
 import { getPreciseFix } from "@/lib/precise-fix";
 import { QuestSheet, type QuestAction } from "./quest-sheet";
 
@@ -17,6 +17,15 @@ export const SURVEY_MAX_MS = 3 * 60_000;
 
 // Clerk's avatar is a 28 px button; this gives it the same 44 px hit area as everything else.
 export const USER_BUTTON_APPEARANCE = { elements: { userButtonTrigger: "hit-target" } };
+
+// After "Not today", one optional tap says why. Only "Not my thing" counts against the
+// place's kind of spot (the usual skip penalty); the rest are just recorded.
+export const SKIP_REASONS: { reason: SkipReason; label: string }[] = [
+  { reason: "not_my_thing", label: "Not my thing" },
+  { reason: "too_far", label: "Too far" },
+  { reason: "not_today", label: "Not today" },
+  { reason: "closed", label: "Closed" },
+];
 
 // WebGL map: client only, and loaded after the shell so first paint isn't blocked on it.
 const QuestMap = dynamic(() => import("@/components/map/maplibre-quest-map"), { ssr: false });
@@ -37,6 +46,8 @@ export function QuestHome() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<{ text: string; retry: (() => void) | null } | null>(null);
   const [fixing, setFixing] = useState(false);
+  // The quest just set aside with "Not today", while its reasons are on offer.
+  const [setAside, setSetAside] = useState<string | null>(null);
   const [sheetH, setSheetH] = useState(280);
   const [reloads, setReloads] = useState(0);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -124,8 +135,10 @@ export function QuestHome() {
 
   const act = async (action: QuestAction) => {
     if (!today?.quest) return;
+    const questId = today.quest.id;
     setBusy(true);
     setActionError(null);
+    setSetAside(null);
     try {
       // Checking in sends where you are; the API only accepts it near the place. The
       // map's position can be stale or coarse, so take one fresh, precise reading
@@ -141,7 +154,8 @@ export function QuestHome() {
         const at = fix ?? (loc ? { lat: loc.lat, lng: loc.lng, accuracyM: loc.accuracyM } : null);
         if (at) body = { lat: at.lat, lng: at.lng, accuracy: at.accuracyM };
       }
-      await api(`/quests/${today.quest.id}/${action}`, { method: "POST", body: body && JSON.stringify(body) });
+      await api(`/quests/${questId}/${action}`, { method: "POST", body: body && JSON.stringify(body) });
+      if (action === "not-today") setSetAside(questId);
       reload();
     } catch (e) {
       // A rejected check-in (too far, or a fix too rough to tell) is worth another go
@@ -150,6 +164,19 @@ export function QuestHome() {
       setActionError({ text: describeError(e), retry });
     } finally {
       setFixing(false);
+      setBusy(false);
+    }
+  };
+
+  const giveReason = async (reason: SkipReason) => {
+    if (!setAside) return;
+    setBusy(true);
+    try {
+      await api(`/quests/${setAside}/reason`, { method: "POST", body: JSON.stringify({ reason }) });
+    } catch (e) {
+      setActionError({ text: describeError(e), retry: null });
+    } finally {
+      setSetAside(null);
       setBusy(false);
     }
   };
@@ -220,6 +247,31 @@ export function QuestHome() {
             {surveyOverdue ? "Still surveying" : "Surveying the area…"} mapping {today!.surveying!.pending.length} new{" "}
             {today!.surveying!.pending.length === 1 ? "district" : "districts"}
           </p>
+        )}
+
+        {setAside && (
+          <div role="region" aria-label="Why not today?" className="w-full rounded border border-rule bg-paper/95 px-3 py-2 text-sm">
+            <div className="flex items-center gap-3">
+              <p className="flex-1">
+                <span className="font-medium">Set aside for today.</span> Want to say why? It&apos;s optional.
+              </p>
+              <button onClick={() => setSetAside(null)} aria-label="No reason" className="hit-target px-1">
+                ×
+              </button>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {SKIP_REASONS.map(({ reason, label }) => (
+                <button
+                  key={reason}
+                  onClick={() => giveReason(reason)}
+                  disabled={busy}
+                  className="min-h-11 rounded-full border border-paper-edge bg-paper px-4 disabled:opacity-50"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
 
         {banner && (

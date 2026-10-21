@@ -2,7 +2,7 @@ import { create, toBinary } from '@bufbuild/protobuf';
 import { timestampNow } from '@bufbuild/protobuf/wkt';
 import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
-import { QuestAction, QuestEventSchema } from '../gen/larper/events/v1/events_pb';
+import { QuestAction, QuestEventSchema, SkipReason } from '../gen/larper/events/v1/events_pb';
 
 export const USER_EVENTS_TOPIC = 'user.events';
 
@@ -11,6 +11,7 @@ export interface QuestEventInput {
   questId: string;
   placeId: string;
   action: QuestAction;
+  skipReason?: SkipReason;
 }
 
 // Writes a QuestEvent to the outbox using the caller's transaction client. It only

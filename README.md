@@ -137,7 +137,8 @@ Washington Square). Sign up, swipe through the onboarding cards, and the map sho
   larper` shows what's set).
 - **Clerk's 100-user cap.** Development instances stop at 100 users; creating one more fails with
   `403 user_quota_exceeded`. The load tests create up to 60 (`loadtest+0..9`,
-  `loadtest-cold+0..49`). Delete users under **Users** in the dashboard.
+  `loadtest-cold+0..49`). `scripts/clerk-cleanup-loadtest-users.sh` deletes them (see
+  [Load test and monitoring](#load-test-and-monitoring)).
 - **Pods stuck after the laptop slept.** `k3d cluster stop larper && k3d cluster start larper`.
   A warning about `/etc/hosts` during the start is harmless if the nodes come up Ready.
 
@@ -249,6 +250,10 @@ flowchart LR
      transaction**. A redelivered event finds its id and is skipped (**idempotent consumer**).
    - Updates taste as an EWMA, `new = normalize((1-|b|)·old + b·place)`, with b = +0.20 for a
      check-in, +0.10 for accept and −0.05 for skip.
+   - Ignores "Not today" (`not-today` on an accepted quest, event `NOT_TODAY`). After it, the
+     web app offers one optional reason (`POST /quests/:id/reason`), stored in
+     `quests.skip_reason` and on a second event's `skip_reason`. Only "Not my thing" is sent as a
+     `SKIPPED` event, which carries the −0.05. "Too far", "Not today" and "Closed" are only recorded.
    - Commits Kafka offsets only after the DB commit, so a crash replays work instead of losing it.
    - Retries transient errors with backoff. Records it can't decode go to `user.events.dlq` with
      error and source-offset headers, so one bad record never blocks a partition.
@@ -513,6 +518,12 @@ runs its output through [`loadtest/redact.js`](loadtest/redact.js) on exit, whic
 `setup_data` (the session IDs) from `summary.json` and replaces anything shaped like a Clerk ID,
 JWT or secret key. Run it yourself after a bare `k6 run --summary-export`
 (`node loadtest/redact.js <file>`); CI fails if a committed result still has one.
+
+To clear the test users afterwards (or when the instance nears its 100-user cap), run
+`scripts/clerk-cleanup-loadtest-users.sh` from the repo folder. It reads `CLERK_SECRET_KEY` from
+`apps/web/.env.local`, refuses anything but a development key (`sk_test_`), lists every user
+whose email starts with `loadtest`, and deletes them only after you type `yes`. The next load
+test re-creates the users it needs.
 
 **Results at a glance** (milestone 8). Details and reports for each are below.
 
