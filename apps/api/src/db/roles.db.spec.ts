@@ -213,17 +213,26 @@ describeDb('per-service database roles (real database)', () => {
       const { rows } = await c.query(ARCHIVER_SQL);
       expect(rows).toHaveLength(1);
 
-      // Not one privilege on any table or view the schema has.
-      const tables = await owner.query<{ t: string }>(
-        `SELECT quote_ident(table_name) AS t FROM information_schema.tables WHERE table_schema = 'public'`,
+      // Every table and view in public: the app's (none from an extension) get no
+      // privilege at all. PostGIS's reference views (spatial_ref_sys, geometry_columns,
+      // geography_columns) are SELECT to PUBLIC by the extension, so every role reads
+      // them; they get no write.
+      const { rows: held } = await owner.query<{ t: string; ext: boolean; read: boolean; write: boolean }>(
+        `SELECT c.relname AS t,
+                EXISTS (SELECT FROM pg_depend d WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid
+                          AND d.deptype = 'e') AS ext,
+                has_table_privilege('larper_backup_check', c.oid, 'SELECT') AS read,
+                has_table_privilege('larper_backup_check', c.oid, 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') AS write
+           FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public' AND c.relkind IN ('r', 'v', 'm', 'p')`,
       );
-      expect(tables.rows.length).toBeGreaterThan(10);
-      const held = await owner.query<{ t: string }>(
-        `SELECT t FROM unnest($1::text[]) AS t
-          WHERE has_table_privilege('larper_backup_check', t, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')`,
-        [tables.rows.map((r) => r.t)],
+      const app = held.filter((r) => !r.ext);
+      expect(app.length).toBeGreaterThan(10);
+      expect(app.filter((r) => r.read || r.write)).toEqual([]);
+      expect(held.filter((r) => r.ext && r.write)).toEqual([]);
+      expect(held.filter((r) => r.ext && r.read).map((r) => r.t).sort()).toEqual(
+        ['geography_columns', 'geometry_columns', 'spatial_ref_sys'],
       );
-      expect(held.rows).toEqual([]);
       await denied('larper_backup_check', 'SELECT 1 FROM places LIMIT 1');
       await denied('larper_backup_check', 'SELECT 1 FROM users LIMIT 1');
       await denied('larper_backup_check', `INSERT INTO users (clerk_id) VALUES ('test_x')`);
