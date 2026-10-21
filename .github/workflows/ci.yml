@@ -179,6 +179,10 @@ jobs:
         with:
           version: v4.3.0
       - run: helm lint infra/helm/larper
+      # Not Helm, but the other half of the Oracle deploy: the capacity probe must never
+      # launch a second larper-k3s (a fake oci CLI; no Oracle account needed).
+      - name: OCI probe never launches a second instance
+        run: bash scripts/test/oci-capacity-probe.test.sh
       - name: Render with each values file
         run: |
           chart=infra/helm/larper
