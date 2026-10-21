@@ -92,11 +92,16 @@ notify() { # title, message (no single quotes: they end the PowerShell string)
 }
 
 # Instance ids named $NAME in the given lifecycle states (JMESPath list literal),
-# oldest first.
+# oldest first. Fails (status 1, the CLI's error logged) if the lookup itself fails:
+# "couldn't look" must never read as "there is none", or a second instance gets launched.
+# (--sort-by needs --all or an availability domain; without either the CLI refuses.)
 instances_in() {
-  oci compute instance list --compartment-id "$TENANCY" --display-name "$NAME" --sort-by TIMECREATED --sort-order ASC \
-    --query "data[?contains(\`$1\`, \"lifecycle-state\")].id" --raw-output 2>/dev/null \
-    | grep -o 'ocid1\.instance[^"]*'
+  local out
+  out=$(oci compute instance list --compartment-id "$TENANCY" --display-name "$NAME" --all \
+          --sort-by TIMECREATED --sort-order ASC \
+          --query "data[?contains(\`$1\`, \"lifecycle-state\")].id" --raw-output 2>&1) \
+    || { log "instance lookup failed: $out" >&2; return 1; }
+  grep -o 'ocid1\.instance[^"]*' <<<"$out" || true
 }
 
 die() {
@@ -175,10 +180,12 @@ report() { # instance id, attempt count, result (launched|exists)
 }
 
 # Two probes (laptop + GitHub Actions) can launch in the same minute. Keep the oldest
-# instance and terminate the rest, so there is only ever one.
+# instance and terminate the rest, so there is only ever one. If the lookup fails, keep
+# the one just launched ($1) and say so.
 dedupe() {
   local ids keep
-  ids=$(instances_in '["PROVISIONING","STARTING","RUNNING"]')
+  ids=$(instances_in '["PROVISIONING","STARTING","RUNNING"]') && [[ -n $ids ]] \
+    || { log "couldn't check for a second $NAME; check by hand (infra/oci-k3s/README.md, runbook step 1)" >&2; echo "$1"; return; }
   keep=$(head -1 <<<"$ids")
   for id in $(tail -n +2 <<<"$ids"); do
     log "a second $NAME exists (another probe won the race); terminating $id, keeping $keep" >&2
@@ -205,7 +212,9 @@ else
   PUBKEY_FILE=$(cygpath -w "$SSH_KEY.pub" 2>/dev/null || echo "$SSH_KEY.pub")
 fi
 
-existing=$(instances_in '["PROVISIONING","STARTING","RUNNING","STOPPING","STOPPED"]' | head -1)
+existing=$(instances_in '["PROVISIONING","STARTING","RUNNING","STOPPING","STOPPED"]') \
+  || die "can't check whether $NAME already exists; not launching"
+existing=$(head -1 <<<"$existing")
 if [[ -n "$existing" ]]; then
   report "$existing" 0 exists
   exit 0
@@ -340,7 +349,9 @@ while true; do
   fi
 
   # A fresh "already exists" check every attempt: the other probe may have won.
-  existing=$(instances_in '["PROVISIONING","STARTING","RUNNING","STOPPING","STOPPED"]' | head -1)
+  existing=$(instances_in '["PROVISIONING","STARTING","RUNNING","STOPPING","STOPPED"]') \
+    || die "can't check whether $NAME already exists; not launching"
+  existing=$(head -1 <<<"$existing")
   if [[ -n "$existing" ]]; then
     report "$existing" "$attempt" exists
     exit 0
@@ -359,7 +370,7 @@ while true; do
   if [[ $rc -eq 0 ]] && grep -q '"RUNNING"' <<<"$out"; then
     id=$(grep -o 'ocid1\.instance[^"]*' <<<"$out" | head -1)
     log "attempt $attempt: CAPACITY FOUND, instance $id is RUNNING; keeping it"
-    id=$(dedupe)
+    id=$(dedupe "$id")
     report "$id" "$attempt" launched
     exit 0
   fi
