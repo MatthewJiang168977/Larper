@@ -36,6 +36,13 @@ postgres:
     # Oracle Object Storage, S3-compatible API. oci-up.sh sets endpointURL from the
     # tenancy's namespace and creates the bucket and the pg-backup-s3 Secret.
     bucket: larper-pg-backups
+    # boto3 1.36+ checksums every upload with aws-chunked encoding, which Oracle's S3
+    # API refuses ("NotImplemented: AWS chunked encoding not supported"): checksum
+    # only where the API requires it. (The SeaweedFS stand-in accepts chunked uploads,
+    # so the local rehearsal never hit this.)
+    sidecarEnv:
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
 
 redpanda:
   storage: 4Gi

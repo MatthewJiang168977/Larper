@@ -108,6 +108,8 @@ postgres:
     retention: 14d
     archiveTimeout: 1h
     schedule: "0 0 3 * * 0" # weekly base backup, Sunday 03:00 (seconds first)
+    # Extra environment for the barman-cloud sidecar, as name: value.
+    sidecarEnv: {}
   # Start from a backup instead of an empty database (infra/oci-k3s/README.md).
   restore:
     enabled: false

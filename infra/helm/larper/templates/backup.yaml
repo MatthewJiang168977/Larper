@@ -9,6 +9,14 @@ metadata:
   name: pg-backups
 spec:
   retentionPolicy: {{ .retention | quote }}
+  {{- with .sidecarEnv }}
+  # Environment for the barman-cloud sidecar in each Postgres pod (values-oci.yaml).
+  instanceSidecarConfiguration:
+    env:
+      {{- range $name, $value := . }}
+      - { name: {{ $name }}, value: {{ $value | quote }} }
+      {{- end }}
+  {{- end }}
   configuration:
     destinationPath: {{ printf "s3://%s/" (required "postgres.backup.bucket" .bucket) | quote }}
     endpointURL: {{ required "postgres.backup.endpointURL" .endpointURL | quote }}
