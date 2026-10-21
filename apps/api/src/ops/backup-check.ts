@@ -78,17 +78,23 @@ export function judge(s: BackupState, limits: Limits): Verdict {
 
 const SA = '/var/run/secrets/kubernetes.io/serviceaccount';
 
+// The check's only SQL, run as larper_backup_check, a role with no grants
+// (roles.db.spec runs these as it). Assigning a transaction id makes the commit a WAL
+// record: something to archive.
+export const HEARTBEAT_SQL = 'SELECT pg_current_xact_id()';
+export const ARCHIVER_SQL = `SELECT now() AS now, last_archived_time AS archived, last_failed_time AS failed,
+       last_failed_wal AS "failedWal"
+  FROM pg_stat_archiver`;
+
 async function readState(pool: Pool): Promise<{ state: BackupState; heartbeatError?: string }> {
   let heartbeatError: string | undefined;
   try {
-    // Assigning a transaction id makes its commit a WAL record: something to archive.
-    await pool.query('SELECT pg_current_xact_id()');
+    await pool.query(HEARTBEAT_SQL);
   } catch (e) {
     heartbeatError = `heartbeat failed: ${(e as Error).message}`;
   }
   const { rows } = await pool.query<{ now: Date; archived: Date | null; failed: Date | null; failedWal: string | null }>(
-    `SELECT now() AS now, last_archived_time AS archived, last_failed_time AS failed, last_failed_wal AS "failedWal"
-     FROM pg_stat_archiver`,
+    ARCHIVER_SQL,
   );
   const ns = readFileSync(`${SA}/namespace`, 'utf8').trim();
   const token = readFileSync(`${SA}/token`, 'utf8').trim();

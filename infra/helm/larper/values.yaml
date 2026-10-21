@@ -92,6 +92,8 @@ postgres:
     ingest: { pool: 4, connectionLimit: 16 }
     # The schema owner: the migrate Job (and psql by hand).
     owner: { connectionLimit: 10 }
+    # The hourly backup check: one connection, no grants (templates/backup-check.yaml).
+    backup-check: { connectionLimit: 1 }
   # Connections outside the roles: CNPG's instance manager and the superuser
   # (superuser_reserved_connections is 3).
   reservedConnections: 10

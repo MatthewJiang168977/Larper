@@ -363,6 +363,20 @@ That's one 16 MB segment an hour, gzipped to a few KB: the ~720 a month already 
 3. `oci-up.sh` stores it in the Secret `backup-check`. Without the file the check still
    runs and logs, but alerts nobody.
 
+**Its database role, `larper_backup_check`.** It has login, a connection limit of 1, and
+**no grant at all**:
+
+- Its two queries need none: `pg_current_xact_id()` and `pg_stat_archiver` are open to
+  every role.
+- It can't read or write any table.
+- It can't create temporary tables (0010 revoked `TEMPORARY` from PUBLIC) and can't create
+  anything in a schema.
+- Only CloudNativePG's managed roles create it (`templates/postgres.yaml`, password in the
+  Secret `pg-backup-check`); no migration touches it.
+- `roles.db.spec` checks all of this in CI, running the check's own SQL as the role.
+
+Its Kubernetes service account can only `get` the `pg-backups` ObjectStore.
+
 Check by hand: `kubectl -n larper create job --from=cronjob/backup-check backup-check-now`,
 then `kubectl -n larper logs job/backup-check-now` (one `backup-check {...}` line).
 

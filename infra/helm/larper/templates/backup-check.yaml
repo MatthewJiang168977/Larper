@@ -59,11 +59,17 @@ spec:
               imagePullPolicy: {{ $.Values.imagePullPolicy }}
               command: ["node", "dist/ops/backup-check.js"]
               env:
-                # The owner role, as the migrate Job uses: the check needs only
-                # pg_stat_archiver and a transaction id, and the service roles'
-                # connection limits are sized for their own pools.
+                # Its own role, larper_backup_check: login, connection limit 1, and no
+                # grant at all. Its two queries need none (pg_current_xact_id() and
+                # pg_stat_archiver are open to every role), so it can read and write
+                # no table, can't make temporary tables (0010 revoked TEMP from PUBLIC)
+                # and can't create anything in a schema. roles.db.spec checks all of it.
+                - name: DB_USER
+                  valueFrom: { secretKeyRef: { name: pg-backup-check, key: username } }
+                - name: DB_PASSWORD
+                  valueFrom: { secretKeyRef: { name: pg-backup-check, key: password } }
                 - name: DATABASE_URL
-                  valueFrom: { secretKeyRef: { name: pg-app, key: uri } }
+                  value: "postgresql://$(DB_USER):$(DB_PASSWORD)@pg-rw.{{ $.Release.Namespace }}:5432/larper"
                 - name: PING_URL
                   valueFrom: { secretKeyRef: { name: backup-check, key: pingURL, optional: true } }
                 - name: NODE_EXTRA_CA_CERTS
