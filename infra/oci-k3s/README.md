@@ -23,8 +23,62 @@ to ask for more than 2 / 12.
 | Object Storage (backups) | 20 GB, 50k API requests/month | bucket `larper-pg-backups`, ~1–2 GB, a few k requests (below) |
 | Public IPv4 | 1 ephemeral per instance | 1 |
 
-The account is Free Tier (not pay-as-you-go), so it can't be billed; going over a limit
-makes that request fail instead.
+On a Free Tier account going over a limit makes the request fail. A pay-as-you-go
+account bills it instead, so the guards below cap the tenancy at the Always Free amounts
+either way.
+
+## Cost and access guards
+
+Set up once, by hand, in the tenancy (2026-10-21). Check them with the commands shown.
+
+- **Quota policy `larper-free-tier-caps`** (root compartment). These are hard caps:
+  anything over them is refused, on Free Tier and pay-as-you-go alike.
+  ```
+  zero compute-core quotas in tenancy
+  set compute-core quota standard-a1-core-count to 2 in tenancy
+  zero compute-memory quotas in tenancy
+  set compute-memory quota standard-a1-memory-count to 12 in tenancy
+  set block-storage quota total-storage-gb to 200 in tenancy
+  set block-storage quota backup-count to 5 in tenancy
+  set object-storage quota storage-bytes to 21474836480 in tenancy
+  set vcn quota reserved-public-ip-count to 0 in tenancy
+  zero load-balancer quotas in tenancy
+  zero network-load-balancer-api quotas in tenancy
+  zero database quotas in tenancy
+  zero filesystem quotas in tenancy
+  zero container-engine quotas in tenancy
+  ```
+  The effective cap and usage for any limit:
+  `oci limits resource-availability get -c <tenancy> --service-name compute --limit-name standard-a1-core-count --availability-domain <AD>`.
+  A resize to 2 OCPU / 12 GB still fits; a second A1 instance at that size doesn't.
+- **Budget `larper-guard`:** $1 a month, alerting at 1% of actual spend and 100% of
+  forecast spend.
+- **User `larper-ci`** (group `larper-ci`, policy `larper-ci`):
+  - Capabilities: API keys and customer secret keys only. No console password, auth
+    tokens, SMTP, DB or OAuth credentials, so it can't sign in to the console even if
+    its activation email is used.
+  - Its policy is all it can do:
+    `read buckets` and `manage objects`, both `where target.bucket.name = 'larper-pg-backups'`.
+  - CNPG's S3 key is a customer secret key on this user (`oci-up.sh`, `BACKUP_USER`),
+    so a leaked cluster Secret reaches the backup bucket and nothing else.
+- **No instance principals:** no dynamic groups and no policies for them, so nothing
+  on the VM can call OCI APIs as the VM. Check: `oci iam dynamic-group list -c <tenancy>`
+  (empty).
+- **No admin keys outside the laptop:** the GitHub probe's API key (on the admin user)
+  was deleted and the repo's `OCI_*` secrets removed once the instance existed. If the
+  probe is ever needed again (the runbook below), give it a key on a user of its own,
+  with only instance and network rights, not an admin key.
+- **Backups:**
+  - CNPG keeps 14 days (`postgres.backup.retention`).
+  - The bucket (private, Standard tier, versioning off) has a lifecycle policy that
+    aborts multipart uploads left unfinished for 1 day and deletes objects older than
+    60 days.
+  - The 60-day rule is a backstop for what retention doesn't cover, such as an old
+    server folder after a rebuild. It also means that if backups silently stopped for 60
+    days, the last good one would be deleted, hence the alert in "To do".
+  - Policy `larper-objectstorage-lifecycle` lets Object Storage run the rules:
+    `Allow service objectstorage-us-sanjose-1 to manage object-family in tenancy where target.bucket.name = 'larper-pg-backups'`.
+  - Check: `oci os object-lifecycle-policy get --bucket-name larper-pg-backups`.
 
 ## Security
 
@@ -81,8 +135,8 @@ Storage through its S3-compatible API. (The plugin, not CNPG's built-in
     a month of the 50k. CNPG's default 5 min timeout would be ~8,600 segments a month,
     which is why it's raised.
   - Check: `oci os bucket get --bucket-name larper-pg-backups --fields approximateSize,approximateCount`
-- **Credentials:** an OCI "Customer Secret Key" (S3-compatible, 2 per user), created
-  by `oci-up.sh` and kept in `~/.oci/larper-pg-backup-s3.env` (mode 600) and in the
+- **Credentials:** an OCI "Customer Secret Key" (S3-compatible, 2 per user) on the
+  user `larper-ci` (see "Cost and access guards"), created by `oci-up.sh` and kept in `~/.oci/larper-pg-backup-s3.env` (mode 600) and in the
   Secret `pg-backup-s3`. Keep the file: a rebuild needs it (or a new key).
 
 Status: `kubectl -n larper get backup` (one per run, `completed`), and
@@ -171,8 +225,8 @@ oci compute instance list --compartment-id <tenancy> --display-name larper-k3s \
 
 **2. Keep what the rebuild needs.** Don't delete the bucket `larper-pg-backups`, and
 keep `~/.oci/larper-pg-backup-s3.env`. If that file is gone, delete the old
-`larper-pg-backup` key in the console (Profile → Customer secret keys) and let
-`oci-up.sh` create a new one.
+`larper-pg-backup` key (`oci iam customer-secret-key list --user-id <larper-ci's id>`,
+then `delete`) and let `oci-up.sh` create a new one.
 
 **3. Find the newest backup folder** (the `serverName` the lost cluster wrote to):
 
@@ -266,6 +320,15 @@ by design when they can't renew their leader lease while the API server is down,
 came back on their own); the mangle guard was still in place; and every check above
 passed afterwards. The earlier stand-in that broke here shared the host's cgroup
 namespace; with `--cgroupns=private` the kubelet keeps track of running containers.
+
+## To do
+
+- **Alert when the latest backup is older than 48 h.** The weekly base backup plus
+  continuous WAL means a healthy cluster always has an archive newer than an hour or so.
+  Alert if the newest completed CNPG `Backup` or the last archived WAL is older than 48 h
+  (CNPG's `cnpg_pg_stat_archiver_seconds_since_last_archival` metric, or the newest
+  object's time in the bucket). Without it, a silent backup failure only shows up when
+  the lifecycle rule above starts deleting the last good backup.
 
 ## Not verified yet
 

@@ -105,7 +105,9 @@ if [[ -n $BACKUP_ENDPOINT_URL ]]; then
   ENDPOINT=$BACKUP_ENDPOINT_URL
 else
   TENANCY=$(awk -F' *= *' '/^\[DEFAULT\]/{d=1;next} /^\[/{d=0} d&&$1=="tenancy"{print $2}' "$OCI_CONFIG")
-  OCI_USER=$(awk -F' *= *' '/^\[DEFAULT\]/{d=1;next} /^\[/{d=0} d&&$1=="user"{print $2}' "$OCI_CONFIG")
+  # The S3 key belongs to larper-ci, whose only policy is objects in this bucket
+  # (infra/oci-k3s/README.md, "Cost and access guards"), never to an admin.
+  BACKUP_USER=${BACKUP_USER:-larper-ci}
   NS=$(oci os ns get --query data --raw-output)
   if ! oci os bucket get --bucket-name "$BUCKET" >/dev/null 2>&1; then
     log "creating private bucket $BUCKET (Standard tier)"
@@ -113,11 +115,14 @@ else
       --public-access-type NoPublicAccess --storage-tier Standard >/dev/null
   fi
   if [[ ! -s $S3_ENV ]]; then
+    KEY_USER=$(oci iam user list --compartment-id "$TENANCY" --name "$BACKUP_USER" --query 'data[0].id' --raw-output 2>/dev/null || true)
+    [[ $KEY_USER == ocid1.user.* ]] \
+      || { echo "no OCI user $BACKUP_USER: create it first (infra/oci-k3s/README.md, \"Cost and access guards\")" >&2; exit 1; }
     # An S3-compatible key (OCI calls it a Customer Secret Key; 2 per user). The secret
     # is shown once: it goes straight into $S3_ENV (mode 600), never to the terminal.
     log "creating the S3 key for CNPG backups (saved to $S3_ENV)"
     umask 077
-    oci iam customer-secret-key create --user-id "$OCI_USER" --display-name larper-pg-backup \
+    oci iam customer-secret-key create --user-id "$KEY_USER" --display-name larper-pg-backup \
       --query 'data.{id:id,key:key}' --output json \
       | python -c 'import json, sys; d = json.load(sys.stdin); print("ACCESS_KEY_ID=" + d["id"]); print("ACCESS_SECRET_KEY=" + d["key"])' >"$S3_ENV"
     echo "REGION=$REGION" >>"$S3_ENV"
