@@ -331,10 +331,32 @@ namespace; with `--cgroupns=private` the kubelet keeps track of running containe
   object's time in the bucket). Without it, a silent backup failure only shows up when
   the lifecycle rule above starts deleting the last good backup.
 
+## On the real VM (2026-10-21)
+
+First deploy of `oci-up.sh` (demo profile) on the A1 instance (1 OCPU / 6 GB):
+
+- **Health:**
+  - Every pod Running.
+  - `/healthz` and `/readyz` returned 200 through Traefik over SSH.
+  - The CNPG cluster is Ready, with ContinuousArchiving and LastBackupSucceeded both True.
+- **Resources (no place data loaded yet):**
+  - The VM used 1.75 GiB of its 5.8 GiB, with 4.0 GiB available. k3s itself was 0.8 GiB.
+  - CPU was ~0.14 core idle and ~0.4 core during the restore.
+  - The boot disk was 17% used.
+- **Backups:**
+  - The first base backup failed against Oracle's S3 API with `NotImplemented: AWS chunked encoding not supported`.
+  - Cause: boto3 1.36+ uses aws-chunked checksums. `values-oci.yaml` now sets `postgres.backup.sidecarEnv` to turn them off.
+  - After that, a base backup completed and WAL archived (~5 MB in `pg/`).
+- **Restore drill** (the commands above):
+  - A marker row was written after the base backup, and its WAL segment archived.
+  - `pg-drill` recovered in about a minute, with the marker, the same `places`/`users` counts and migration version as `pg-1`, and the bucket untouched.
+  - Then `pg-drill` and the marker were deleted.
+
 ## Not verified yet
 
-- Anything specific to the real VM: arm64 images on A1 (built and checked separately,
-  not deployed), Oracle's S3 endpoint (path-style addressing), and the VCN.
 - A k3s restart on the real VM. On the stand-in it's verified (above); an actual
   k3s version upgrade (new binary) hasn't been run anywhere.
-- The restore drill above, on the real bucket.
+- The restore drill with place data loaded (the 2026-10-21 drill had an empty
+  `places` table; the marker row is what proved WAL replay).
+- The weekly scheduled base backup on Oracle (the on-demand one completed; the first
+  scheduled one ran before the checksum fix).
