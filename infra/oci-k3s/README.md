@@ -386,12 +386,21 @@ First deploy of `oci-up.sh` (demo profile) on the A1 instance (1 OCPU / 6 GB):
   - A marker row was written after the base backup, and its WAL segment archived.
   - `pg-drill` recovered in about a minute, with the marker, the same `places`/`users` counts and migration version as `pg-1`, and the bucket untouched.
   - Then `pg-drill` and the marker were deleted.
+- **Restore drill with NYC data:**
+  - `load-places` loaded 80,001 places (123 areas) in about a minute, a 143 MB database.
+  - The WAL was switched and archived (the bucket grew to ~50 MB), and the drill above was run again.
+  - The only base backup was from before the load, so the restore had to replay the whole load from WAL.
+  - `pg-drill` was Ready in 77 s.
+  - It matched `pg-1` on every check:
+    - counts of `places`, `area_stats`, `area_totals`, `areas_ingested`, `tags`
+    - MD5 over every place's id, name, tags, `tag_vec` and geometry, and over all of `area_stats`
+    - the migration version
+    - the 5 nearest places to Washington Square through the GiST index
+  - The VM peaked at 3.2 GiB used during the drill, with 4.0 GiB available after it. The bucket was untouched.
 
 ## Not verified yet
 
 - A k3s restart on the real VM. On the stand-in it's verified (above); an actual
   k3s version upgrade (new binary) hasn't been run anywhere.
-- The restore drill with place data loaded (the 2026-10-21 drill had an empty
-  `places` table; the marker row is what proved WAL replay).
 - The weekly scheduled base backup on Oracle (the on-demand one completed; the first
   scheduled one ran before the checksum fix).
