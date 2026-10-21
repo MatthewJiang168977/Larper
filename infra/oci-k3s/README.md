@@ -54,9 +54,10 @@ Set up once, by hand, in the tenancy (2026-10-21). Check them with the commands 
 - **Budget `larper-guard`:** $1 a month, alerting at 1% of actual spend and 100% of
   forecast spend.
 - **User `larper-ci`** (group `larper-ci`, policy `larper-ci`):
-  - Capabilities: API keys and customer secret keys only. No console password, auth
-    tokens, SMTP, DB or OAuth credentials, so it can't sign in to the console even if
-    its activation email is used.
+  - Capabilities: customer secret keys only, so its S3 key is the only credential it
+    can have. No API keys, console password, auth tokens, SMTP, DB or OAuth
+    credentials, so it can't sign in to the console even if its activation email is
+    used, and nobody can add an API key to it without first changing that.
   - Its policy is all it can do:
     `read buckets` and `manage objects`, both `where target.bucket.name = 'larper-pg-backups'`.
   - CNPG's S3 key is a customer secret key on this user (`oci-up.sh`, `BACKUP_USER`),
