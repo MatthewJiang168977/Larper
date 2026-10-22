@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { DEMO_SPOT } from "@/lib/demo-spot";
 
 /** Why we're showing the demo spot instead of the user. */
 export type DemoReason = "waiting" | "denied" | "unavailable" | "no-gps";
@@ -24,8 +25,7 @@ export interface LocationState {
   retrying: boolean;
 }
 
-// Washington Square Park: the demo spot when GPS is unavailable or denied.
-const DEMO = { lat: 40.7308, lng: -73.9973 };
+const DEMO = DEMO_SPOT;
 const DEMO_NOTES: Record<DemoReason, string> = {
   waiting: "Still waiting for your location. Showing Washington Square.",
   denied: "Location is off. Showing Washington Square.",

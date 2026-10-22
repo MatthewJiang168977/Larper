@@ -32,6 +32,9 @@ api:
   # production, the dev server locally). Exact scheme://host[:port], no wildcard: the
   # chart refuses anything else, and each must also be in clerk.authorizedParties (or
   # its tokens are rejected anyway). Empty: no CORS, same-origin only.
+  # Where a visitor's location may trigger an area ingest (apps/api/src/quests/ingest-region.ts):
+  # "xmin,ymin,xmax,ymax" in degrees (lng,lat,lng,lat). Empty: anywhere.
+  ingestRegion: ""
   cors:
     origins: ["http://localhost:3001"]
     # How long a browser may reuse a preflight's answer (Chrome caps it at 7200).

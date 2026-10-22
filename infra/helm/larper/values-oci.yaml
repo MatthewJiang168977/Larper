@@ -17,6 +17,9 @@ ingress:
   className: traefik
 
 api:
+  # The public demo ingests on request only in New York City (the five boroughs, the
+  # same box as data/extract_overture.py): elsewhere a visitor gets what's loaded.
+  ingestRegion: "-74.26,40.49,-73.70,40.92"
   # Public traffic will come only through a Cloudflare Tunnel (cloudflared -> Traefik
   # -> API), where CF-Connecting-IP is the visitor. Until then, and for an admin on the
   # SSH tunnel, there's no such header and X-Forwarded-For is used.

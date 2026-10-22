@@ -494,3 +494,41 @@ describe("QuestHome: Not today", () => {
     expect(reasonsPrompt()).toBeNull();
   });
 });
+
+describe("QuestHome: outside the demo region", () => {
+  const outside: Today = { ...empty, surveying: { pending: [], failed: [], outside: ["gcpvj"] } };
+
+  it("says the demo covers New York City and offers the demo area, instead of 'nothing here'", async () => {
+    routes["/quests/today"] = ok(outside);
+    const assign = vi.fn();
+    const real = window.location;
+    Object.defineProperty(window, "location", { configurable: true, value: { ...real, assign } });
+    try {
+      render(<QuestHome />);
+      await settle();
+      expect(screen.getByText("Outside the demo area")).toBeTruthy();
+      expect(screen.queryByText("Uncharted")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Go to the demo area" }));
+      expect(assign).toHaveBeenCalledWith(`${real.origin}/?at=40.7308,-73.9973`);
+    } finally {
+      Object.defineProperty(window, "location", { configurable: true, value: real });
+    }
+  });
+
+  it("doesn't poll: there is nothing on its way", async () => {
+    routes["/quests/today"] = ok(outside);
+    render(<QuestHome />);
+    await settle();
+    const before = todayCalls();
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(todayCalls()).toBe(before);
+  });
+
+  it("shows the deck as usual when places are loaded there anyway", async () => {
+    routes["/quests/today"] = ok({ ...withQuest, surveying: { pending: [], failed: [], outside: ["gcpvj"] } });
+    render(<QuestHome />);
+    await settle();
+    expect(screen.getByText("quest: Cafe Uno")).toBeTruthy();
+    expect(screen.queryByText("Outside the demo area")).toBeNull();
+  });
+});

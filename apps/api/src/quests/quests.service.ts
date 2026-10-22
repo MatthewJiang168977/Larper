@@ -123,7 +123,7 @@ export class QuestsService {
         .slice(0, DECK_SIZE - 1)
         .map((p) => ({ score: p.score, reasons: p.reasons, place: toPlaceView(p, lat, lng) })),
       cache: hit ? 'hit' : 'miss',
-      surveying: survey.pending.length || survey.failed.length ? survey : null,
+      surveying: survey.pending.length || survey.failed.length || survey.outside.length ? survey : null,
     };
   }
 
