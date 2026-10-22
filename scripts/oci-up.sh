@@ -320,16 +320,27 @@ if [[ $SECURITY_LIST == open ]]; then
       || { kubectl -n larper describe certificate api-tls | tail -20; exit 1; }
   fi
 fi
-if [[ $PUBLIC == 1 ]]; then
+# What the internet can reach: the security list decides, whatever the VM allows.
+if [[ $PUBLIC == 1 && $SECURITY_LIST == open ]]; then
+  reach="SSH, HTTP and HTTPS"
   cat <<EOF
 
-Public at https://$PUBLIC_HOST (certificate: $ACME_ENV; security list: $SECURITY_LIST).
+Public at https://$PUBLIC_HOST (certificate: $ACME_ENV).
 Only 22, 80 and 443 reach the VM. Close it all: scripts/oci-up.sh --close
 EOF
+elif [[ $PUBLIC == 1 ]]; then
+  reach="only SSH (the security list is $SECURITY_LIST; the VM itself would take 80 and 443)"
+  cat <<EOF
+
+Ready for https://$PUBLIC_HOST, but NOT reachable from the internet: security list $SECURITY_LIST.
+Open it with: scripts/oci-up.sh   (or SECURITY_LIST=open)
+EOF
+else
+  reach="only SSH"
 fi
 cat <<EOF
 
-Up on $PUBLIC_IP ($( [[ $PUBLIC == 1 ]] && echo 'SSH, HTTP and HTTPS' || echo 'only SSH is' ) open). kubectl goes through SSH:
+Up on $PUBLIC_IP: $reach reaches it from the internet. kubectl goes through SSH:
   ssh -i ~/.ssh/larper_oci -N -L $TUNNEL_PORT:127.0.0.1:6443 $HOST &
   export KUBECONFIG=$KUBECONFIG_OCI
   kubectl -n kube-system port-forward svc/traefik 8081:80     # app at http://localhost:8081
