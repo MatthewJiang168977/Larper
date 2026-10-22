@@ -229,8 +229,14 @@ flowchart LR
      computes taste similarity in the same query.
    - Area tag counts for the surrounding cells come from their own shared cache (1 h).
    - Candidates are scored in TypeScript, and the top 200 are cached for 10 min.
-6. **Re-rank.** Places skipped or completed in the last 30 days are dropped. **MMR** (λ = 0.7,
-   tag Jaccard) picks a deck of 10 that isn't all one kind of place.
+6. **Re-rank.** Places finished recently are dropped, for a window that depends on how the
+   quest ended (`REOFFER_AFTER_DAYS` in `quests/transitions.ts`):
+   - 30 days for a completed quest, a plain Skip, or "Not my thing"
+   - 7 days for "Too far"
+   - 3 days for "Closed"
+   - 1 day for "Not today", with or without a reason
+
+   Then **MMR** (λ = 0.7, tag Jaccard) picks a deck of 10 that isn't all one kind of place.
 7. **Offer.** The top pick is inserted as today's quest. A **partial unique index** (one
    `offered|accepted` quest per user) means two replicas racing to create one can't both succeed;
    the loser re-reads the winner's row.

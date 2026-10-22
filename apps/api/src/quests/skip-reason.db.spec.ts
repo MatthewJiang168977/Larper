@@ -8,6 +8,7 @@ import { QuestAction, QuestEventSchema, SkipReason } from '../gen/larper/events/
 import type { TagsService } from '../profile/tags.service';
 import type { AreasService } from './areas.service';
 import { QuestsService } from './quests.service';
+import { REOFFER_AFTER_DAYS, type ReofferKey } from './transitions';
 
 // "Not today" and its optional reason against a real database: the column, the
 // events in the outbox, and which ones move taste. Skipped unless TEST_DATABASE_URL is
@@ -145,5 +146,126 @@ describeDb('Not today and skip reasons (real database)', () => {
     await newQuest('accepted');
     await quests.act(userId, questId, 'not-today');
     await expect(quests.giveReason('0', questId, 'closed')).rejects.toThrow(NotFoundException);
+  });
+});
+
+// How long each kind of ending keeps its place out of the deck. The windows, as
+// decided (PR #25): pinned here so a change to REOFFER_AFTER_DAYS is a test change too.
+const WINDOWS: { key: ReofferKey; status: 'skipped' | 'completed'; reason: string | null; days: number }[] = [
+  { key: 'unstated', status: 'skipped', reason: 'unstated', days: 1 },
+  { key: 'not_today', status: 'skipped', reason: 'not_today', days: 1 },
+  { key: 'closed', status: 'skipped', reason: 'closed', days: 3 },
+  { key: 'too_far', status: 'skipped', reason: 'too_far', days: 7 },
+  { key: 'not_my_thing', status: 'skipped', reason: 'not_my_thing', days: 30 },
+  { key: 'skip', status: 'skipped', reason: null, days: 30 }, // a plain Skip: unchanged
+  { key: 'completed', status: 'completed', reason: null, days: 30 }, // unchanged
+];
+
+describeDb('re-offering a place after a skip, by reason (real database)', () => {
+  let pool: Pool;
+  let owner: Pool;
+  let quests: QuestsService;
+  let userId: string;
+  const placeIds: string[] = [];
+
+  beforeAll(async () => {
+    pool = createPool(URL);
+    owner = createPool(OWNER_URL);
+    await assertDisposableDatabase(owner, 'skip-reason.db.spec (re-offer)');
+    quests = new QuestsService(pool, {} as CacheService, {} as TagsService, {} as AreasService);
+    const u = await owner.query<{ id: string }>(
+      `INSERT INTO users (clerk_id) VALUES ('test_reoffer_' || gen_random_uuid()) RETURNING id::text`,
+    );
+    userId = u.rows[0].id;
+  });
+
+  afterAll(async () => {
+    if (userId) {
+      await owner.query('DELETE FROM outbox WHERE key = $1', [userId]);
+      await owner.query('DELETE FROM users WHERE id = $1', [userId]); // cascades to quests
+      if (placeIds.length) await owner.query('DELETE FROM places WHERE id = ANY($1::bigint[])', [placeIds]);
+    }
+    await pool.end();
+    await owner.end();
+  });
+
+  const newPlace = async () => {
+    const p = await owner.query<{ id: string }>(
+      `INSERT INTO places (overture_id, name, geom, categories, chain_key, tags, tag_vec, confidence)
+       VALUES ('test-reoffer-' || gen_random_uuid(), 'Test Spot',
+               ST_SetSRID(ST_MakePoint(-73.9971, 40.7312), 4326)::geography, '{cafe}', 'test-spot', '{cafe}',
+               array_fill(0, ARRAY[160])::vector, 0.9)
+       RETURNING id::text`,
+    );
+    placeIds.push(p.rows[0].id);
+    return p.rows[0].id;
+  };
+  // A finished quest at a new place, ended this many hours ago.
+  const ended = async (status: string, reason: string | null, hoursAgo: number) => {
+    const place = await newPlace();
+    await owner.query(
+      `INSERT INTO quests (user_id, place_id, status, skip_reason, score, reasons, origin, created_at, updated_at)
+       VALUES ($1, $2, $3::quest_status, $4::skip_reason, 1, '{}',
+               ST_SetSRID(ST_MakePoint(-73.9971, 40.7312), 4326)::geography,
+               now() - make_interval(hours => $5), now() - make_interval(hours => $5))`,
+      [userId, place, status, reason, hoursAgo],
+    );
+    return place;
+  };
+  const excluded = (): Promise<Set<string>> =>
+    (quests as unknown as { recentlyDone(u: string): Promise<Set<string>> }).recentlyDone(userId);
+
+  it('uses the decided window for every way a quest can end', () => {
+    expect(REOFFER_AFTER_DAYS).toEqual(Object.fromEntries(WINDOWS.map((w) => [w.key, w.days])));
+  });
+
+  it.each(WINDOWS)('$key: out for $days day(s), then offered again', async ({ status, reason, days }) => {
+    const inside = await ended(status, reason, days * 24 - 1); // an hour before the window ends
+    const after = await ended(status, reason, days * 24 + 1); // an hour after
+    const out = await excluded();
+    expect(out.has(inside)).toBe(true);
+    expect(out.has(after)).toBe(false);
+  });
+
+  it('a plain Skip of an offer still keeps the place out for 30 days, through the real action', async () => {
+    const place = await newPlace();
+    const q = await owner.query<{ id: string }>(
+      `INSERT INTO quests (user_id, place_id, status, score, reasons, origin)
+       VALUES ($1, $2, 'offered', 1, '{}', ST_SetSRID(ST_MakePoint(-73.9971, 40.7312), 4326)::geography)
+       RETURNING id::text`,
+      [userId, place],
+    );
+    await quests.act(userId, q.rows[0].id, 'skip');
+    const backdate = (days: number) =>
+      owner.query(`UPDATE quests SET updated_at = now() - make_interval(days => $2) WHERE id = $1`, [q.rows[0].id, days]);
+    await backdate(29);
+    expect((await excluded()).has(place)).toBe(true);
+    await backdate(31);
+    expect((await excluded()).has(place)).toBe(false);
+  });
+
+  it(`"Not today" then "Closed": 3 days from the skip (the reason doesn't restart the clock)`, async () => {
+    const place = await newPlace();
+    const q = await owner.query<{ id: string }>(
+      `INSERT INTO quests (user_id, place_id, status, score, reasons, origin)
+       VALUES ($1, $2, 'accepted', 1, '{}', ST_SetSRID(ST_MakePoint(-73.9971, 40.7312), 4326)::geography)
+       RETURNING id::text`,
+      [userId, place],
+    );
+    const id = q.rows[0].id;
+    await quests.act(userId, id, 'not-today');
+    // Set aside 2.5 days ago, with no reason yet: past the 1-day window, so back already.
+    await owner.query(`UPDATE quests SET updated_at = now() - make_interval(hours => 60) WHERE id = $1`, [id]);
+    expect((await excluded()).has(place)).toBe(false);
+    // Saying "Closed" now makes it a 3-day window from the same skip: out again, for half a day.
+    await quests.giveReason(userId, id, 'closed');
+    const { rows } = await owner.query<{ h: number }>(
+      `SELECT extract(epoch FROM now() - updated_at) / 3600 AS h FROM quests WHERE id = $1`,
+      [id],
+    );
+    expect(Number(rows[0].h)).toBeGreaterThan(59); // the reason left updated_at alone
+    expect((await excluded()).has(place)).toBe(true);
+    await owner.query(`UPDATE quests SET updated_at = now() - make_interval(hours => 73) WHERE id = $1`, [id]);
+    expect((await excluded()).has(place)).toBe(false);
   });
 });

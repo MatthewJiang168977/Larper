@@ -18,5 +18,20 @@ export const isAction = (s: string): s is QuestAction => Object.hasOwn(TRANSITIO
 export const SKIP_REASONS = ['not_my_thing', 'too_far', 'not_today', 'closed'] as const;
 export type SkipReason = (typeof SKIP_REASONS)[number];
 
+// How long a place stays out of the deck after a quest there ended, by how it ended
+// (quests.service recentlyDone). The one place these windows live.
+// - skip: a plain Skip of an offer (skip_reason NULL)
+// - unstated: "Not today" with no reason given
+export type ReofferKey = 'completed' | 'skip' | 'unstated' | SkipReason;
+export const REOFFER_AFTER_DAYS: Record<ReofferKey, number> = {
+  completed: 30,
+  skip: 30,
+  not_my_thing: 30,
+  too_far: 7,
+  closed: 3,
+  not_today: 1,
+  unstated: 1,
+};
+
 export const isSkipReason = (s: unknown): s is SkipReason =>
   typeof s === 'string' && (SKIP_REASONS as readonly string[]).includes(s);

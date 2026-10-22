@@ -17,14 +17,13 @@ import { AreasService } from './areas.service';
 import { CheckInAttempt, checkInLogLine, judgeCheckIn, rejection } from './checkin';
 import { cellOf, cellsCovering, haversineM } from './geo';
 import { AreaStats, Candidate, mmr, Reasons, score, Scored, weightsFromEnv } from './scoring';
-import { QuestAction, QuestStatus, SkipReason, TRANSITIONS } from './transitions';
+import { QuestAction, QuestStatus, REOFFER_AFTER_DAYS, SkipReason, TRANSITIONS } from './transitions';
 
 const DECK_SIZE = 10;
 const CACHED_TOP_N = 200; // enough headroom to survive exclusions + MMR
 const MAX_CANDIDATES = 3000;
 const DECK_TTL_S = 600;
 const AREA_TTL_S = 3600;
-const EXCLUDE_DAYS = 30; // don't re-offer a place skipped/completed this recently
 const OFFER_STALE_AFTER = '20 hours';
 const OFFER_STALE_METERS = 5000;
 
@@ -360,12 +359,21 @@ export class QuestsService {
 
   // --- quest lifecycle -------------------------------------------------------
 
+  // Places not to re-offer yet: each finished quest keeps its place out for the window
+  // of how it ended (REOFFER_AFTER_DAYS), counted from when it ended (updated_at; a
+  // reason given later doesn't restart it). The longest window bounds the index scan.
+  // A key missing from the map gets the longest window, never none.
   private async recentlyDone(userId: string): Promise<Set<string>> {
+    const longest = Math.max(...Object.values(REOFFER_AFTER_DAYS));
     const { rows } = await this.pg.query<{ place_id: string }>(
       `SELECT place_id::text FROM quests
        WHERE user_id = $1 AND status IN ('skipped', 'completed')
-         AND updated_at > now() - make_interval(days => $2)`,
-      [userId, EXCLUDE_DAYS],
+         AND updated_at > now() - make_interval(days => $3)
+         AND updated_at > now() - make_interval(days => coalesce(
+               ($2::jsonb ->> CASE WHEN status = 'completed' THEN 'completed'
+                                   ELSE coalesce(skip_reason::text, 'skip') END)::int,
+               $3))`,
+      [userId, JSON.stringify(REOFFER_AFTER_DAYS), longest],
     );
     return new Set(rows.map((r) => r.place_id));
   }
