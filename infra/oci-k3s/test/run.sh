@@ -5,6 +5,8 @@
 #
 #   infra/oci-k3s/test/run.sh up        # fake VM + S3 stand-in, oci-up.sh, then checks
 #   infra/oci-k3s/test/run.sh check     # re-run the checks
+#   infra/oci-k3s/test/run.sh public    # the public deploy (PUBLIC_HOST): 80/443 open, HTTPS, limits
+#   infra/oci-k3s/test/run.sh close     # oci-up.sh --close: back to SSH only
 #   infra/oci-k3s/test/run.sh reboot    # restart the VM, then check it came back
 #   infra/oci-k3s/test/run.sh k3s-restart  # firewall re-apply + k3s restart under requests, then check
 #   infra/oci-k3s/test/run.sh restore   # replace the VM, restore Postgres from the S3 stand-in
@@ -103,15 +105,27 @@ deploy() { # extra env for oci-up.sh, e.g. RESTORE_FROM=pg SERVER_NAME=pg-2
   # oci-up.sh uses ~/.ssh/known_hosts; a new stand-in VM has a new host key.
   ssh-keygen -R "[127.0.0.1]:$SSH_PORT" >/dev/null 2>&1 || true
   log "running scripts/oci-up.sh against the stand-in"
+  # Never the real tenancy or the real public settings: no security list (it's
+  # Oracle's), and no ~/.oci/larper-public.env.
   env OCI_ENV_FILE="$STATE/instance.env" SSH_KEY="$STATE/id_ed25519" SSH_PORT=$SSH_PORT \
     S3_ENV="$STATE/s3.env" KUBECONFIG_OCI="$STATE/kubeconfig.yaml" TUNNEL_PORT=$TUNNEL_PORT \
-    IMAGE_PLATFORM=linux/amd64 BACKUP_ENDPOINT_URL="http://$S3_IP:9000" "$@" scripts/oci-up.sh
+    IMAGE_PLATFORM=linux/amd64 BACKUP_ENDPOINT_URL="http://$S3_IP:9000" \
+    SECURITY_LIST=skip PUBLIC_ENV=/nonexistent CHECK_ENV=/nonexistent "$@" scripts/oci-up.sh ${DEPLOY_ARGS:-}
 }
+
+# The public demo on the stand-in: a made-up name, no certificate (the internet can't
+# reach this VM, so Let's Encrypt can't either; Traefik serves its own).
+PUBLIC_MODE=$(cat "$STATE/public-mode" 2>/dev/null || echo 0) # what the last deploy was (public / close write it)
+PUBLIC_TEST_HOST=api.larper.test
+PUBLIC_DEPLOY=(PUBLIC_HOST=$PUBLIC_TEST_HOST WEB_ORIGIN=https://larper.test ACME_ENV=off)
+CURL_IMAGE=curlimages/curl:8.11.1
+# curl from a neighbour on the VM's network, at a fixed address (the client the VM sees)
+neighbour() { local ip=$1; shift; docker run --rm --network "$NET" --ip "$ip" "$CURL_IMAGE" "$@" || true; } # a refused connection fails a check, not the run
 
 tunnel() {
   ssh "${SSH_OPTS[@]}" -N -o ExitOnForwardFailure=yes -L "$TUNNEL_PORT:127.0.0.1:6443" ubuntu@127.0.0.1 &
   TUNNEL=$!
-  trap 'kill $TUNNEL 2>/dev/null; kill $PF 2>/dev/null' EXIT
+  trap 'kill $TUNNEL 2>/dev/null || true; kill $PF 2>/dev/null || true' EXIT # each: under set -e the first failure would end the trap
   export KUBECONFIG
   KUBECONFIG=$(winpath "$STATE/kubeconfig.yaml")
   for _ in $(seq 1 20); do kubectl get --raw /readyz >/dev/null 2>&1 && return; sleep 2; done
@@ -141,22 +155,35 @@ check() {
 
   tunnel
   # Traefik's LoadBalancer ports (80/443, via k3s's service load balancer) and its
-  # NodePorts are the ones Kubernetes itself opens; the rest are k3s's own.
+  # NodePorts are the ones Kubernetes itself opens; 8080/9100 are Traefik's own
+  # (dashboard, metrics: pod ports); the rest are k3s's. Public mode opens 80 and 443.
   nodeports=$(kubectl -n kube-system get svc traefik -o jsonpath='{.spec.ports[*].nodePort}')
-  for port in 22 6443 10250 80 443 $nodeports; do
+  open=" 22 "
+  [[ $PUBLIC_MODE == 1 ]] && open=" 22 80 443 "
+  for port in 22 6443 10250 80 443 8080 9100 $nodeports; do
     if docker run --rm --network "$NET" busybox:1.37.0 nc -z -w 3 "$VM_IP" "$port" 2>/dev/null; then
-      [[ $port == 22 ]] && ok "port 22 reachable" || fail "port $port reachable from the network"
+      [[ $open == *" $port "* ]] && ok "port $port reachable" || fail "port $port reachable from the network"
     else
-      [[ $port == 22 ]] && fail "port 22 not reachable" || ok "port $port closed"
+      [[ $open == *" $port "* ]] && fail "port $port not reachable" || ok "port $port closed"
     fi
   done
   kubectl get nodes -o wide | sed 's/^/  /'
   notready=$(kubectl get pods -A --no-headers | grep -vE 'Running|Completed' || true)
   [[ -z $notready ]] && ok "all pods Running/Completed" || fail "pods not ready:"$'\n'"$notready"
-  kubectl -n kube-system port-forward svc/traefik 18081:80 >/dev/null 2>&1 &
-  PF=$!
-  sleep 3
-  code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:18081/readyz || true)
+  if [[ $PUBLIC_MODE == 1 ]]; then
+    # Public: only that name is routed, and plain HTTP only redirects, so HTTPS by name.
+    kubectl -n kube-system port-forward svc/traefik 18443:443 >/dev/null 2>&1 &
+    PF=$!
+    sleep 3
+    # The Host header without the forward's port: with :18443 in it, the HTTPS redirect
+    # would send the request to the standard port.
+    code=$(curl -sk -o /dev/null -w '%{http_code}' -H "Host: $PUBLIC_TEST_HOST" https://localhost:18443/readyz || true)
+  else
+    kubectl -n kube-system port-forward svc/traefik 18081:80 >/dev/null 2>&1 &
+    PF=$!
+    sleep 3
+    code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:18081/readyz || true)
+  fi
   [[ $code == 200 ]] && ok "API /readyz through Traefik: 200" || fail "API /readyz through Traefik: $code"
 
   # Backups: the immediate base backup and WAL archiving to the object store.
@@ -168,17 +195,76 @@ check() {
   arch=$(kubectl -n larper get cluster pg -o jsonpath='{.status.conditions[?(@.type=="ContinuousArchiving")].status}')
   [[ $arch == True ]] && ok "WAL archiving" || fail "ContinuousArchiving=$arch"
   aws s3 ls --recursive "s3://$BUCKET" | awk '{print $NF}' | cut -d/ -f1-2 | sort | uniq -c | sed 's/^/  /'
+  [[ $PUBLIC_MODE == 1 ]] && check_public
+  return 0
+}
+
+# What a visitor sees, from neighbours on the VM's network (the internet, here).
+check_public() {
+  local h=$PUBLIC_TEST_HOST at=(--resolve "$PUBLIC_TEST_HOST:443:$VM_IP" --resolve "$PUBLIC_TEST_HOST:80:$VM_IP")
+  log "public checks ($h)"
+  local r
+  r=$(neighbour 172.31.250.31 -s -o /dev/null -w '%{http_code} %{redirect_url}' "${at[@]}" "http://$h/readyz")
+  # Traefik's permanent redirect: 301 for GET (308 for other methods).
+  [[ $r == "301 https://$h/readyz" || $r == "308 https://$h/readyz" ]] && ok "HTTP redirects to HTTPS ($r)" || fail "HTTP: $r"
+  r=$(neighbour 172.31.250.31 -sk -w ' %{http_code}' "${at[@]}" "https://$h/readyz")
+  [[ $r == '{"status":"ready"} 200' ]] && ok "HTTPS /readyz: 200, no pod name" || fail "HTTPS /readyz: $r"
+  r=$(neighbour 172.31.250.31 -sk -o /dev/null -w '%{http_code}' --resolve "other.test:443:$VM_IP" https://other.test/readyz)
+  [[ $r == 404 ]] && ok "another name: 404 (only $h is routed)" || fail "another name: $r"
+  r=$(neighbour 172.31.250.31 -sk -o /dev/null -w '%{http_code}' "${at[@]}" -X POST --data-binary '{}' \
+    -H 'Content-Type: application/json' "https://$h/quests/1/accept")
+  [[ $r == 401 ]] && ok "small body: reaches the API (401 without a token)" || fail "small body: $r"
+  # Made in the container: a 70 KB argument is past Windows' command-line limit.
+  r=$(docker run --rm --network "$NET" --ip 172.31.250.31 --entrypoint sh "$CURL_IMAGE" -c \
+    "head -c 70000 /dev/zero | tr '\\0' a | curl -sk -o /dev/null -w '%{http_code}' --resolve $h:443:$VM_IP \
+       -X POST -H 'Content-Type: application/json' --data-binary @- https://$h/quests/1/accept" || true)
+  [[ $r == 413 ]] && ok "70 KB body: 413 at the edge" || fail "70 KB body: $r"
+
+  # The API's per-IP limit keys on the visitor, not on the node, and believes no header
+  # a client sends (Redis holds a counter per address it saw: {rl:ip:<address>:ip}:hits).
+  kubectl -n larper exec deploy/redis -- redis-cli --scan --pattern '*rl:ip:*' | tr -d '\r' \
+    | xargs -r kubectl -n larper exec deploy/redis -- redis-cli del >/dev/null || true
+  neighbour 172.31.250.32 -sk -o /dev/null "${at[@]}" -H 'X-Forwarded-For: 198.51.100.7' -H 'CF-Connecting-IP: 198.51.100.8' \
+    -H 'X-Real-IP: 198.51.100.9' "https://$h/me"
+  neighbour 172.31.250.33 -sk -o /dev/null "${at[@]}" "https://$h/me"
+  local keys
+  keys=$(kubectl -n larper exec deploy/redis -- redis-cli --scan --pattern '*rl:ip:*' | tr -d '\r' | sort)
+  [[ -n $keys ]] || fail "no per-IP counters at all (the checks below would pass vacuously)"
+  grep -q '172.31.250.32' <<<"$keys" && grep -q '172.31.250.33' <<<"$keys" \
+    && ok "per-IP limit counts each visitor's own address" || fail "per-IP keys: $(tr '\n' ' ' <<<"$keys")"
+  grep -qE '198\.51\.100\.|10\.42\.' <<<"$keys" && fail "per-IP limit believed a header or saw the node: $keys" \
+    || ok "spoofed X-Forwarded-For / CF-Connecting-IP / X-Real-IP ignored"
+
+  # The edge backstop: a burst from one address gets 429 from Traefik; another address
+  # is unaffected.
+  r=$(neighbour 172.31.250.34 -sk -o /dev/null -w '%{http_code}\n' --parallel --parallel-max 40 "${at[@]}" \
+    "https://$h/healthz?[1-300]" | sort | uniq -c | tr '\n' ' ')
+  [[ $r == *429* ]] && ok "a 300-request burst from one address: some 429 ($r)" || fail "burst: no 429 ($r)"
+  r=$(neighbour 172.31.250.35 -sk -o /dev/null -w '%{http_code}' "${at[@]}" "https://$h/healthz")
+  [[ $r == 200 ]] && ok "meanwhile another address: 200" || fail "another address during the burst: $r"
 }
 
 case ${1:-} in
   up)
-    state; s3_up; vm_up; deploy
+    state; s3_up; vm_up; deploy; PUBLIC_MODE=0; echo 0 >"$STATE/public-mode"
     check
     log "writing a marker row for the restore test"
     psql "CREATE TABLE IF NOT EXISTS restore_marker (v text); INSERT INTO restore_marker VALUES ('$(date -u +%FT%TZ)');" >/dev/null
     psql "SELECT pg_switch_wal();" >/dev/null # archive it now, not after archive_timeout
     ;;
   check) check ;;
+  public)
+    # The same deploy with PUBLIC_HOST: 80 and 443 open, HTTPS at a made-up name.
+    state; s3_up; vm_up
+    PUBLIC_MODE=1; deploy "${PUBLIC_DEPLOY[@]}"; echo 1 >"$STATE/public-mode"
+    check
+    ;;
+  close)
+    # oci-up.sh --close: back to SSH only.
+    state
+    DEPLOY_ARGS=--close deploy; PUBLIC_MODE=0; echo 0 >"$STATE/public-mode"
+    check
+    ;;
   reboot)
     log "restarting the VM (as after an unattended-upgrades reboot)"
     docker restart "$VM" >/dev/null
@@ -253,6 +339,6 @@ case ${1:-} in
     log "removed"
     exit 0
     ;;
-  *) sed -n '2,15p' "$0"; exit 2 ;;
+  *) sed -n '2,17p' "$0"; exit 2 ;;
 esac
 [[ $FAILED == 0 ]] && log "all checks passed" || { log "some checks FAILED"; exit 1; }

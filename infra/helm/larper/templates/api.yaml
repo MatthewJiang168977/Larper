@@ -78,8 +78,23 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: api
+  {{- if .Values.public.enabled }}
+  # Public (templates/public.yaml): HTTP redirects to HTTPS, the edge backstops run
+  # first, and cert-manager keeps the host's certificate in api-tls.
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: >-
+      {{ .Release.Namespace }}-https-redirect@kubernetescrd,{{ .Release.Namespace }}-edge-inflight@kubernetescrd,{{ .Release.Namespace }}-edge-rate@kubernetescrd,{{ .Release.Namespace }}-edge-body@kubernetescrd
+    {{- if ne .Values.public.acme "off" }}
+    cert-manager.io/cluster-issuer: letsencrypt-{{ .Values.public.acme }}
+    {{- end }}
+  {{- end }}
 spec:
   ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.public.enabled }}
+  tls:
+    - hosts: [{{ .Values.ingress.host | quote }}]
+      secretName: api-tls
+  {{- end }}
   rules:
     - {{- with .Values.ingress.host }}
       host: {{ . }}

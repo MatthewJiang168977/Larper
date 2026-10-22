@@ -1,0 +1,69 @@
+{{- with .Values.public }}
+{{- if .enabled }}
+{{- if not $.Values.ingress.host }}
+{{- fail "public.enabled needs ingress.host (the public name, e.g. api.example.com): a catch-all ingress would answer for any name" }}
+{{- end }}
+{{- if not (has .acme (list "staging" "production" "off")) }}
+{{- fail (printf "public.acme must be staging, production or off, not %q" .acme) }}
+{{- end }}
+{{- if ne .acme "off" }}
+# Let's Encrypt, both environments, so switching is one annotation (templates/api.yaml).
+# HTTP-01: cert-manager answers the challenge with its own small Ingress on port 80,
+# whose longer path wins over the API's (so the HTTPS redirect doesn't catch it).
+{{- range $env, $server := dict "staging" "https://acme-staging-v02.api.letsencrypt.org/directory" "production" "https://acme-v02.api.letsencrypt.org/directory" }}
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-{{ $env }}
+spec:
+  acme:
+    server: {{ $server }}
+    {{- with $.Values.public.acmeEmail }}
+    email: {{ . | quote }}
+    {{- end }}
+    privateKeySecretRef: { name: letsencrypt-{{ $env }}-account }
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: {{ $.Values.ingress.className }}
+{{- end }}
+{{- end }}
+---
+# Plain HTTP only redirects (a no-op on HTTPS).
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: https-redirect
+spec:
+  redirectScheme: { scheme: https, permanent: true }
+---
+# Per client address: the connection's (Traefik keeps it: externalTrafficPolicy Local,
+# infra/oci-k3s/bootstrap.sh). No ipStrategy, so X-Forwarded-For is never believed.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: edge-rate
+spec:
+  rateLimit:
+    average: {{ .edge.rate.average }}
+    burst: {{ .edge.rate.burst }}
+    period: 1s
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: edge-inflight
+spec:
+  inFlightReq:
+    amount: {{ .edge.inFlight }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: edge-body
+spec:
+  buffering:
+    maxRequestBodyBytes: {{ int .edge.maxBodyBytes }}
+{{- end }}
+{{- end }}

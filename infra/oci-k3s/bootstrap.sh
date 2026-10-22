@@ -4,8 +4,14 @@
 #
 #   1. OS updates now, then unattended security updates (reboot at 04:30 if needed)
 #   2. SSH: keys only, no root login, no passwords
-#   3. k3s, pinned, with secrets encryption
-#   4. Host firewall: inbound SSH only (plus what k3s needs inside the node), last
+#   3. k3s, pinned, with secrets encryption; Traefik keeps the client's address and
+#      has no dashboard
+#   4. Host firewall: inbound SSH only (plus what k3s needs inside the node), last.
+#      PUBLIC=1 also lets HTTP and HTTPS through to Traefik (the public demo), and
+#      nothing else.
+#
+#   PUBLIC=0|1          the firewall's inbound ports: 22, or 22, 80 and 443
+#   FIREWALL_ONLY=1     only step 4 (oci-up.sh --close: seconds, not minutes)
 #
 # Two firewalls guard the VM. The VCN security list (created by
 # scripts/oci-capacity-probe.sh) allows TCP 22 and ICMP 3/4 only. The host firewall
@@ -27,10 +33,18 @@ RULES=/etc/iptables/rules.v4
 RULES6=/etc/iptables/rules.v6
 ORACLE_RULES=/etc/iptables/rules.v4.oracle
 TEST=${BOOTSTRAP_TEST:-0} # 1: skip systemd, k3s and the live firewall (container tests)
+PUBLIC=${PUBLIC:-0}
+FIREWALL_ONLY=${FIREWALL_ONLY:-0}
+TRAEFIK_CONFIG=/var/lib/rancher/k3s/server/manifests/traefik-config.yaml
 
 log() { echo "==> $*"; }
 [[ $EUID -eq 0 ]] || { echo "run as root (sudo)" >&2; exit 1; }
+[[ $PUBLIC == 0 || $PUBLIC == 1 ]] || { echo "PUBLIC must be 0 or 1" >&2; exit 1; }
 export DEBIAN_FRONTEND=noninteractive
+
+if [[ $FIREWALL_ONLY == 1 ]]; then
+  log "firewall only (PUBLIC=$PUBLIC)"
+else
 
 # --- 1. updates -----------------------------------------------------------------
 log "OS updates"
@@ -98,8 +112,52 @@ if [[ $TEST != 1 ]]; then
   k3s kubectl get node
 fi
 
+# Traefik, as k3s installs it, through k3s's HelmChartConfig (k3s applies files in
+# its manifests folder and upgrades Traefik when this one changes):
+# - externalTrafficPolicy Local: k3s's service load balancer then keeps the client's
+#   address instead of rewriting it to the node's. The API's per-IP limits read it
+#   (X-Forwarded-For, which Traefik sets itself for untrusted clients); with Cluster,
+#   every visitor would share one counter. One node, so no traffic is dropped.
+# - no dashboard (it was only on the pod's own port, never routed, but needn't exist)
+# - a memory limit, which k3s's Traefik doesn't have, so a flood can't take the node's
+if [[ $TEST != 1 ]]; then
+  mkdir -p "$(dirname "$TRAEFIK_CONFIG")"
+  new_cfg=$(mktemp)
+  cat >"$new_cfg" <<'EOF'
+# Written by infra/oci-k3s/bootstrap.sh.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    service:
+      spec:
+        externalTrafficPolicy: Local
+    api:
+      dashboard: false
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits: { memory: 256Mi }
+EOF
+  if cmp -s "$new_cfg" "$TRAEFIK_CONFIG"; then
+    rm -f "$new_cfg"
+  else
+    install -m 0600 "$new_cfg" "$TRAEFIK_CONFIG" && rm -f "$new_cfg"
+    log "Traefik: client addresses kept, no dashboard, 256Mi limit (k3s upgrades it in the background)"
+  fi
+fi
+fi # FIREWALL_ONLY
+
 # --- 4. host firewall ---------------------------------------------------------------
-log "host firewall: inbound SSH only"
+if [[ $PUBLIC == 1 ]]; then
+  GUARD_PORTS=22,80,443
+  log "host firewall: inbound SSH, HTTP and HTTPS only"
+else
+  GUARD_PORTS=22
+  log "host firewall: inbound SSH only"
+fi
 mkdir -p /etc/iptables
 [[ -f $ORACLE_RULES ]] || { [[ -f $RULES ]] && cp "$RULES" "$ORACLE_RULES"; } || true
 
@@ -118,8 +176,13 @@ EOF
 # service load balancer (and any NodePort or hostPort) DNATs it in nat PREROUTING, and
 # kube-router and kube-proxy ACCEPT it in FORWARD ahead of our rules. mangle
 # PREROUTING runs before both, so new connections to this node from outside the pod
-# network are dropped there unless they are SSH, whatever Kubernetes opens later.
+# network are dropped there unless they are SSH (and, with PUBLIC=1, HTTP and HTTPS,
+# which k3s's load balancer hands to Traefik), whatever Kubernetes opens later. So
+# NodePorts, the API server and the kubelet stay closed either way. The filter
+# table's INPUT stays SSH-only: forwarded traffic to Traefik never passes it.
 guard() {
+  local what="only SSH"
+  [[ $GUARD_PORTS == 22 ]] || what="only SSH, HTTP and HTTPS"
   cat <<EOF
 *mangle
 :PREROUTING ACCEPT [0:0]
@@ -127,7 +190,7 @@ guard() {
 :FORWARD ACCEPT [0:0]
 :OUTPUT ACCEPT [0:0]
 :POSTROUTING ACCEPT [0:0]
--A PREROUTING ! -i lo ! -s $POD_CIDR -m addrtype --dst-type LOCAL -p tcp -m conntrack --ctstate NEW ! --dport 22 -m comment --comment "larper: only SSH reaches this node from outside" -j DROP
+-A PREROUTING ! -i lo ! -s $POD_CIDR -m addrtype --dst-type LOCAL -p tcp -m conntrack --ctstate NEW -m multiport ! --dports $GUARD_PORTS -m comment --comment "larper: $what reaches this node from outside" -j DROP
 -A PREROUTING ! -i lo ! -s $POD_CIDR -m addrtype --dst-type LOCAL -p udp -m conntrack --ctstate NEW -m comment --comment "larper: no inbound UDP from outside" -j DROP
 COMMIT
 EOF
@@ -179,6 +242,12 @@ if grep -E '^-A INPUT .*--dport ' "$new" | grep -v -- '--dport 22 ' | grep -q AC
   grep -E '^-A INPUT .*--dport ' "$new" | grep -v -- '--dport 22 ' >&2
   exit 1
 fi
+# The guard lets through exactly the ports chosen above: one TCP rule, that port list,
+# and the UDP drop.
+guards=$(grep -c -- '-A PREROUTING .*-j DROP' "$new")
+[[ $guards == 2 ]] && grep -q -- "-m multiport ! --dports $GUARD_PORTS -m comment" "$new" \
+  && grep -q -- '-A PREROUTING .* -p udp .*-j DROP' "$new" \
+  || { echo "refusing: the mangle guard isn't exactly: TCP except $GUARD_PORTS, and all UDP, dropped" >&2; exit 1; }
 iptables-restore --test <"$new"
 ip6tables-restore --test <"$new6"
 

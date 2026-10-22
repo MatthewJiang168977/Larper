@@ -201,6 +201,11 @@ jobs:
           helm template larper $chart -n larper -f $chart/values-demo.yaml > /dev/null
           helm template larper $chart -n larper -f $chart/values-oci.yaml -f $chart/values-demo.yaml \
             --set postgres.backup.endpointURL=https://objectstorage.example.invalid > /dev/null
+          # The public demo (oci-up.sh with PUBLIC_HOST): issuers, edge middlewares, TLS.
+          helm template larper $chart -n larper -f $chart/values-oci.yaml -f $chart/values-demo.yaml \
+            --set postgres.backup.endpointURL=https://objectstorage.example.invalid \
+            --set public.enabled=true --set ingress.host=api.example.com --set public.acme=production \
+            --set 'api.cors.origins={https://example.com}' --set clerk.authorizedParties=https://example.com > /dev/null
       # The database roles' connection limits must cover each service at full scale and
       # fit in max_connections (templates/_helpers.tpl): check the chart still refuses.
       - name: Refuse connection limits that don't fit
@@ -220,6 +225,9 @@ jobs:
           refuses 'is not an origin' --set 'api.cors.origins={*}'
           refuses 'is not an origin' --set 'api.cors.origins={https://larper.example/}'
           refuses "isn't in clerk.authorizedParties" --set 'api.cors.origins={https://larper.example}'
+          # Public: never a catch-all host, and only the known certificate modes.
+          refuses 'public.enabled needs ingress.host' --set public.enabled=true
+          refuses 'public.acme must be' --set public.enabled=true --set ingress.host=api.example.com --set public.acme=prod
       # Rate limits are on unless a load test turns them off: no profile may ship them off.
       - name: Rate limits on in every profile
         run: |
