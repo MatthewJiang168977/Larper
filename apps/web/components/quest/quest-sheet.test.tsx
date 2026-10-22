@@ -30,11 +30,19 @@ const sheet = (status: QuestView["status"], onAction = vi.fn()) =>
   render(<QuestSheet quest={quest(status)} deck={deck} selectedId="p1" onSelect={vi.fn()} onAction={onAction} busy={false} />);
 
 describe("QuestSheet", () => {
-  it("says 'Not today' (not 'Abandon') on an accepted quest, and still skips it", () => {
+  it("says 'Not today' (not 'Abandon') on an accepted quest, and sets it aside rather than skipping", () => {
     const onAction = vi.fn();
     sheet("accepted", onAction);
     expect(screen.queryByText("Abandon")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Not today" }));
+    expect(onAction).toHaveBeenCalledWith("not-today");
+    expect(onAction).not.toHaveBeenCalledWith("skip");
+  });
+
+  it("keeps Skip on an offered quest as a skip", () => {
+    const onAction = vi.fn();
+    sheet("offered", onAction);
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
     expect(onAction).toHaveBeenCalledWith("skip");
   });
 

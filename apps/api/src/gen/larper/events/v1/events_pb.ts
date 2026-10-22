@@ -18,7 +18,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file larper/events/v1/events.proto.
  */
 export const file_larper_events_v1_events: GenFile = /*@__PURE__*/
-  fileDesc("Ch1sYXJwZXIvZXZlbnRzL3YxL2V2ZW50cy5wcm90bxIQbGFycGVyLmV2ZW50cy52MSKzAQoKUXVlc3RFdmVudBIQCghldmVudF9pZBgBIAEoCRIPCgd1c2VyX2lkGAIgASgJEhAKCHF1ZXN0X2lkGAMgASgJEhAKCHBsYWNlX2lkGAQgASgJEi0KBmFjdGlvbhgFIAEoDjIdLmxhcnBlci5ldmVudHMudjEuUXVlc3RBY3Rpb24SLwoLb2NjdXJyZWRfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wKnwKC1F1ZXN0QWN0aW9uEhwKGFFVRVNUX0FDVElPTl9VTlNQRUNJRklFRBAAEhkKFVFVRVNUX0FDVElPTl9BQ0NFUFRFRBABEhgKFFFVRVNUX0FDVElPTl9TS0lQUEVEEAISGgoWUVVFU1RfQUNUSU9OX0NPTVBMRVRFRBADQkxaSmdpdGh1Yi5jb20vTWF0dGhld0ppYW5nMTY4OTc3L2xhcnBlci93b3JrZXJzL2dlbi9sYXJwZXIvZXZlbnRzL3YxO2V2ZW50c3YxYgZwcm90bzM", [file_google_protobuf_timestamp]);
+  fileDesc("Ch1sYXJwZXIvZXZlbnRzL3YxL2V2ZW50cy5wcm90bxIQbGFycGVyLmV2ZW50cy52MSLmAQoKUXVlc3RFdmVudBIQCghldmVudF9pZBgBIAEoCRIPCgd1c2VyX2lkGAIgASgJEhAKCHF1ZXN0X2lkGAMgASgJEhAKCHBsYWNlX2lkGAQgASgJEi0KBmFjdGlvbhgFIAEoDjIdLmxhcnBlci5ldmVudHMudjEuUXVlc3RBY3Rpb24SLwoLb2NjdXJyZWRfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjEKC3NraXBfcmVhc29uGAcgASgOMhwubGFycGVyLmV2ZW50cy52MS5Ta2lwUmVhc29uKpgBCgtRdWVzdEFjdGlvbhIcChhRVUVTVF9BQ1RJT05fVU5TUEVDSUZJRUQQABIZChVRVUVTVF9BQ1RJT05fQUNDRVBURUQQARIYChRRVUVTVF9BQ1RJT05fU0tJUFBFRBACEhoKFlFVRVNUX0FDVElPTl9DT01QTEVURUQQAxIaChZRVUVTVF9BQ1RJT05fTk9UX1RPREFZEAQqkwEKClNraXBSZWFzb24SGwoXU0tJUF9SRUFTT05fVU5TUEVDSUZJRUQQABIcChhTS0lQX1JFQVNPTl9OT1RfTVlfVEhJTkcQARIXChNTS0lQX1JFQVNPTl9UT09fRkFSEAISGQoVU0tJUF9SRUFTT05fTk9UX1RPREFZEAMSFgoSU0tJUF9SRUFTT05fQ0xPU0VEEARCTFpKZ2l0aHViLmNvbS9NYXR0aGV3SmlhbmcxNjg5NzcvbGFycGVyL3dvcmtlcnMvZ2VuL2xhcnBlci9ldmVudHMvdjE7ZXZlbnRzdjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
 
 /**
  * @generated from message larper.events.v1.QuestEvent
@@ -57,6 +57,13 @@ export type QuestEvent = Message<"larper.events.v1.QuestEvent"> & {
    * @generated from field: google.protobuf.Timestamp occurred_at = 6;
    */
   occurredAt?: Timestamp | undefined;
+
+  /**
+   * Set only on the event that records a reason (see QUEST_ACTION_NOT_TODAY).
+   *
+   * @generated from field: larper.events.v1.SkipReason skip_reason = 7;
+   */
+  skipReason: SkipReason;
 };
 
 /**
@@ -91,6 +98,15 @@ export enum QuestAction {
    * @generated from enum value: QUEST_ACTION_COMPLETED = 3;
    */
   COMPLETED = 3,
+
+  /**
+   * "Not today" on an accepted quest: set aside with no taste change. If the user then
+   * says why, one more event carries skip_reason: SKIPPED for "Not my thing" (the usual
+   * skip penalty), NOT_TODAY for the other reasons.
+   *
+   * @generated from enum value: QUEST_ACTION_NOT_TODAY = 4;
+   */
+  NOT_TODAY = 4,
 }
 
 /**
@@ -98,4 +114,42 @@ export enum QuestAction {
  */
 export const QuestActionSchema: GenEnum<QuestAction> = /*@__PURE__*/
   enumDesc(file_larper_events_v1_events, 0);
+
+/**
+ * Why a quest was set aside, when the user said (after "Not today").
+ *
+ * @generated from enum larper.events.v1.SkipReason
+ */
+export enum SkipReason {
+  /**
+   * @generated from enum value: SKIP_REASON_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: SKIP_REASON_NOT_MY_THING = 1;
+   */
+  NOT_MY_THING = 1,
+
+  /**
+   * @generated from enum value: SKIP_REASON_TOO_FAR = 2;
+   */
+  TOO_FAR = 2,
+
+  /**
+   * @generated from enum value: SKIP_REASON_NOT_TODAY = 3;
+   */
+  NOT_TODAY = 3,
+
+  /**
+   * @generated from enum value: SKIP_REASON_CLOSED = 4;
+   */
+  CLOSED = 4,
+}
+
+/**
+ * Describes the enum larper.events.v1.SkipReason.
+ */
+export const SkipReasonSchema: GenEnum<SkipReason> = /*@__PURE__*/
+  enumDesc(file_larper_events_v1_events, 1);
 

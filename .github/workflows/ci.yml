@@ -158,11 +158,14 @@ jobs:
       # the candidate query, and the roles test (logs in as each role). The candidate
       # query's two 200-pair equivalence checks need the NYC places and the bench's
       # users, so they're skipped here (TEST_NYC_DATA=0) and run locally against the stack.
+      # One suite at a time: they share this database, and in parallel one suite's
+      # outbox writes, or the roles test's relay session (its last query is the relay's
+      # poll), trip another suite's assertDisposableDatabase guard.
       - name: API database tests
         env:
           TEST_DATABASE_URL: ${{ env.TEST_API_DATABASE_URL }}
           TEST_NYC_DATA: '0'
-        run: pnpm --filter @larper/api test db.spec
+        run: pnpm --filter @larper/api test db.spec --runInBand
       # The rate limits against Redis: counters shared by two API instances, one Lua
       # script per limit window per request, and failing open with Redis unreachable.
       - name: API rate-limit tests (Redis)

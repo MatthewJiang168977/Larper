@@ -36,6 +36,10 @@ const (
 	QuestAction_QUEST_ACTION_SKIPPED     QuestAction = 2
 	// A geofenced check-in: the user reported a position near the place.
 	QuestAction_QUEST_ACTION_COMPLETED QuestAction = 3
+	// "Not today" on an accepted quest: set aside with no taste change. If the user then
+	// says why, one more event carries skip_reason: SKIPPED for "Not my thing" (the usual
+	// skip penalty), NOT_TODAY for the other reasons.
+	QuestAction_QUEST_ACTION_NOT_TODAY QuestAction = 4
 )
 
 // Enum value maps for QuestAction.
@@ -45,12 +49,14 @@ var (
 		1: "QUEST_ACTION_ACCEPTED",
 		2: "QUEST_ACTION_SKIPPED",
 		3: "QUEST_ACTION_COMPLETED",
+		4: "QUEST_ACTION_NOT_TODAY",
 	}
 	QuestAction_value = map[string]int32{
 		"QUEST_ACTION_UNSPECIFIED": 0,
 		"QUEST_ACTION_ACCEPTED":    1,
 		"QUEST_ACTION_SKIPPED":     2,
 		"QUEST_ACTION_COMPLETED":   3,
+		"QUEST_ACTION_NOT_TODAY":   4,
 	}
 )
 
@@ -81,16 +87,74 @@ func (QuestAction) EnumDescriptor() ([]byte, []int) {
 	return file_larper_events_v1_events_proto_rawDescGZIP(), []int{0}
 }
 
+// Why a quest was set aside, when the user said (after "Not today").
+type SkipReason int32
+
+const (
+	SkipReason_SKIP_REASON_UNSPECIFIED  SkipReason = 0
+	SkipReason_SKIP_REASON_NOT_MY_THING SkipReason = 1
+	SkipReason_SKIP_REASON_TOO_FAR      SkipReason = 2
+	SkipReason_SKIP_REASON_NOT_TODAY    SkipReason = 3
+	SkipReason_SKIP_REASON_CLOSED       SkipReason = 4
+)
+
+// Enum value maps for SkipReason.
+var (
+	SkipReason_name = map[int32]string{
+		0: "SKIP_REASON_UNSPECIFIED",
+		1: "SKIP_REASON_NOT_MY_THING",
+		2: "SKIP_REASON_TOO_FAR",
+		3: "SKIP_REASON_NOT_TODAY",
+		4: "SKIP_REASON_CLOSED",
+	}
+	SkipReason_value = map[string]int32{
+		"SKIP_REASON_UNSPECIFIED":  0,
+		"SKIP_REASON_NOT_MY_THING": 1,
+		"SKIP_REASON_TOO_FAR":      2,
+		"SKIP_REASON_NOT_TODAY":    3,
+		"SKIP_REASON_CLOSED":       4,
+	}
+)
+
+func (x SkipReason) Enum() *SkipReason {
+	p := new(SkipReason)
+	*p = x
+	return p
+}
+
+func (x SkipReason) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SkipReason) Descriptor() protoreflect.EnumDescriptor {
+	return file_larper_events_v1_events_proto_enumTypes[1].Descriptor()
+}
+
+func (SkipReason) Type() protoreflect.EnumType {
+	return &file_larper_events_v1_events_proto_enumTypes[1]
+}
+
+func (x SkipReason) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SkipReason.Descriptor instead.
+func (SkipReason) EnumDescriptor() ([]byte, []int) {
+	return file_larper_events_v1_events_proto_rawDescGZIP(), []int{1}
+}
+
 type QuestEvent struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// UUID. Consumers dedupe on it: delivery is at-least-once.
 	EventId string `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
 	// Kafka record key, so one user's events stay ordered within a partition.
-	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	QuestId       string                 `protobuf:"bytes,3,opt,name=quest_id,json=questId,proto3" json:"quest_id,omitempty"`
-	PlaceId       string                 `protobuf:"bytes,4,opt,name=place_id,json=placeId,proto3" json:"place_id,omitempty"`
-	Action        QuestAction            `protobuf:"varint,5,opt,name=action,proto3,enum=larper.events.v1.QuestAction" json:"action,omitempty"`
-	OccurredAt    *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	UserId     string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	QuestId    string                 `protobuf:"bytes,3,opt,name=quest_id,json=questId,proto3" json:"quest_id,omitempty"`
+	PlaceId    string                 `protobuf:"bytes,4,opt,name=place_id,json=placeId,proto3" json:"place_id,omitempty"`
+	Action     QuestAction            `protobuf:"varint,5,opt,name=action,proto3,enum=larper.events.v1.QuestAction" json:"action,omitempty"`
+	OccurredAt *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	// Set only on the event that records a reason (see QUEST_ACTION_NOT_TODAY).
+	SkipReason    SkipReason `protobuf:"varint,7,opt,name=skip_reason,json=skipReason,proto3,enum=larper.events.v1.SkipReason" json:"skip_reason,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -167,11 +231,18 @@ func (x *QuestEvent) GetOccurredAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *QuestEvent) GetSkipReason() SkipReason {
+	if x != nil {
+		return x.SkipReason
+	}
+	return SkipReason_SKIP_REASON_UNSPECIFIED
+}
+
 var File_larper_events_v1_events_proto protoreflect.FileDescriptor
 
 const file_larper_events_v1_events_proto_rawDesc = "" +
 	"\n" +
-	"\x1dlarper/events/v1/events.proto\x12\x10larper.events.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xea\x01\n" +
+	"\x1dlarper/events/v1/events.proto\x12\x10larper.events.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa9\x02\n" +
 	"\n" +
 	"QuestEvent\x12\x19\n" +
 	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12\x17\n" +
@@ -180,12 +251,22 @@ const file_larper_events_v1_events_proto_rawDesc = "" +
 	"\bplace_id\x18\x04 \x01(\tR\aplaceId\x125\n" +
 	"\x06action\x18\x05 \x01(\x0e2\x1d.larper.events.v1.QuestActionR\x06action\x12;\n" +
 	"\voccurred_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"occurredAt*|\n" +
+	"occurredAt\x12=\n" +
+	"\vskip_reason\x18\a \x01(\x0e2\x1c.larper.events.v1.SkipReasonR\n" +
+	"skipReason*\x98\x01\n" +
 	"\vQuestAction\x12\x1c\n" +
 	"\x18QUEST_ACTION_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15QUEST_ACTION_ACCEPTED\x10\x01\x12\x18\n" +
 	"\x14QUEST_ACTION_SKIPPED\x10\x02\x12\x1a\n" +
-	"\x16QUEST_ACTION_COMPLETED\x10\x03BLZJgithub.com/MatthewJiang168977/larper/workers/gen/larper/events/v1;eventsv1b\x06proto3"
+	"\x16QUEST_ACTION_COMPLETED\x10\x03\x12\x1a\n" +
+	"\x16QUEST_ACTION_NOT_TODAY\x10\x04*\x93\x01\n" +
+	"\n" +
+	"SkipReason\x12\x1b\n" +
+	"\x17SKIP_REASON_UNSPECIFIED\x10\x00\x12\x1c\n" +
+	"\x18SKIP_REASON_NOT_MY_THING\x10\x01\x12\x17\n" +
+	"\x13SKIP_REASON_TOO_FAR\x10\x02\x12\x19\n" +
+	"\x15SKIP_REASON_NOT_TODAY\x10\x03\x12\x16\n" +
+	"\x12SKIP_REASON_CLOSED\x10\x04BLZJgithub.com/MatthewJiang168977/larper/workers/gen/larper/events/v1;eventsv1b\x06proto3"
 
 var (
 	file_larper_events_v1_events_proto_rawDescOnce sync.Once
@@ -199,21 +280,23 @@ func file_larper_events_v1_events_proto_rawDescGZIP() []byte {
 	return file_larper_events_v1_events_proto_rawDescData
 }
 
-var file_larper_events_v1_events_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_larper_events_v1_events_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_larper_events_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_larper_events_v1_events_proto_goTypes = []any{
 	(QuestAction)(0),              // 0: larper.events.v1.QuestAction
-	(*QuestEvent)(nil),            // 1: larper.events.v1.QuestEvent
-	(*timestamppb.Timestamp)(nil), // 2: google.protobuf.Timestamp
+	(SkipReason)(0),               // 1: larper.events.v1.SkipReason
+	(*QuestEvent)(nil),            // 2: larper.events.v1.QuestEvent
+	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
 }
 var file_larper_events_v1_events_proto_depIdxs = []int32{
 	0, // 0: larper.events.v1.QuestEvent.action:type_name -> larper.events.v1.QuestAction
-	2, // 1: larper.events.v1.QuestEvent.occurred_at:type_name -> google.protobuf.Timestamp
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	3, // 1: larper.events.v1.QuestEvent.occurred_at:type_name -> google.protobuf.Timestamp
+	1, // 2: larper.events.v1.QuestEvent.skip_reason:type_name -> larper.events.v1.SkipReason
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_larper_events_v1_events_proto_init() }
@@ -226,7 +309,7 @@ func file_larper_events_v1_events_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_larper_events_v1_events_proto_rawDesc), len(file_larper_events_v1_events_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   1,
 			NumExtensions: 0,
 			NumServices:   0,

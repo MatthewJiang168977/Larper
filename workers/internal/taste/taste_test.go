@@ -78,3 +78,15 @@ func TestUnknownActionIsNoop(t *testing.T) {
 		t.Fatalf("unknown action changed taste")
 	}
 }
+
+// "Not today" is neutral: setting a quest aside, or saying it was too far, not today
+// or closed, never moves taste. ("Not my thing" arrives as a SKIPPED event.)
+func TestNotTodayIsNeutral(t *testing.T) {
+	notToday := eventsv1.QuestAction_QUEST_ACTION_NOT_TODAY
+	if _, moves := Step(notToday); moves {
+		t.Fatalf("NOT_TODAY has a step")
+	}
+	if got := Update(user, place, notToday); &got[0] != &user[0] {
+		t.Fatalf("NOT_TODAY changed taste")
+	}
+}

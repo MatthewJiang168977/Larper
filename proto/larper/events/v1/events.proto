@@ -17,6 +17,19 @@ enum QuestAction {
   QUEST_ACTION_SKIPPED = 2;
   // A geofenced check-in: the user reported a position near the place.
   QUEST_ACTION_COMPLETED = 3;
+  // "Not today" on an accepted quest: set aside with no taste change. If the user then
+  // says why, one more event carries skip_reason: SKIPPED for "Not my thing" (the usual
+  // skip penalty), NOT_TODAY for the other reasons.
+  QUEST_ACTION_NOT_TODAY = 4;
+}
+
+// Why a quest was set aside, when the user said (after "Not today").
+enum SkipReason {
+  SKIP_REASON_UNSPECIFIED = 0;
+  SKIP_REASON_NOT_MY_THING = 1;
+  SKIP_REASON_TOO_FAR = 2;
+  SKIP_REASON_NOT_TODAY = 3;
+  SKIP_REASON_CLOSED = 4;
 }
 
 message QuestEvent {
@@ -28,4 +41,6 @@ message QuestEvent {
   string place_id = 4;
   QuestAction action = 5;
   google.protobuf.Timestamp occurred_at = 6;
+  // Set only on the event that records a reason (see QUEST_ACTION_NOT_TODAY).
+  SkipReason skip_reason = 7;
 }

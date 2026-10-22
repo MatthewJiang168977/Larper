@@ -4,7 +4,7 @@ import { AuthUser, ClerkAuthGuard, CurrentUser } from '../auth/auth.guard';
 import { UserLimitGuard, userKey } from '../throttle/guards';
 import { actionOf, isCheckIn, LIMITS, OPT_IN_WINDOWS, USER_WINDOWS } from '../throttle/limits';
 import { QuestsService } from './quests.service';
-import { isAction } from './transitions';
+import { isAction, isSkipReason, SKIP_REASONS } from './transitions';
 
 const DEFAULT_RADIUS_M = 1500;
 const MIN_RADIUS_M = 300;
@@ -51,7 +51,22 @@ export class QuestsController {
     return this.quests.log(user.id);
   }
 
-  // POST /quests/:id/accept | skip | complete
+  // POST /quests/:id/reason { reason }: why a quest was set aside with "Not today".
+  // Declared before :id/:action, which would otherwise match it.
+  @Post(':id/reason')
+  @SkipThrottle({ [USER_WINDOWS.hour]: false })
+  @Throttle({
+    [USER_WINDOWS.minute]: { limit: LIMITS.questAction.minute },
+    [USER_WINDOWS.hour]: { limit: LIMITS.questAction.hour },
+  })
+  reason(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: { reason?: unknown } = {}) {
+    if (!/^\d+$/.test(id)) throw new BadRequestException('bad quest id');
+    const reason = body?.reason;
+    if (!isSkipReason(reason)) throw new BadRequestException(`reason must be one of ${SKIP_REASONS.join(', ')}`);
+    return this.quests.giveReason(user.id, id, reason);
+  }
+
+  // POST /quests/:id/accept | skip | not-today | complete
   // Body for complete: { lat, lng, accuracy? } (the geofenced check-in).
   @Post(':id/:action')
   @SkipThrottle({ [USER_WINDOWS.hour]: false })
@@ -72,7 +87,7 @@ export class QuestsController {
     @Body() body: { lat?: unknown; lng?: unknown; accuracy?: unknown } = {},
   ) {
     if (!/^\d+$/.test(id)) throw new BadRequestException('bad quest id');
-    if (!isAction(action)) throw new BadRequestException('action must be accept, skip, or complete');
+    if (!isAction(action)) throw new BadRequestException('action must be accept, skip, not-today, or complete');
     const lat = Number(body?.lat);
     const lng = Number(body?.lng);
     const accuracy = Number(body?.accuracy);

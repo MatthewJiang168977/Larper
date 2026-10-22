@@ -25,6 +25,7 @@ export async function limitTestApp(
           today: async () => ({ status: 'ok', quests: [] }),
           log: async () => [],
           act: async (_u: string, id: string, action: string) => ({ id, status: action }),
+          giveReason: async (_u: string, id: string, reason: string) => ({ id, status: 'skipped', reason }),
         },
       },
     ],

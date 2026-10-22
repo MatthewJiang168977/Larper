@@ -3,7 +3,7 @@ import { forwardRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Located } from "@/hooks/use-location";
 import { ApiError, type Me, type Today } from "@/lib/api";
-import { QuestHome, SURVEY_MAX_MS, SURVEY_POLL_MS } from "./quest-home";
+import { QuestHome, SKIP_REASONS, SURVEY_MAX_MS, SURVEY_POLL_MS } from "./quest-home";
 
 // --- the component's world, replaced -------------------------------------------
 
@@ -52,6 +52,8 @@ vi.mock("./quest-sheet", () => ({
           <p>quest: {quest?.place.name ?? "none"}</p>
           <p>deck: {deck.length}</p>
           <button onClick={() => onAction("complete")}>I went</button>
+          <button onClick={() => onAction("not-today")}>Set aside</button>
+          <button onClick={() => onAction("skip")}>Skip</button>
         </section>
       );
     },
@@ -431,5 +433,64 @@ describe("QuestHome: checking in", () => {
     await settle();
     expect(screen.getByRole("alert").textContent).toContain("Something went wrong on our end.");
     expect(screen.queryByText("Try again")).toBeNull();
+  });
+});
+
+describe("QuestHome: Not today", () => {
+  const reasonsPrompt = () => screen.queryByRole("region", { name: "Why not today?" });
+  const setAside = async () => {
+    routes["/quests/today"] = ok(withQuest);
+    routes["/quests/q1/not-today"] = ok({ id: "q1", status: "skipped" });
+    routes["/quests/q1/reason"] = ok({});
+    render(<QuestHome />);
+    await settle();
+    fireEvent.click(screen.getByText("Set aside"));
+    await settle();
+  };
+
+  it("sets the quest aside with no reason, then offers the four reasons as optional", async () => {
+    await setAside();
+    expect(calls).toContain("/quests/q1/not-today");
+    expect(calls.some((c) => c.endsWith("/reason"))).toBe(false); // neutral until the user says otherwise
+    const prompt = reasonsPrompt()!;
+    expect(prompt.textContent).toContain("optional");
+    const chips = SKIP_REASONS.map(({ label }) => screen.getByRole("button", { name: label }));
+    expect(chips.map((c) => c.textContent)).toEqual(["Not my thing", "Too far", "Not today", "Closed"]);
+    for (const chip of chips) expect(chip.classList).toContain("min-h-11"); // 44 px tall
+  });
+
+  it.each(SKIP_REASONS)("records '$label' with one tap, and closes", async ({ reason, label }) => {
+    await setAside();
+    fireEvent.click(screen.getByRole("button", { name: label }));
+    await settle();
+    expect(bodies).toContainEqual({ path: "/quests/q1/reason", body: { reason } });
+    expect(reasonsPrompt()).toBeNull();
+  });
+
+  it("closes without a reason when dismissed: nothing more is sent", async () => {
+    await setAside();
+    fireEvent.click(screen.getByRole("button", { name: "No reason" }));
+    expect(reasonsPrompt()).toBeNull();
+    expect(calls.some((c) => c.endsWith("/reason"))).toBe(false);
+  });
+
+  it("says so if the reason didn't save", async () => {
+    await setAside();
+    routes["/quests/q1/reason"] = fail(new ApiError("Network down", 0));
+    fireEvent.click(screen.getByRole("button", { name: "Too far" }));
+    await settle();
+    expect(screen.getByRole("alert").textContent).toContain("Network down");
+    expect(reasonsPrompt()).toBeNull();
+  });
+
+  it("asks nothing after a plain Skip", async () => {
+    routes["/quests/today"] = ok(withQuest);
+    routes["/quests/q1/skip"] = ok({});
+    render(<QuestHome />);
+    await settle();
+    fireEvent.click(screen.getByText("Skip"));
+    await settle();
+    expect(calls).toContain("/quests/q1/skip");
+    expect(reasonsPrompt()).toBeNull();
   });
 });
