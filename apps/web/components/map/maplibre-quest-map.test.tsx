@@ -1,9 +1,13 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, configure, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeckItem, QuestView } from "@/lib/api";
 import { haloDiameterPx } from "./accuracy-halo";
 import MapLibreQuestMap, { VIEW_CAMERA } from "./maplibre-quest-map";
 import type { QuestMapProps } from "./quest-map";
+
+// The component loads maplibre-gl with a dynamic import(). The first one in a cold test
+// worker can take over a second, Testing Library's default wait for findBy/waitFor.
+configure({ asyncUtilTimeout: 5000 });
 
 // --- a stand-in for maplibre-gl: no WebGL, just the calls the component makes ---------
 
@@ -114,6 +118,15 @@ const props = (over: Partial<QuestMapProps> = {}): QuestMapProps => ({
 
 const map = () => fake.maps.at(-1)!;
 const toggleButton = () => screen.findByRole("button", { name: /^Switch to/ });
+// "You are here" (the halo, then the dot). Its own effect adds them after the map is
+// ready, so the toggle can be on screen a moment before they are: wait for them.
+const youAreHere = () =>
+  waitFor(() => {
+    const halo = document.querySelector<HTMLElement>('[data-testid="me-halo"]');
+    const dot = document.querySelector<HTMLElement>(".pin-me");
+    expect(halo && dot).toBeTruthy();
+    return { halo: halo!, dot: dot! };
+  });
 
 beforeEach(() => {
   fake.maps.length = 0;
@@ -162,8 +175,7 @@ describe("map markers", () => {
 
   it("sizes the halo from the reading's accuracy, flat on the map, and re-measures on zoom", async () => {
     render(<MapLibreQuestMap {...props()} />);
-    await toggleButton();
-    const halo = document.querySelector<HTMLElement>('[data-testid="me-halo"]')!;
+    const { halo } = await youAreHere();
     expect(halo.hidden).toBe(false);
     expect(halo.style.width).toBe(`${haloDiameterPx(40, 40.7295, 15.6)}px`);
     expect(halo.style.height).toBe(halo.style.width);
@@ -178,8 +190,7 @@ describe("map markers", () => {
 
   it("follows a sharper reading, and hides the halo when there is no accuracy (demo spot)", async () => {
     const { rerender } = render(<MapLibreQuestMap {...props()} />);
-    await toggleButton();
-    const halo = document.querySelector<HTMLElement>('[data-testid="me-halo"]')!;
+    const { halo } = await youAreHere();
     rerender(<MapLibreQuestMap {...props({ me: { lat: 40.7295, lng: -73.9965, accuracyM: 8 } })} />);
     expect(halo.style.width).toBe(`${haloDiameterPx(8, 40.7295, 15.6)}px`);
 
@@ -189,7 +200,7 @@ describe("map markers", () => {
 
   it("draws the dot above the halo", async () => {
     render(<MapLibreQuestMap {...props()} />);
-    await toggleButton();
+    await youAreHere();
     const order = [...map().container.children].map((el) => el.firstElementChild?.className || el.className);
     expect(order.indexOf("pin-me-halo")).toBeLessThan(order.indexOf("pin-me"));
   });
