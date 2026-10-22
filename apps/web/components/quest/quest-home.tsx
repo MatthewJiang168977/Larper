@@ -6,10 +6,14 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, type Located } from "@/hooks/use-location";
 import { ApiError, describeError, useApi, type Me, type SkipReason, type Today } from "@/lib/api";
+import { DEMO_SPOT } from "@/lib/demo-spot";
 import { getPreciseFix } from "@/lib/precise-fix";
 import { QuestSheet, type QuestAction } from "./quest-sheet";
 
 export const SURVEY_POLL_MS = 4000;
+
+// A full page load on purpose: the location hook reads ?at= when the page starts.
+const demoAreaUrl = () => new URL(`/?at=${DEMO_SPOT.lat},${DEMO_SPOT.lng}`, window.location.origin).href;
 // An area's ingest takes about a minute (longer on a one-core VM). Past this, stop
 // polling and say so: the ingest-worker may be down, and the API keeps reporting the
 // area as pending while its job waits or retries.
@@ -329,6 +333,14 @@ export function QuestHome() {
             body="Nobody's mapped this area yet. Surveying it now; your quest appears here in a minute or so."
           />
         )
+      ) : !today.quest && !today.deck.length && (today.surveying?.outside?.length ?? 0) > 0 && !surveying ? (
+        // Nothing loaded here, and the API won't load it: the public demo covers one city.
+        <Panel
+          ref={sheetRef}
+          label="Outside the demo area"
+          body="This demo covers New York City. Try it from Washington Square instead."
+          action={{ text: "Go to the demo area", onClick: () => window.location.assign(demoAreaUrl()) }}
+        />
       ) : today.quest || today.deck.length ? (
         <QuestSheet
           ref={sheetRef}

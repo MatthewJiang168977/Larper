@@ -148,6 +148,8 @@ export interface Survey {
   pending: string[];
   /** Areas whose load failed recently. */
   failed: string[];
+  /** Areas outside the demo region: never loaded on request (the API's INGEST_REGION). */
+  outside?: string[];
 }
 
 export interface Today {

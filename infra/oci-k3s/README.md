@@ -322,6 +322,33 @@ came back on their own); the mangle guard was still in place; and every check ab
 passed afterwards. The earlier stand-in that broke here shared the host's cgroup
 namespace; with `--cgroupns=private` the kubelet keeps track of running containers.
 
+## The public demo: region and accounts
+
+**Ingest region.** On this target a visitor's location triggers an area ingest only in New York City.
+- `api.ingestRegion` in `values-oci.yaml` is the five boroughs, the same box `data/extract_overture.py` uses.
+- Each ingest is an Overture download, about a minute of the single core, and rows that stay in Postgres.
+- An area at the edge counts if any part of it is inside the box (`apps/api/src/quests/ingest-region.ts`).
+- Elsewhere the API serves whatever is already loaded, usually nothing. It reports the skipped areas as `surveying.outside`, and the web app says the demo covers New York City, with a button to the demo spot.
+- The chart's default is empty (ingest anywhere), for local development.
+
+**Sign-ups are restricted.**
+- Clerk's sign-up mode is Restricted (dashboard → Configure → Restrictions), so only invited users can register.
+- The web app hides the sign-in form's "Sign up" link when `NEXT_PUBLIC_SIGNUP_MODE=restricted` is set (Vercel).
+- `scripts/demo-account.sh check` shows the mode, read from Clerk's public environment endpoint.
+
+**The demo account.** One shared Clerk user, shown on the sign-in page when Vercel has `NEXT_PUBLIC_DEMO_EMAIL` and `NEXT_PUBLIC_DEMO_PASSWORD` (public on purpose).
+
+```bash
+scripts/demo-account.sh create          # once: the user, plus ~/.oci/larper-demo.env (email + generated password)
+scripts/demo-account.sh reset           # sign everyone out, restore the password, clear its quests
+scripts/demo-account.sh reset --taste   # ...and its taste profile (onboarding again)
+scripts/demo-account.sh check           # sign-up mode and the account's settings
+```
+
+- **Locked down:** the account can't delete itself or create organizations. `create` sets both, and `reset` keeps them.
+- **Why `reset` restores the password:** everyone knows it, so anyone signed in could change it, and the password goes back before anyone else can lock the demo.
+- **How the database part runs:** psql in the Postgres pod of the current kubectl context (the SSH tunnel that `oci-up.sh` prints). It deletes only that user's rows.
+
 ## Backup check
 
 The CronJob `backup-check` runs hourly at :17 (`postgres.backup.check`, on in `values-oci.yaml`;
