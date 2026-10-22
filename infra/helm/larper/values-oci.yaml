@@ -43,6 +43,9 @@ postgres:
     sidecarEnv:
       AWS_REQUEST_CHECKSUM_CALCULATION: when_required
       AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+    # Pings healthchecks.io (Secret backup-check, key pingURL; infra/oci-k3s/README.md).
+    check:
+      enabled: true
 
 redpanda:
   storage: 4Gi

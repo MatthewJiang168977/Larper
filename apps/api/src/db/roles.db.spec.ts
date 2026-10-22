@@ -1,11 +1,13 @@
 import { Client, Pool } from 'pg';
+import { ARCHIVER_SQL, HEARTBEAT_SQL } from '../ops/backup-check';
 
 // The per-service roles from migration 0010 (docs/decisions/0003-service-db-roles.md).
 // The grants must equal the matrix below exactly: a new table or a new query that
 // needs a grant fails here until both the migration and this matrix say so. Then each
 // role, logged in as itself, is refused what it shouldn't do, and two Postgres rules
 // the matrix relies on are checked: identity columns need no sequence grant, and
-// foreign-key checks run as the table's owner.
+// foreign-key checks run as the table's owner. The backup check's role is in the
+// matrix with no grants at all: it runs its two queries and nothing else.
 //
 // Needs the owner and every role's URL (CI's db job sets them; db/test has the setup).
 const OWNER_URL = process.env.TEST_OWNER_DATABASE_URL;
@@ -14,6 +16,7 @@ const ROLE_URLS = {
   larper_relay: process.env.TEST_RELAY_DATABASE_URL,
   larper_taste: process.env.TEST_TASTE_DATABASE_URL,
   larper_ingest: process.env.TEST_INGEST_DATABASE_URL,
+  larper_backup_check: process.env.TEST_BACKUP_CHECK_DATABASE_URL,
 };
 type Role = keyof typeof ROLE_URLS;
 const ROLES = Object.keys(ROLE_URLS) as Role[];
@@ -52,6 +55,8 @@ const EXPECTED: Record<Role, Record<string, string[]>> = {
     area_totals: [S, I, D],
     jobs: [S, U],
   },
+  // templates/backup-check.yaml: no grant. CNPG creates it; no migration does.
+  larper_backup_check: {},
 };
 
 const ZERO_VEC = 'array_fill(0::real, ARRAY[160])::vector';
@@ -190,6 +195,55 @@ describeDb('per-service database roles (real database)', () => {
       await denied('larper_api', 'SELECT * FROM outbox');
       await denied('larper_api', 'SELECT * FROM processed_events');
       await denied('larper_api', 'CREATE TEMP TABLE roles_test (id int)');
+    });
+
+    it("backup check: its heartbeat and the archiver's status, and no table at all", async () => {
+      const c = as.larper_backup_check;
+      // What backup-check.ts runs, as it runs it: each statement its own transaction.
+      // The insert position: a transaction that wrote nothing else commits like an
+      // asynchronous one (the WAL writer flushes the record within wal_writer_delay),
+      // so the write position (pg_current_wal_lsn) can lag for a moment.
+      const before = await c.query<{ lsn: string }>('SELECT pg_current_wal_insert_lsn()::text AS lsn');
+      await c.query(HEARTBEAT_SQL);
+      const after = await c.query<{ moved: boolean }>(
+        'SELECT pg_current_wal_insert_lsn() > $1::pg_lsn AS moved',
+        [before.rows[0].lsn],
+      );
+      expect(after.rows[0].moved).toBe(true); // the heartbeat wrote WAL
+      const { rows } = await c.query(ARCHIVER_SQL);
+      expect(rows).toHaveLength(1);
+
+      // Every table and view in public: the app's (none from an extension) get no
+      // privilege at all. PostGIS's reference views (spatial_ref_sys, geometry_columns,
+      // geography_columns) are SELECT to PUBLIC by the extension, so every role reads
+      // them; they get no write.
+      const { rows: held } = await owner.query<{ t: string; ext: boolean; read: boolean; write: boolean }>(
+        `SELECT c.relname AS t,
+                EXISTS (SELECT FROM pg_depend d WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid
+                          AND d.deptype = 'e') AS ext,
+                has_table_privilege('larper_backup_check', c.oid, 'SELECT') AS read,
+                has_table_privilege('larper_backup_check', c.oid, 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') AS write
+           FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public' AND c.relkind IN ('r', 'v', 'm', 'p')`,
+      );
+      const app = held.filter((r) => !r.ext);
+      expect(app.length).toBeGreaterThan(10);
+      expect(app.filter((r) => r.read || r.write)).toEqual([]);
+      expect(held.filter((r) => r.ext && r.write)).toEqual([]);
+      expect(held.filter((r) => r.ext && r.read).map((r) => r.t).sort()).toEqual(
+        ['geography_columns', 'geometry_columns', 'spatial_ref_sys'],
+      );
+      await denied('larper_backup_check', 'SELECT 1 FROM places LIMIT 1');
+      await denied('larper_backup_check', 'SELECT 1 FROM users LIMIT 1');
+      await denied('larper_backup_check', `INSERT INTO users (clerk_id) VALUES ('test_x')`);
+      await denied('larper_backup_check', 'UPDATE quests SET status = status');
+      await denied('larper_backup_check', 'DELETE FROM outbox');
+      await denied('larper_backup_check', 'CREATE TEMP TABLE roles_test (id int)');
+
+      const lim = await owner.query<{ n: number }>(
+        `SELECT rolconnlimit AS n FROM pg_roles WHERE rolname = 'larper_backup_check'`,
+      );
+      expect(lim.rows[0].n).toBe(1);
     });
 
     it('outbox-relay: only the outbox, and it never writes events', async () => {

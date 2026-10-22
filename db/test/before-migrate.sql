@@ -14,3 +14,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 -- fresh install, where CNPG reconciles first); the migration creates the other two.
 CREATE ROLE larper_api LOGIN PASSWORD 'api-pw';
 CREATE ROLE larper_relay LOGIN PASSWORD 'relay-pw';
+
+-- The backup check's role (templates/backup-check.yaml): only CNPG's managed roles
+-- create it, since it needs no grant, so no migration touches it.
+CREATE ROLE larper_backup_check LOGIN PASSWORD 'check-pw' CONNECTION LIMIT 1;

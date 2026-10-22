@@ -322,14 +322,63 @@ came back on their own); the mangle guard was still in place; and every check ab
 passed afterwards. The earlier stand-in that broke here shared the host's cgroup
 namespace; with `--cgroupns=private` the kubelet keeps track of running containers.
 
-## To do
+## Backup check
 
-- **Alert when the latest backup is older than 48 h.** The weekly base backup plus
-  continuous WAL means a healthy cluster always has an archive newer than an hour or so.
-  Alert if the newest completed CNPG `Backup` or the last archived WAL is older than 48 h
-  (CNPG's `cnpg_pg_stat_archiver_seconds_since_last_archival` metric, or the newest
-  object's time in the bucket). Without it, a silent backup failure only shows up when
-  the lifecycle rule above starts deleting the last good backup.
+The CronJob `backup-check` runs hourly at :17 (`postgres.backup.check`, on in `values-oci.yaml`;
+code in `apps/api/src/ops/backup-check.ts`). It asks whether the backups are fresh enough
+to restore from, and reports to a dead-man's switch on healthchecks.io.
+
+- **Fresh:** the job pings the URL.
+- **Stale:** the job pings `URL/fail` with the reasons, and the Job fails (`kubectl -n larper get jobs`).
+- **The check stops running** (VM down, k3s broken, CronJob gone): no pings arrive, and
+  healthchecks.io alerts when the period plus grace runs out.
+
+**What counts as stale:**
+
+- **WAL:** the last segment reached the bucket more than **48 h** ago
+  (`pg_stat_archiver.last_archived_time`). That is the recovery point.
+- **Base backup:** the last one is older than **8 days** (the weekly schedule plus a day),
+  read from the Barman Cloud plugin's `ObjectStore` status. The 60-day lifecycle rule
+  would eventually delete a base backup that is never replaced.
+- A failing archiver is named in the alert, but on its own it doesn't raise one. Postgres
+  retries every minute, and a blip clears.
+
+**Why an idle database doesn't false-alarm.** Postgres archives a WAL segment when it
+fills, or after `archive_timeout` (1 h) *only if WAL was written since the last switch*.
+An idle cluster writes no WAL at all (measured below), so its last archive time would
+age without anything being at risk. Each run of the check therefore commits a
+transaction with a transaction id (`SELECT pg_current_xact_id()`), which writes a commit
+record. `archive_timeout` then ships it within the hour. On a healthy cluster the WAL age
+stays under ~2 h however quiet the app is, and only a broken archiver lets it reach 48 h.
+That's one 16 MB segment an hour, gzipped to a few KB: the ~720 a month already counted in
+"Free-tier budget".
+
+**Setup (once):**
+
+1. On healthchecks.io, create a check with a period of 1 h and a grace of 2 h, and email
+   alerts on.
+2. Save its ping URL as `pingURL=https://hc-ping.com/<uuid>` in
+   `~/.oci/larper-backup-check.env` (mode 600). The URL is a credential: anyone with it can
+   ping, so it isn't in the repo.
+3. `oci-up.sh` stores it in the Secret `backup-check`. Without the file the check still
+   runs and logs, but alerts nobody.
+
+**Its database role, `larper_backup_check`.** It has login, a connection limit of 1, and
+**no grant at all**:
+
+- Its two queries need none: `pg_current_xact_id()` and `pg_stat_archiver` are open to
+  every role.
+- It can't read or write any table.
+- It can't create temporary tables (0010 revoked `TEMPORARY` from PUBLIC) and can't create
+  anything in a schema.
+- Only CloudNativePG's managed roles create it (`templates/postgres.yaml`, password in the
+  Secret `pg-backup-check`); no migration touches it.
+- `roles.db.spec` checks all of this in CI, running the check's own SQL as the role.
+
+Its Kubernetes service account can only `get` the `pg-backups` ObjectStore.
+
+Check by hand: `kubectl -n larper create job --from=cronjob/backup-check backup-check-now`,
+then `kubectl -n larper logs job/backup-check-now` (one `backup-check {...}` line).
 
 ## On the real VM (2026-10-21)
 
@@ -351,12 +400,21 @@ First deploy of `oci-up.sh` (demo profile) on the A1 instance (1 OCPU / 6 GB):
   - A marker row was written after the base backup, and its WAL segment archived.
   - `pg-drill` recovered in about a minute, with the marker, the same `places`/`users` counts and migration version as `pg-1`, and the bucket untouched.
   - Then `pg-drill` and the marker were deleted.
+- **Restore drill with NYC data:**
+  - `load-places` loaded 80,001 places (123 areas) in about a minute, a 143 MB database.
+  - The WAL was switched and archived (the bucket grew to ~50 MB), and the drill above was run again.
+  - The only base backup was from before the load, so the restore had to replay the whole load from WAL.
+  - `pg-drill` was Ready in 77 s.
+  - It matched `pg-1` on every check:
+    - counts of `places`, `area_stats`, `area_totals`, `areas_ingested`, `tags`
+    - MD5 over every place's id, name, tags, `tag_vec` and geometry, and over all of `area_stats`
+    - the migration version
+    - the 5 nearest places to Washington Square through the GiST index
+  - The VM peaked at 3.2 GiB used during the drill, with 4.0 GiB available after it. The bucket was untouched.
 
 ## Not verified yet
 
 - A k3s restart on the real VM. On the stand-in it's verified (above); an actual
   k3s version upgrade (new binary) hasn't been run anywhere.
-- The restore drill with place data loaded (the 2026-10-21 drill had an empty
-  `places` table; the marker row is what proved WAL replay).
 - The weekly scheduled base backup on Oracle (the on-demand one completed; the first
   scheduled one ran before the checksum fix).
