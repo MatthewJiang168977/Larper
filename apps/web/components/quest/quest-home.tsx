@@ -3,10 +3,10 @@
 import { UserButton } from "@clerk/nextjs";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, type Located } from "@/hooks/use-location";
 import { ApiError, describeError, useApi, type Me, type SkipReason, type Today } from "@/lib/api";
-import { DEMO_SPOT } from "@/lib/demo-spot";
+import { DEMO_MIDTOWN, DEMO_SPOT } from "@/lib/demo-spot";
 import { getPreciseFix } from "@/lib/precise-fix";
 import { QuestSheet, type QuestAction } from "./quest-sheet";
 
@@ -18,6 +18,15 @@ const demoAreaUrl = () => new URL(`/?at=${DEMO_SPOT.lat},${DEMO_SPOT.lng}`, wind
 // polling and say so: the ingest-worker may be down, and the API keeps reporting the
 // area as pending while its job waits or retries.
 export const SURVEY_MAX_MS = 3 * 60_000;
+
+// The shared demo account (Me.demo) never sits on an empty map: when the visitor's
+// own position can't give a deck (location off or unavailable, or outside the demo
+// region), it goes to Midtown, and the notice says why. A ?at= override is kept.
+export function demoAccountLocation(loc: Located | null, outside: boolean): Located | null {
+  if (!loc || loc.source === "override") return loc;
+  const reason = loc.source === "demo" ? loc.reason : outside ? "outside" : null;
+  return reason ? { ...DEMO_MIDTOWN, source: "demo", reason, spot: "Midtown" } : loc;
+}
 
 // Clerk's avatar is a 28 px button; this gives it the same 44 px hit area as everything else.
 export const USER_BUTTON_APPEARANCE = { elements: { userButtonTrigger: "hit-target" } };
@@ -36,8 +45,14 @@ const QuestMap = dynamic(() => import("@/components/map/maplibre-quest-map"), { 
 
 export function QuestHome() {
   const api = useApi();
-  const { loc, retry: retryLocation, retrying: locating } = useLocation();
+  const { loc: located, retry: retryLocation, retrying: locating } = useLocation();
   const [me, setMe] = useState<Me | null>(null);
+  // The demo account's GPS position turned out to be outside the demo region.
+  const [outside, setOutside] = useState(false);
+  const loc = useMemo(
+    () => (me?.demo ? demoAccountLocation(located, outside) : located),
+    [me?.demo, located, outside],
+  );
   const [meError, setMeError] = useState<unknown>(null);
   const [meTries, setMeTries] = useState(0);
   const [today, setToday] = useState<Today | null>(null);
@@ -81,6 +96,13 @@ export function QuestHome() {
     api<Today>(`/quests/today?lat=${lat}&lng=${lng}`).then(
       (t) => {
         if (stale) return;
+        // The demo account outside the demo region, with nothing loaded here: Midtown
+        // instead (demoAccountLocation), and this empty answer is never shown.
+        const empty = !t.quest && !t.deck.length && !(t.surveying?.pending.length ?? 0);
+        if (me?.demo && loc?.source === "gps" && empty && (t.surveying?.outside?.length ?? 0) > 0) {
+          setOutside(true);
+          return;
+        }
         setToday(t);
         setSelectedId(t.quest?.place.id ?? t.deck[0]?.place.id ?? null);
         setTodayError(null);
@@ -98,6 +120,8 @@ export function QuestHome() {
     return () => {
       stale = true;
     };
+    // loc and me.demo only matter with new coordinates or a new account, both deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, lat, lng, me?.onboarded, reloads]);
 
   // While areas are being surveyed, check back until the ingest-worker finishes. Every
@@ -372,6 +396,7 @@ const DEMO_COPY: Record<NonNullable<Located["reason"]>, string> = {
   denied: "Location is off for this site. Allow it in your browser's settings, then try again.",
   unavailable: "Your device couldn't get a location fix.",
   "no-gps": "This device has no location.",
+  outside: "You're outside New York City, which is all this demo covers.",
 };
 
 // Shown whenever the map isn't where the user is, so a demo deck is never mistaken for
@@ -384,9 +409,10 @@ function DemoNotice({ loc, onRetry, retrying }: { loc: Located; onRetry: () => v
       className="flex w-full items-center gap-3 rounded border border-rule bg-paper/95 px-3 py-2 text-sm"
     >
       <p className="flex-1">
-        <span className="font-medium">Demo area: Washington Square.</span> {DEMO_COPY[loc.reason ?? "unavailable"]}
+        <span className="font-medium">Demo area: {loc.spot ?? "Washington Square"}.</span>{" "}
+        {DEMO_COPY[loc.reason ?? "unavailable"]}
       </p>
-      {loc.reason !== "no-gps" && (
+      {loc.reason !== "no-gps" && loc.reason !== "outside" && (
         <button onClick={onRetry} disabled={retrying} className="font-medium text-oxblood underline disabled:opacity-50">
           {retrying ? "Looking…" : "Try location again"}
         </button>

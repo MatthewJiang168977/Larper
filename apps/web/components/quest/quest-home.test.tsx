@@ -3,7 +3,7 @@ import { forwardRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Located } from "@/hooks/use-location";
 import { ApiError, type Me, type Today } from "@/lib/api";
-import { QuestHome, SKIP_REASONS, SURVEY_MAX_MS, SURVEY_POLL_MS } from "./quest-home";
+import { demoAccountLocation, QuestHome, SKIP_REASONS, SURVEY_MAX_MS, SURVEY_POLL_MS } from "./quest-home";
 
 // --- the component's world, replaced -------------------------------------------
 
@@ -530,5 +530,65 @@ describe("QuestHome: outside the demo region", () => {
     await settle();
     expect(screen.getByText("quest: Cafe Uno")).toBeTruthy();
     expect(screen.queryByText("Outside the demo area")).toBeNull();
+  });
+});
+
+describe("QuestHome: the demo account goes to Midtown", () => {
+  const DEMO_ME: Me = { ...ME, demo: true };
+  const outside: Today = { ...empty, surveying: { pending: [], failed: [], outside: ["dr5ru"] } };
+  const MIDTOWN = "lat=40.7549&lng=-73.984";
+
+  it("from outside the demo region: Midtown's deck, with a note and no 'outside' panel", async () => {
+    routes["/me"] = ok(DEMO_ME);
+    routes["/quests/today"] = (path) => Promise.resolve(path.includes(MIDTOWN) ? withQuest : outside);
+    location = { lat: 41.88, lng: -87.63, source: "gps", accuracyM: 20 }; // Chicago
+    render(<QuestHome />);
+    await settle();
+    await settle();
+    expect(calls.filter((c) => c.startsWith("/quests/today"))).toEqual([
+      "/quests/today?lat=41.88&lng=-87.63",
+      `/quests/today?${MIDTOWN}`,
+    ]);
+    expect(screen.getByText("quest: Cafe Uno")).toBeTruthy();
+    const notice = screen.getByRole("region", { name: "Demo area" });
+    expect(notice.textContent).toContain("Demo area: Midtown.");
+    expect(notice.textContent).toContain("outside New York City");
+    expect(screen.queryByText("Try location again")).toBeNull();
+    expect(screen.queryByText("Outside the demo area")).toBeNull();
+  });
+
+  it("with location denied: Midtown, not Washington Square, still offering to retry", async () => {
+    routes["/me"] = ok(DEMO_ME);
+    routes["/quests/today"] = ok(withQuest);
+    location = demoSpot("denied");
+    render(<QuestHome />);
+    await settle();
+    expect(calls).toContain(`/quests/today?${MIDTOWN}`);
+    expect(screen.getByRole("region", { name: "Demo area" }).textContent).toContain("Demo area: Midtown.");
+    expect(screen.getByText("Try location again")).toBeTruthy();
+  });
+
+  it("keeps a ?at= override as is, outside or not", () => {
+    const at: Located = { lat: 41.88, lng: -87.63, source: "override" };
+    expect(demoAccountLocation(at, true)).toBe(at);
+    expect(demoAccountLocation(null, true)).toBeNull();
+  });
+
+  it("keeps a real fix inside the region", async () => {
+    routes["/me"] = ok(DEMO_ME);
+    routes["/quests/today"] = ok(withQuest);
+    render(<QuestHome />);
+    await settle();
+    expect(calls).toContain("/quests/today?lat=40.7295&lng=-73.9965");
+    expect(screen.queryByRole("region", { name: "Demo area" })).toBeNull();
+  });
+
+  it("is only for the demo account: anyone else outside still gets the 'outside' panel", async () => {
+    routes["/quests/today"] = ok(outside);
+    location = { lat: 41.88, lng: -87.63, source: "gps", accuracyM: 20 };
+    render(<QuestHome />);
+    await settle();
+    expect(screen.getByText("Outside the demo area")).toBeTruthy();
+    expect(calls.some((c) => c.includes(MIDTOWN))).toBe(false);
   });
 });

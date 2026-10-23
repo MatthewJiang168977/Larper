@@ -32,9 +32,9 @@ stays the owner: it alone runs DDL, and only the migrate Job logs in as it.
 | `TEMPORARY` on the database | | | | yes (revoked from PUBLIC) |
 
 Two more login roles, outside the services: `larper_backup_check` (the hourly backup
-check, no grant at all) and `larper_demo_reset` (migration 0012, the public demo's
-nightly reset: S on `users`, S D on `quests`, to delete the shared demo account's
-quests). Each has a connection limit of 1. The API keeps never deleting.
+check, no grant at all) and `larper_demo_reset` (migrations 0012 and 0013, the public
+demo's nightly reset: S on `users` and `tags`, S D on `quests`, S I U on
+`taste_profiles`, to delete the shared demo account's quests and put its taste back). Each has a connection limit of 1. The API keeps never deleting.
 
 S/I/U/D = SELECT/INSERT/UPDATE/DELETE. Why some cells are what they are:
 

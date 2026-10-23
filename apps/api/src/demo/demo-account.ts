@@ -13,6 +13,22 @@ import type { ClerkApi } from './clerk-api';
 /** How long a sign-in token stays usable. The web app redeems it right away. */
 export const TICKET_TTL_S = 60;
 
+/**
+ * The demo account's taste, as if onboarded with these vibe cards (profile/cards.ts):
+ * a spread of food, drink, culture and shopping, so a first deck in Midtown shows the
+ * range. The nightly reset puts it back; visitors' skips and check-ins move it by day.
+ */
+export const DEMO_TASTE = {
+  liked: ['noodle-counter', 'line-dessert', 'matcha', 'hidden-bar', 'live-set', 'odd-museum', 'crate-digging'],
+  passed: [] as string[],
+};
+
+/** Whether this Clerk user is the demo account (DEMO_CLERK_USER_ID). */
+export function isDemoUser(clerkId: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  const id = env.DEMO_CLERK_USER_ID?.trim();
+  return !!id && clerkId === id;
+}
+
 export interface DemoConfig {
   userId: string;
   email: string;

@@ -1,6 +1,6 @@
 import { Client, Pool } from 'pg';
 import { ARCHIVER_SQL, HEARTBEAT_SQL } from '../ops/backup-check';
-import { DELETE_QUESTS_SQL } from '../ops/demo-reset';
+import { DELETE_QUESTS_SQL, RESTORE_TASTE_SQL, TAGS_SQL } from '../ops/demo-reset';
 
 // The per-service roles from migration 0010 (docs/decisions/0003-service-db-roles.md).
 // The grants must equal the matrix below exactly: a new table or a new query that
@@ -60,14 +60,18 @@ const EXPECTED: Record<Role, Record<string, string[]>> = {
   },
   // templates/backup-check.yaml: no grant. CNPG creates it; no migration does.
   larper_backup_check: {},
-  // ops/demo-reset.ts: the demo account's quests, found by its Clerk id.
+  // ops/demo-reset.ts: the demo account's quests, found by its Clerk id, and its
+  // taste back to the baseline (an upsert, built from the tag slots).
   larper_demo_reset: {
     users: [S],
     quests: [S, D],
+    tags: [S],
+    taste_profiles: [S, I, U],
   },
 };
 
 const ZERO_VEC = 'array_fill(0::real, ARRAY[160])::vector';
+const ZERO_VEC_LITERAL = `[${new Array(160).fill(0).join(',')}]`;
 const PLACE = `INSERT INTO places (overture_id, name, geom, categories, chain_key, tags, tag_vec, confidence)
   VALUES ('test-roles-' || gen_random_uuid(), 'Roles Test', ST_SetSRID(ST_MakePoint(0, -60), 4326)::geography,
           '{test}', 'test-roles', '{test}', ${ZERO_VEC}, 1)`;
@@ -254,12 +258,13 @@ describeDb('per-service database roles (real database)', () => {
       expect(lim.rows[0].n).toBe(1);
     });
 
-    it('demo reset: deletes quests and writes nothing else', async () => {
+    it('demo reset: deletes quests, writes taste profiles, and nothing else', async () => {
       await denied('larper_demo_reset', 'DELETE FROM users');
       await denied('larper_demo_reset', `INSERT INTO users (clerk_id) VALUES ('test_x')`);
       await denied('larper_demo_reset', 'UPDATE quests SET status = status');
       await denied('larper_demo_reset', 'DELETE FROM taste_profiles');
-      await denied('larper_demo_reset', 'SELECT * FROM taste_profiles');
+      await denied('larper_demo_reset', 'UPDATE tags SET tag = tag');
+      await denied('larper_demo_reset', 'INSERT INTO quests (user_id) VALUES (1)');
       await denied('larper_demo_reset', 'SELECT * FROM places');
       await denied('larper_demo_reset', 'DELETE FROM outbox');
       await denied('larper_demo_reset', 'CREATE TEMP TABLE roles_test (id int)');
@@ -341,6 +346,10 @@ describeDb('per-service database roles (real database)', () => {
         );
         await inTx('larper_demo_reset', async (c) => {
           expect((await c.query(DELETE_QUESTS_SQL, [cid])).rowCount).toBe(1);
+          await c.query(TAGS_SQL);
+          // Twice: the insert, then the upsert's update.
+          expect((await c.query(RESTORE_TASTE_SQL, [cid, ZERO_VEC_LITERAL])).rowCount).toBe(1);
+          expect((await c.query(RESTORE_TASTE_SQL, [cid, ZERO_VEC_LITERAL])).rowCount).toBe(1);
         });
         await owner.query('DELETE FROM places WHERE id = $1', [place.rows[0].id]);
       } finally {

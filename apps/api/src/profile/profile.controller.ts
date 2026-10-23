@@ -3,6 +3,7 @@ import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { Pool } from 'pg';
 import { AuthUser, ClerkAuthGuard, CurrentUser } from '../auth/auth.guard';
 import { PG } from '../db/db.module';
+import { isDemoUser } from '../demo/demo-account';
 import { UserLimitGuard } from '../throttle/guards';
 import { LIMITS, OPT_IN_WINDOWS, USER_WINDOWS } from '../throttle/limits';
 import { VIBE_CARDS } from './cards';
@@ -31,9 +32,12 @@ export class ProfileController {
       'SELECT vec::text AS vec FROM taste_profiles WHERE user_id = $1',
       [user.id],
     );
-    if (!rows.length) return { id: user.id, onboarded: false, topTags: [] };
+    // demo: the shared demo account (demo/demo-account.ts). The web app then shows
+    // Midtown instead of an empty map when the visitor is outside the demo region.
+    const demo = isDemoUser(user.clerkId);
+    if (!rows.length) return { id: user.id, onboarded: false, topTags: [], demo };
     await this.tags.ready();
-    return { id: user.id, onboarded: true, topTags: topTags(JSON.parse(rows[0].vec), this.tags.tagOf) };
+    return { id: user.id, onboarded: true, topTags: topTags(JSON.parse(rows[0].vec), this.tags.tagOf), demo };
   }
 
   @Get('onboarding/cards')

@@ -1,8 +1,9 @@
 {{- if .Values.demo.enabled }}
 # Nightly: the demo account back to a clean state (apps/api/src/ops/demo-reset.ts).
 # Every visitor signed out, the Clerk user restored (its one email, no extra sign-in
-# methods or two-step verification, a new random password, still locked down), and
-# its quests deleted. `scripts/demo-account.sh reset` runs it on demand.
+# methods or two-step verification, a new random password, still locked down), its
+# quests deleted, and its taste back to the baseline (DEMO_TASTE).
+# `scripts/demo-account.sh reset` runs it on demand.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -30,8 +31,9 @@ spec:
               command: ["node", "dist/ops/demo-reset.js"]
               env:
                 {{- include "larper.demoEnv" . | nindent 16 }}
-                # Its own role, larper_demo_reset: one connection, reads users, reads
-                # and deletes quests, nothing else (roles.db.spec checks it).
+                # Its own role, larper_demo_reset: one connection; reads users and
+                # tags, deletes quests, writes taste profiles, nothing else
+                # (migrations 0012, 0013; roles.db.spec checks it).
                 - name: DB_USER
                   valueFrom: { secretKeyRef: { name: pg-demo-reset, key: username } }
                 - name: DB_PASSWORD

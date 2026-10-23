@@ -128,7 +128,7 @@ postgres:
     owner: { connectionLimit: 10 }
     # The hourly backup check: one connection, no grants (templates/backup-check.yaml).
     backup-check: { connectionLimit: 1 }
-    # The nightly demo reset: one connection; reads users, deletes quests (migration 0012).
+    # The nightly demo reset: one connection; deletes quests, restores taste (0012, 0013).
     demo-reset: { connectionLimit: 1 }
   # Connections outside the roles: CNPG's instance manager and the superuser
   # (superuser_reserved_connections is 3).
