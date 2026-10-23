@@ -96,14 +96,17 @@ check "check, bad CLI value: no deploy step" no_deploy
 # 3. A check whose instance lookup fails: refuses, never deploys.
 run_up bad-instance "" --resize-check 2 12
 check "check, failed lookup: exits non-zero" test "$RC" -ne 0
+check "check, failed lookup: stops at the CLI's error" said "NotAuthorizedOrNotFound"
 check "check, failed lookup: no deploy step" no_deploy
 
 # 4. A check over the allowance, and one without capacity: no deploy either way.
 run_up good "" --resize-check 2 16
 check "check, over the allowance: exits non-zero" test "$RC" -ne 0
+check "check, over the allowance: says why" said "A1 sizes here"
 check "check, over the allowance: no deploy step" no_deploy
 run_up no-capacity "" --resize-check 2 12
 check "check, no capacity: exits 3" test "$RC" -eq 3
+check "check, no capacity: says try later" said "try later"
 check "check, no capacity: no deploy step" no_deploy
 
 # 5. A check from a dirty tree is still only a check (it's read-only).
@@ -114,11 +117,13 @@ check "check, dirty tree: no deploy step" no_deploy
 # 6. An unknown check mode is refused before anything.
 run_up good "" --cost-check
 check "unknown check: exits 2" test "$RC" -eq 2
+check "unknown check: says so" said "unknown check --cost-check"
 check "unknown check: no deploy step" no_deploy
 
 # 7. --resize with a bad CLI value: refuses before the backup, the reboot or the deploy.
 run_up bad-quota "" --resize 2 12
 check "resize, bad CLI value: exits non-zero" test "$RC" -ne 0
+check "resize, bad CLI value: names the bad value" said "isn't a whole number"
 check "resize, bad CLI value: no deploy step and no instance update" no_deploy
 
 # 8. A dirty tree is refused before anything remote; --allow-dirty gets past the guard

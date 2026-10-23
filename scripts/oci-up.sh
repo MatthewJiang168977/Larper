@@ -75,7 +75,7 @@ for ((i = 0; i < ${#args[@]}; i++)); do
   case ${args[i]} in
     # Any check mode is a separate, read-only script, run in place of this one: exec
     # never returns, so no check can reach a step below, whatever goes wrong in it.
-    --resize-check) exec scripts/oci-resize-check.sh "${args[@]:i+1}" ;;
+    --resize-check) exec "$BASH" scripts/oci-resize-check.sh "${args[@]:i+1}" ;; # this bash, not a PATH search
     --*-check) echo "unknown check ${args[i]}" >&2; exit 2 ;;
     --close) CLOSE=1 ;;
     --allow-dirty) ALLOW_DIRTY=1 ;;
