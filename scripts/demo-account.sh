@@ -6,7 +6,7 @@
 #
 #   scripts/demo-account.sh create          # once: the Clerk user, locked down; saves its id
 #   scripts/demo-account.sh reset           # now, what the nightly demo-reset CronJob does
-#   scripts/demo-account.sh reset --taste   # ...and its taste profile too (onboarding again)
+#                                           # (sessions, account, quests, taste baseline)
 #   scripts/demo-account.sh check           # sign-up mode, and the account's settings
 #
 # Reads CLERK_SECRET_KEY from apps/web/.env.local and keeps the account in DEMO_ENV
@@ -15,7 +15,7 @@
 #   DEMO_USER_ID=user_...    # `create` writes it; oci-up.sh puts it in the clerk-demo Secret
 # `reset` runs on the cluster of the current kubectl context (KUBECONFIG; for the Oracle
 # VM, the SSH tunnel oci-up.sh prints): a Job from the demo-reset CronJob
-# (apps/api/src/ops/demo-reset.ts), then with --taste psql in the Postgres pod.
+# (apps/api/src/ops/demo-reset.ts).
 # Secrets are passed to curl in headers and request bodies on stdin, never printed.
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -27,9 +27,7 @@ API=https://api.clerk.com/v1
 NS=${NAMESPACE:-larper}
 
 cmd=${1:-}
-taste=0
-[[ ${2:-} == --taste ]] && taste=1
-case $cmd in create | reset | check) ;; *) echo "usage: $0 create | reset [--taste] | check" >&2; exit 2 ;; esac
+case $cmd in create | reset | check) ;; *) echo "usage: $0 create | reset | check" >&2; exit 2 ;; esac
 
 [[ -f $ENV_FILE ]] || { echo "no $ENV_FILE: run this from the repo folder" >&2; exit 1; }
 KEY=$(grep -E '^CLERK_SECRET_KEY=' "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '"'"'"'\r ')
@@ -120,17 +118,6 @@ case $cmd in
     kubectl -n "$NS" logs "job/$job" --tail=5
     kubectl -n "$NS" delete job "$job" --wait=false >/dev/null
 
-    # With --taste, its taste profile too (onboarding again), as the database owner.
-    if [[ $taste == 1 ]]; then
-      find_user
-      [[ $USER_ID =~ ^user_[A-Za-z0-9]+$ ]] || { echo "no Clerk user $DEMO_EMAIL" >&2; exit 1; }
-      kubectl -n "$NS" exec -i pg-1 -c postgres -- psql -U postgres -d larper -X -q -v ON_ERROR_STOP=1 \
-        -v cid="$USER_ID" -f - <<'SQL'
-\set QUIET on
-WITH t AS (DELETE FROM taste_profiles WHERE user_id = (SELECT id FROM users WHERE clerk_id = :'cid') RETURNING 1)
-SELECT 'taste profile deleted: ' || count(*) FROM t \g (tuples_only=on)
-SQL
-    fi
     ;;
 
   check)

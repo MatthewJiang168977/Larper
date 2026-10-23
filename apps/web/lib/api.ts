@@ -7,6 +7,8 @@ export interface Me {
   id: string;
   onboarded: boolean;
   topTags: string[];
+  /** The shared demo account ("Try the demo"): Midtown stands in for an unusable location. */
+  demo?: boolean;
 }
 
 export interface VibeCard {

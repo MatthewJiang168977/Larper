@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { DEMO_SPOT } from "@/lib/demo-spot";
 
-/** Why we're showing the demo spot instead of the user. */
-export type DemoReason = "waiting" | "denied" | "unavailable" | "no-gps";
+/** Why we're showing the demo spot instead of the user. ("outside": the demo account
+ * outside the demo region, decided by QuestHome from the API's answer.) */
+export type DemoReason = "waiting" | "denied" | "unavailable" | "no-gps" | "outside";
 
 export interface Located {
   lat: number;
@@ -15,6 +16,8 @@ export interface Located {
   note?: string;
   /** Set when source is "demo". */
   reason?: DemoReason;
+  /** The demo spot's name, for the notice (default: Washington Square). */
+  spot?: string;
 }
 
 export interface LocationState {
@@ -31,6 +34,7 @@ const DEMO_NOTES: Record<DemoReason, string> = {
   denied: "Location is off. Showing Washington Square.",
   unavailable: "Couldn't get a GPS fix. Showing Washington Square.",
   "no-gps": "No GPS on this device. Showing Washington Square.",
+  outside: "Outside the demo area. Showing Washington Square.",
 };
 const demo = (reason: DemoReason): Located => ({ ...DEMO, source: "demo", reason, note: DEMO_NOTES[reason] });
 // Module-level so it's the same object every render (callers use it as an effect dep).
