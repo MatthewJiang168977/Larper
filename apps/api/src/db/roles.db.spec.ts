@@ -1,5 +1,6 @@
 import { Client, Pool } from 'pg';
 import { ARCHIVER_SQL, HEARTBEAT_SQL } from '../ops/backup-check';
+import { DELETE_QUESTS_SQL } from '../ops/demo-reset';
 
 // The per-service roles from migration 0010 (docs/decisions/0003-service-db-roles.md).
 // The grants must equal the matrix below exactly: a new table or a new query that
@@ -7,7 +8,8 @@ import { ARCHIVER_SQL, HEARTBEAT_SQL } from '../ops/backup-check';
 // role, logged in as itself, is refused what it shouldn't do, and two Postgres rules
 // the matrix relies on are checked: identity columns need no sequence grant, and
 // foreign-key checks run as the table's owner. The backup check's role is in the
-// matrix with no grants at all: it runs its two queries and nothing else.
+// matrix with no grants at all: it runs its two queries and nothing else. The demo
+// reset's (migration 0012) reads users and deletes quests, and nothing else.
 //
 // Needs the owner and every role's URL (CI's db job sets them; db/test has the setup).
 const OWNER_URL = process.env.TEST_OWNER_DATABASE_URL;
@@ -17,6 +19,7 @@ const ROLE_URLS = {
   larper_taste: process.env.TEST_TASTE_DATABASE_URL,
   larper_ingest: process.env.TEST_INGEST_DATABASE_URL,
   larper_backup_check: process.env.TEST_BACKUP_CHECK_DATABASE_URL,
+  larper_demo_reset: process.env.TEST_DEMO_RESET_DATABASE_URL,
 };
 type Role = keyof typeof ROLE_URLS;
 const ROLES = Object.keys(ROLE_URLS) as Role[];
@@ -57,6 +60,11 @@ const EXPECTED: Record<Role, Record<string, string[]>> = {
   },
   // templates/backup-check.yaml: no grant. CNPG creates it; no migration does.
   larper_backup_check: {},
+  // ops/demo-reset.ts: the demo account's quests, found by its Clerk id.
+  larper_demo_reset: {
+    users: [S],
+    quests: [S, D],
+  },
 };
 
 const ZERO_VEC = 'array_fill(0::real, ARRAY[160])::vector';
@@ -246,6 +254,21 @@ describeDb('per-service database roles (real database)', () => {
       expect(lim.rows[0].n).toBe(1);
     });
 
+    it('demo reset: deletes quests and writes nothing else', async () => {
+      await denied('larper_demo_reset', 'DELETE FROM users');
+      await denied('larper_demo_reset', `INSERT INTO users (clerk_id) VALUES ('test_x')`);
+      await denied('larper_demo_reset', 'UPDATE quests SET status = status');
+      await denied('larper_demo_reset', 'DELETE FROM taste_profiles');
+      await denied('larper_demo_reset', 'SELECT * FROM taste_profiles');
+      await denied('larper_demo_reset', 'SELECT * FROM places');
+      await denied('larper_demo_reset', 'DELETE FROM outbox');
+      await denied('larper_demo_reset', 'CREATE TEMP TABLE roles_test (id int)');
+      const lim = await owner.query<{ n: number }>(
+        `SELECT rolconnlimit AS n FROM pg_roles WHERE rolname = 'larper_demo_reset'`,
+      );
+      expect(lim.rows[0].n).toBe(1);
+    });
+
     it('outbox-relay: only the outbox, and it never writes events', async () => {
       await denied('larper_relay', 'SELECT * FROM users');
       await denied('larper_relay', 'SELECT * FROM quests');
@@ -301,6 +324,28 @@ describeDb('per-service database roles (real database)', () => {
         c.query(`INSERT INTO taste_profiles (user_id, vec, source) VALUES (-1, ${ZERO_VEC}, 'events')`),
       ).catch((e: { code?: string }) => e);
       expect((err as { code?: string }).code).toBe('23503');
+    });
+
+    it("the demo reset's delete, as it runs it", async () => {
+      // A committed user with a quest (the reset's own session can't see an uncommitted one).
+      const { rows } = await owner.query<{ cid: string; uid: string }>(
+        `INSERT INTO users (clerk_id) VALUES ('test_demo_' || gen_random_uuid()) RETURNING clerk_id AS cid, id::text AS uid`,
+      );
+      const { cid, uid } = rows[0];
+      try {
+        const place = await owner.query<{ id: string }>(`${PLACE} RETURNING id::text`);
+        await owner.query(
+          `INSERT INTO quests (user_id, place_id, score, reasons, origin)
+           VALUES ($1, $2, 0, '{}', ST_SetSRID(ST_MakePoint(0, -60), 4326)::geography)`,
+          [uid, place.rows[0].id],
+        );
+        await inTx('larper_demo_reset', async (c) => {
+          expect((await c.query(DELETE_QUESTS_SQL, [cid])).rowCount).toBe(1);
+        });
+        await owner.query('DELETE FROM places WHERE id = $1', [place.rows[0].id]);
+      } finally {
+        await owner.query('DELETE FROM users WHERE id = $1', [uid]);
+      }
     });
 
     it("the outbox-relay's poll, mark-sent and prune", async () => {

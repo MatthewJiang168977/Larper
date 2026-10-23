@@ -40,15 +40,17 @@ postgres:
     work_mem: 4MB
     maintenance_work_mem: 64MB
     max_connections: "50"
-  # 39 of the 50, plus 10 reserved. Under 1 req/s an API pod needs a few connections,
-  # so its pool is 5 here, not 10: 2 pods max + 1 surge = 3 x 5. One replica each of
-  # taste-worker and ingest-worker, + 1 surge: 2 x 2 and (2 + load-places) x 4.
+  # 38 of the 50, plus the backup check's and the demo reset's 1 each, plus 10
+  # reserved. Under 1 req/s an API pod needs a few connections, so its pool is 5 here,
+  # not 10: 2 pods max + 1 surge = 3 x 5. One replica each of taste-worker and
+  # ingest-worker, + 1 surge: 2 x 2 and (2 + load-places) x 4. The owner: the migrate
+  # Job and a psql by hand.
   roles:
     api: { pool: 5, connectionLimit: 15 }
     relay: { pool: 2, connectionLimit: 3 }
     taste: { pool: 2, connectionLimit: 4 }
     ingest: { pool: 4, connectionLimit: 12 }
-    owner: { connectionLimit: 5 }
+    owner: { connectionLimit: 4 }
 
 redpanda:
   # Single core; Seastar capped at 384M, the container at 512Mi. Measured ~7m / 103Mi.

@@ -5,8 +5,9 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 
 {{/*
 The Postgres login roles besides the owner: values key -> role name. The services'
-(migration 0010 grants them what they need), and the backup check's, which needs no
-grant at all (templates/backup-check.yaml), so only CNPG's managed roles create it.
+(migration 0010 grants them what they need), the backup check's, which needs no
+grant at all (templates/backup-check.yaml), so only CNPG's managed roles create it,
+and the demo reset's (migration 0012; templates/demo-reset.yaml).
 */}}
 {{- define "larper.dbRoles" -}}
 api: larper_api
@@ -14,6 +15,20 @@ relay: larper_relay
 taste: larper_taste
 ingest: larper_ingest
 backup-check: larper_backup_check
+demo-reset: larper_demo_reset
+{{- end -}}
+
+{{/*
+The demo account's settings (demo.*), for the API and the demo-reset CronJob. The
+Clerk secret key and the user's id come from the Secret demo.secretName, created
+outside the chart (scripts/oci-up.sh, from apps/web/.env.local and the demo env file).
+*/}}
+{{- define "larper.demoEnv" -}}
+- name: CLERK_SECRET_KEY
+  valueFrom: { secretKeyRef: { name: {{ .Values.demo.secretName }}, key: secretKey } }
+- name: DEMO_CLERK_USER_ID
+  valueFrom: { secretKeyRef: { name: {{ .Values.demo.secretName }}, key: userId } }
+- { name: DEMO_EMAIL, value: {{ required "demo.email is required with demo.enabled" .Values.demo.email | quote }} }
 {{- end -}}
 
 {{/*
@@ -75,7 +90,7 @@ And when the limits together don't fit in max_connections.
 {{- fail (printf "postgres.roles.%s.connectionLimit is %v, below pool (%v) x pods (%v) = %v: the most %s pods this profile can run (replicas or the HPA's max, plus a rollout's surge%s) would be refused connections" $role $c.connectionLimit $c.pool $n $need $role (ternary ", plus one load-places run" "" (eq $role "ingest"))) }}
 {{- end }}
 {{- end }}
-{{- $total := add $r.owner.connectionLimit $r.api.connectionLimit $r.relay.connectionLimit $r.taste.connectionLimit $r.ingest.connectionLimit (index $r "backup-check").connectionLimit $v.postgres.reservedConnections -}}
+{{- $total := add $r.owner.connectionLimit $r.api.connectionLimit $r.relay.connectionLimit $r.taste.connectionLimit $r.ingest.connectionLimit (index $r "backup-check").connectionLimit (index $r "demo-reset").connectionLimit $v.postgres.reservedConnections -}}
 {{- $max := int (default "100" (get $v.postgres.parameters "max_connections")) -}}
 {{- if gt (int $total) $max }}
 {{- fail (printf "the roles' connection limits plus postgres.reservedConnections add up to %v, over max_connections (%v): raise postgres.parameters.max_connections or lower the limits" $total $max) }}

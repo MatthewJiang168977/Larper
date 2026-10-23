@@ -51,6 +51,12 @@ postgres:
     check:
       enabled: true
 
+# The shared demo account: "Try the demo" sign-in tokens, and a nightly reset.
+# oci-up.sh creates the clerk-demo Secret (infra/oci-k3s/README.md, "The public demo").
+demo:
+  enabled: true
+  email: demo@playlarper.com
+
 redpanda:
   storage: 4Gi
 

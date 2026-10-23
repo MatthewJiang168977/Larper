@@ -33,6 +33,11 @@ limit holds across API replicas. Two guards, both subclasses of the library's gu
 | `POST /onboarding` | 10 a minute |
 | everything else (`/me`, `/onboarding/cards`, the journal) | 30 a minute |
 
+- **The demo sign-in** (`DemoLimitGuard`, on `POST /demo/sign-in` only, added
+  2026-10-23): 3 a minute and 10 an hour per client IP, and 300 an hour for all clients
+  together. It needs no account, and each request is a Clerk sign-in token for the
+  shared demo account, so it gets its own tight limits on top of the per-IP one.
+
 Windows are fixed: a counter per key that expires after the window. A key over its
 limit is refused for one window from then.
 

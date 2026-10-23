@@ -1,0 +1,44 @@
+{{- if .Values.demo.enabled }}
+# Nightly: the demo account back to a clean state (apps/api/src/ops/demo-reset.ts).
+# Every visitor signed out, the Clerk user restored (its one email, no extra sign-in
+# methods or two-step verification, a new random password, still locked down), and
+# its quests deleted. `scripts/demo-account.sh reset` runs it on demand.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: demo-reset
+spec:
+  schedule: {{ .Values.demo.reset.schedule | quote }}
+  timeZone: {{ .Values.demo.reset.timeZone | quote }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 300
+      template:
+        spec:
+          # No Kubernetes API access: it talks to Clerk and Postgres only.
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          containers:
+            - name: reset
+              image: {{ .Values.api.image }}
+              imagePullPolicy: {{ .Values.imagePullPolicy }}
+              command: ["node", "dist/ops/demo-reset.js"]
+              env:
+                {{- include "larper.demoEnv" . | nindent 16 }}
+                # Its own role, larper_demo_reset: one connection, reads users, reads
+                # and deletes quests, nothing else (roles.db.spec checks it).
+                - name: DB_USER
+                  valueFrom: { secretKeyRef: { name: pg-demo-reset, key: username } }
+                - name: DB_PASSWORD
+                  valueFrom: { secretKeyRef: { name: pg-demo-reset, key: password } }
+                - name: DATABASE_URL
+                  value: "postgresql://$(DB_USER):$(DB_PASSWORD)@pg-rw.{{ .Release.Namespace }}:5432/larper"
+              resources:
+                requests: { cpu: 10m, memory: 48Mi }
+                limits: { memory: 128Mi }
+{{- end }}

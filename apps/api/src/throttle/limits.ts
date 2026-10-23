@@ -26,6 +26,10 @@ export const LIMITS = {
   // POST /quests/:id/accept, /skip, /not-today and /reason: going through a deck.
   questAction: { minute: 30, hour: 600 },
   onboarding: { minute: 10 },
+  // POST /demo/sign-in, per client IP (before any account exists) and for everyone
+  // together: each one is a Clerk sign-in token, i.e. a session on the shared account.
+  // A visitor needs one; a few more cover a second tab or a retry.
+  demoSignIn: { minute: 3, hour: 10, allPerHour: 300 },
 } as const;
 
 // Opt-in windows: routes that use them unskip them (@SkipThrottle({ [name]: false })).

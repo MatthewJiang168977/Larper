@@ -246,6 +246,23 @@ else
   log "no $CHECK_ENV: the backup check will run but alert nobody (infra/oci-k3s/README.md, \"Backup check\")"
 fi
 
+# The demo account (values-oci.yaml demo.enabled; infra/oci-k3s/README.md, "The public
+# demo"): the Clerk secret key, for "Try the demo" sign-in tokens and the nightly reset,
+# and the demo user's id, which scripts/demo-account.sh create writes to DEMO_ENV.
+# Without both, the demo is off: /demo/sign-in answers 404 and nothing resets.
+DEMO_ENV=${DEMO_ENV:-$HOME/.oci/larper-demo.env}
+demo=(--set demo.enabled=false)
+demo_user=$(grep -E '^DEMO_USER_ID=' "$DEMO_ENV" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)
+clerk_key=$(grep -E '^CLERK_SECRET_KEY=' apps/web/.env.local 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"'"'"'\r ' || true)
+if [[ $demo_user =~ ^user_[A-Za-z0-9]+$ && -n $clerk_key ]]; then
+  kubectl -n larper create secret generic clerk-demo \
+    --from-literal=secretKey="$clerk_key" --from-literal=userId="$demo_user" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  demo=()
+else
+  log "no demo account (DEMO_USER_ID in $DEMO_ENV, CLERK_SECRET_KEY in apps/web/.env.local): \"Try the demo\" is off"
+fi
+
 # --- 5. operators and the app -----------------------------------------------------
 helm repo add jetstack https://charts.jetstack.io >/dev/null 2>&1 || true
 helm repo add cnpg https://cloudnative-pg.github.io/charts >/dev/null 2>&1 || true
@@ -304,7 +321,7 @@ helm upgrade --install larper infra/helm/larper -n larper -f infra/helm/larper/v
   --set api.image="$REG/larper-api:$TAG" \
   --set postgres.backup.endpointURL="$ENDPOINT" \
   --set postgres.backup.serverName="$SERVER_NAME" \
-  "${restore[@]}" "${monitoring[@]}" "${public[@]}" \
+  "${restore[@]}" "${monitoring[@]}" "${public[@]}" "${demo[@]}" \
   --wait --timeout 20m
 
 log "backups"

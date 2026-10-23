@@ -29,7 +29,7 @@ export const cacheLookups = new Counter({
 // Requests refused with 429, by limit (ip, user) and route (Controller.handler).
 export const rateLimited = new Counter({
   name: 'rate_limited_total',
-  help: 'Requests refused by a rate limit, by scope (ip, user) and route',
+  help: 'Requests refused by a rate limit, by scope (ip, user, demo) and route',
   labelNames: ['scope', 'route'],
   registers: [registry],
 });

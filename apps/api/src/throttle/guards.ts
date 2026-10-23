@@ -12,7 +12,7 @@ import type { Request, Response } from 'express';
 import type { AuthUser } from '../auth/auth.guard';
 import { rateLimited } from '../metrics/metrics';
 import { clientIp } from './client-ip';
-import { LIMITS, USER_WINDOWS } from './limits';
+import { HOUR, LIMITS, MINUTE, USER_WINDOWS } from './limits';
 
 /** RATE_LIMIT_ENABLED=0 turns every limit off (Helm: api.rateLimit.enabled). */
 export const rateLimitEnabled = () => process.env.RATE_LIMIT_ENABLED !== '0';
@@ -23,7 +23,7 @@ const route = (ctx: ExecutionContext) => `${ctx.getClass().name}.${ctx.getHandle
 // Retry-After header (it sets Retry-After-<name> for named limits) and the same
 // number in the body, for the web app; a metric per refusal; and the on/off switch.
 abstract class LimitGuard extends ThrottlerGuard {
-  protected abstract readonly scope: 'ip' | 'user';
+  protected abstract readonly scope: 'ip' | 'user' | 'demo';
 
   protected async shouldSkip(): Promise<boolean> {
     return !rateLimitEnabled();
@@ -99,6 +99,32 @@ export class UserLimitGuard extends LimitGuard {
         return user.id;
       },
       generateKey: (ctx, userId, name) => userKey(ctx, userId, name),
+    };
+    super(options, storage, reflector);
+  }
+}
+
+/**
+ * POST /demo/sign-in: per client IP (a minute and an hour) and one counter for all
+ * clients together, on top of the global per-IP limit. `@UseGuards(DemoLimitGuard)`.
+ */
+@Injectable()
+export class DemoLimitGuard extends LimitGuard {
+  protected readonly scope = 'demo';
+  constructor(
+    @InjectThrottlerOptions() _module: unknown,
+    @InjectThrottlerStorage() storage: ThrottlerStorage,
+    reflector: Reflector,
+  ) {
+    const { minute, hour, allPerHour } = LIMITS.demoSignIn;
+    const options: ThrottlerModuleOptions = {
+      throttlers: [
+        { name: 'demo', limit: minute, ttl: MINUTE },
+        { name: 'demo-hour', limit: hour, ttl: HOUR },
+        { name: 'demo-all', limit: allPerHour, ttl: HOUR, generateKey: () => 'rl:demo-all' },
+      ],
+      getTracker: (req) => clientIp(req as Request),
+      generateKey: (_ctx, ip, name) => `rl:${name}:${ip}`,
     };
     super(options, storage, reflector);
   }

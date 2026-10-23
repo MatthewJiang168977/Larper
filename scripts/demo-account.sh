@@ -1,22 +1,21 @@
 #!/usr/bin/env bash
-# The public demo's shared account: one Clerk user that anyone may sign in as
-# (the web app shows its email and password on the sign-in page).
+# The public demo's shared account: one Clerk user that every visitor signs in as,
+# with "Try the demo" (a one-time sign-in token from the API's POST /demo/sign-in). It
+# has no password anyone knows: visitors never type one, and the reset sets a new
+# random one each time.
 #
-#   scripts/demo-account.sh create          # once: the Clerk user, locked down
-#   scripts/demo-account.sh reset           # sign everyone out, restore the password, clear its quests
+#   scripts/demo-account.sh create          # once: the Clerk user, locked down; saves its id
+#   scripts/demo-account.sh reset           # now, what the nightly demo-reset CronJob does
 #   scripts/demo-account.sh reset --taste   # ...and its taste profile too (onboarding again)
 #   scripts/demo-account.sh check           # sign-up mode, and the account's settings
 #
-# Reads CLERK_SECRET_KEY from apps/web/.env.local and the account from DEMO_ENV
+# Reads CLERK_SECRET_KEY from apps/web/.env.local and keeps the account in DEMO_ENV
 # (default ~/.oci/larper-demo.env, mode 600):
 #   DEMO_EMAIL=demo@playlarper.com
-#   DEMO_PASSWORD=...        # 15+ characters (the instance's minimum); `create` makes one if missing
-# The database part runs psql in the Postgres pod of the current kubectl context
-# (KUBECONFIG; for the Oracle VM, the SSH tunnel oci-up.sh prints).
-#
-# A shared password is known to everyone who uses it, so anyone signed in could change
-# it or add an email. `reset` puts the password back and revokes every session; the
-# account can't delete itself or create organizations (set by `create`, kept by `reset`).
+#   DEMO_USER_ID=user_...    # `create` writes it; oci-up.sh puts it in the clerk-demo Secret
+# `reset` runs on the cluster of the current kubectl context (KUBECONFIG; for the Oracle
+# VM, the SSH tunnel oci-up.sh prints): a Job from the demo-reset CronJob
+# (apps/api/src/ops/demo-reset.ts), then with --taste psql in the Postgres pod.
 # Secrets are passed to curl in headers and request bodies on stdin, never printed.
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -40,16 +39,13 @@ PK=$(grep -E '^NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=' "$ENV_FILE" | head -1 | cut -
 if [[ ! -s $DEMO_ENV && $cmd == create ]]; then
   umask 077
   mkdir -p "$(dirname "$DEMO_ENV")"
-  pw=$(node -e 'console.log(require("crypto").randomBytes(18).toString("base64url"))')
-  printf 'DEMO_EMAIL=%s\nDEMO_PASSWORD=%s\n' "${DEMO_EMAIL:-demo@playlarper.com}" "$pw" >"$DEMO_ENV"
+  printf 'DEMO_EMAIL=%s\n' "${DEMO_EMAIL:-demo@playlarper.com}" >"$DEMO_ENV"
   chmod 600 "$DEMO_ENV"
-  echo "wrote $DEMO_ENV (a new password; put the same values in Vercel's NEXT_PUBLIC_DEMO_*)"
 fi
 [[ -s $DEMO_ENV ]] || { echo "no $DEMO_ENV: run '$0 create' first" >&2; exit 1; }
 DEMO_EMAIL=$(grep -E '^DEMO_EMAIL=' "$DEMO_ENV" | cut -d= -f2- | tr -d '\r')
-DEMO_PASSWORD=$(grep -E '^DEMO_PASSWORD=' "$DEMO_ENV" | cut -d= -f2- | tr -d '\r')
-[[ -n $DEMO_EMAIL && ${#DEMO_PASSWORD} -ge 15 ]] || { echo "$DEMO_ENV needs DEMO_EMAIL and a DEMO_PASSWORD of 15+ characters" >&2; exit 1; }
-export DEMO_EMAIL DEMO_PASSWORD # read by node from the environment, never from argv
+[[ -n $DEMO_EMAIL ]] || { echo "$DEMO_ENV needs DEMO_EMAIL" >&2; exit 1; }
+export DEMO_EMAIL # read by node from the environment, never from argv
 
 # clerk METHOD PATH [--json, body on stdin] -> $BODY, $STATUS. Call it directly, never in $(...)
 # or as part of a pipe (a subshell: $BODY and $STATUS wouldn't come back); feed a body
@@ -77,6 +73,12 @@ lock_down() { # the account can't delete itself or make organizations
   [[ $STATUS == 200 ]] || { echo "locking down the account failed: HTTP $STATUS: $BODY" >&2; exit 1; }
 }
 
+save_user_id() { # DEMO_ENV keeps the email and the id, and no password
+  local tmp
+  tmp=$(mktemp) && printf 'DEMO_EMAIL=%s\nDEMO_USER_ID=%s\n' "$DEMO_EMAIL" "$USER_ID" >"$tmp" \
+    && chmod 600 "$tmp" && mv "$tmp" "$DEMO_ENV"
+}
+
 sign_up_mode() { # Clerk's public environment (what every browser loads): no secret needed
   local fapi
   fapi=$(node -e 's=process.argv[1].split("_").slice(2).join("_");console.log(Buffer.from(s,"base64").toString().replace(/\$$/,""))' "$PK")
@@ -89,57 +91,55 @@ case $cmd in
     if [[ -n $USER_ID ]]; then
       echo "$DEMO_EMAIL already exists ($USER_ID); locking it down"
     else
-      clerk POST /users --json <<<"$(body '{email_address: [process.env.DEMO_EMAIL], password: process.env.DEMO_PASSWORD}')"
+      # A random password nobody keeps: visitors sign in with tokens, and the reset
+      # replaces it anyway.
+      clerk POST /users --json <<<"$(body '{email_address: [process.env.DEMO_EMAIL], password: require("crypto").randomBytes(24).toString("base64url")}')"
       [[ $STATUS == 200 ]] || { echo "creating $DEMO_EMAIL failed: HTTP $STATUS: $BODY" >&2; exit 1; }
       USER_ID=$(json 'j.id')
       echo "created $DEMO_EMAIL ($USER_ID)"
     fi
     lock_down
+    save_user_id
+    echo "saved its id to $DEMO_ENV (oci-up.sh puts it in the clerk-demo Secret)."
     echo "done. It signs up nobody else: set Clerk's sign-up mode to Restricted (now: $(sign_up_mode))."
     ;;
 
   reset)
-    find_user
-    [[ -n $USER_ID ]] || { echo "no Clerk user $DEMO_EMAIL: run '$0 create'" >&2; exit 1; }
-    # 1. Everyone out, then the password back (sessions first, so a visitor's open tab
-    #    can't change it again in between).
-    clerk GET "/sessions?user_id=$USER_ID&status=active&limit=500"
-    [[ $STATUS == 200 ]] || { echo "listing sessions failed: HTTP $STATUS" >&2; exit 1; }
-    revoked=0
-    for sid in $(json 'j.map(s=>s.id).join(" ")'); do
-      clerk POST "/sessions/$sid/revoke" && [[ $STATUS == 200 ]] && revoked=$((revoked + 1))
-    done
-    clerk PATCH "/users/$USER_ID" --json <<<"$(body '{password: process.env.DEMO_PASSWORD}')"
-    [[ $STATUS == 200 ]] || { echo "restoring the password failed: HTTP $STATUS" >&2; exit 1; }
-    lock_down
-    echo "Clerk: revoked $revoked session(s), password restored, still can't delete itself"
+    # What the nightly CronJob does, now: a Job from it, so there's one implementation.
+    ctx=$(kubectl config current-context 2>/dev/null || echo '?')
+    kubectl -n "$NS" get cronjob demo-reset >/dev/null 2>&1 \
+      || { echo "no CronJob demo-reset in $NS (context $ctx): is the chart deployed with demo.enabled?" >&2; exit 1; }
+    job=demo-reset-manual-$(date +%s)
+    echo "cluster: context $ctx, namespace $NS: job $job"
+    kubectl -n "$NS" create job "$job" --from=cronjob/demo-reset >/dev/null || exit 1
+    if ! kubectl -n "$NS" wait "job/$job" --for=condition=Complete --timeout=180s >/dev/null; then
+      kubectl -n "$NS" logs "job/$job" --tail=20 >&2
+      echo "the reset failed" >&2
+      exit 1
+    fi
+    kubectl -n "$NS" logs "job/$job" --tail=5
+    kubectl -n "$NS" delete job "$job" --wait=false >/dev/null
 
-    # 2. Its quests (journal and today's quest), and with --taste its taste profile.
-    [[ $USER_ID =~ ^user_[A-Za-z0-9]+$ ]] || { echo "unexpected Clerk user id" >&2; exit 1; }
-    echo "database: context $(kubectl config current-context 2>/dev/null || echo '?'), namespace $NS"
-    kubectl -n "$NS" exec -i pg-1 -c postgres -- psql -U postgres -d larper -X -q -v ON_ERROR_STOP=1 \
-      -v cid="$USER_ID" -v taste="$taste" -f - <<'SQL'
+    # With --taste, its taste profile too (onboarding again), as the database owner.
+    if [[ $taste == 1 ]]; then
+      find_user
+      [[ $USER_ID =~ ^user_[A-Za-z0-9]+$ ]] || { echo "no Clerk user $DEMO_EMAIL" >&2; exit 1; }
+      kubectl -n "$NS" exec -i pg-1 -c postgres -- psql -U postgres -d larper -X -q -v ON_ERROR_STOP=1 \
+        -v cid="$USER_ID" -f - <<'SQL'
 \set QUIET on
-SELECT (SELECT id FROM users WHERE clerk_id = :'cid') AS uid,
-       EXISTS (SELECT FROM users WHERE clerk_id = :'cid') AS found \gset
-\if :found
-  WITH q AS (DELETE FROM quests WHERE user_id = :uid RETURNING 1)
-  SELECT 'quests deleted: ' || count(*) FROM q \g (tuples_only=on)
-  \if :taste
-    WITH t AS (DELETE FROM taste_profiles WHERE user_id = :uid RETURNING 1)
-    SELECT 'taste profile deleted: ' || count(*) FROM t \g (tuples_only=on)
-  \endif
-\else
-  \echo 'no app user yet (the account has never used the API): nothing to clear'
-\endif
+WITH t AS (DELETE FROM taste_profiles WHERE user_id = (SELECT id FROM users WHERE clerk_id = :'cid') RETURNING 1)
+SELECT 'taste profile deleted: ' || count(*) FROM t \g (tuples_only=on)
 SQL
+    fi
     ;;
 
   check)
     echo "Clerk sign-up mode: $(sign_up_mode)   (want: restricted)"
     find_user
     if [[ -z $USER_ID ]]; then echo "no Clerk user $DEMO_EMAIL"; exit 1; fi
+    saved=$(grep -E '^DEMO_USER_ID=' "$DEMO_ENV" | cut -d= -f2- | tr -d '\r')
+    [[ $saved == "$USER_ID" ]] || echo "WARNING: $DEMO_ENV has DEMO_USER_ID=${saved:-none}; run '$0 create' to save $USER_ID"
     clerk GET "/users/$USER_ID"
-    json '`account ${j.id}: delete_self_enabled=${j.delete_self_enabled} create_organization_enabled=${j.create_organization_enabled} emails=${j.email_addresses.length} last_sign_in=${j.last_sign_in_at ? new Date(j.last_sign_in_at).toISOString() : "never"}`'
+    json '`account ${j.id}: delete_self_enabled=${j.delete_self_enabled} create_organization_enabled=${j.create_organization_enabled} two_factor=${j.two_factor_enabled} emails=${j.email_addresses.length} last_sign_in=${j.last_sign_in_at ? new Date(j.last_sign_in_at).toISOString() : "never"}`'
     ;;
 esac

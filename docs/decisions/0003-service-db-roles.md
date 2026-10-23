@@ -31,6 +31,11 @@ stays the owner: it alone runs DDL, and only the migrate Job logs in as it.
 | `jobs` | S I | | | S U |
 | `TEMPORARY` on the database | | | | yes (revoked from PUBLIC) |
 
+Two more login roles, outside the services: `larper_backup_check` (the hourly backup
+check, no grant at all) and `larper_demo_reset` (migration 0012, the public demo's
+nightly reset: S on `users`, S D on `quests`, to delete the shared demo account's
+quests). Each has a connection limit of 1. The API keeps never deleting.
+
 S/I/U/D = SELECT/INSERT/UPDATE/DELETE. Why some cells are what they are:
 
 - `SELECT … FOR UPDATE` needs UPDATE (relay on `outbox`, taste-worker on `taste_profiles`,
