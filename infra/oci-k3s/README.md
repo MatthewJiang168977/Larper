@@ -83,7 +83,7 @@ Set up once, by hand, in the tenancy (2026-10-21). Check them with the commands 
 
 ## Security
 
-- **Two firewalls, both SSH-only.**
+- **Two firewalls, both SSH-only** (plus HTTP and HTTPS when public: see "Going public").
   - VCN security list (cloud side, from the probe): inbound TCP 22 and ICMP 3/4
     (path-MTU discovery) only.
   - Host iptables (`bootstrap.sh`): Oracle's image rules already allow only SSH, but end
@@ -96,18 +96,18 @@ Set up once, by hand, in the tenancy (2026-10-21). Check them with the commands 
     `nat PREROUTING`, and kube-router and kube-proxy ACCEPT that traffic in `FORWARD`
     before our rules see it. So a guard in `mangle PREROUTING`, which runs before
     both, drops every new TCP connection to the node from outside the pod network
-    except port 22, and all new inbound UDP. Whatever Kubernetes opens later stays
-    closed.
-  - Bootstrap refuses to write rules that drop SSH or open any other port, validates
+    except port 22 (22, 80 and 443 with `PUBLIC=1`), and all new inbound UDP. Whatever
+    else Kubernetes opens later stays closed.
+  - Bootstrap refuses to write rules that drop SSH, open any other INPUT port, or let the
+    guard pass anything but those ports, validates
     them with `iptables-restore --test`, and arms a 3-minute automatic rollback that
     `oci-up.sh` cancels only after a *new* SSH connection succeeds. The firewall is the
     bootstrap's last step (after the k3s install), so the window only has to cover that
     reconnect; the rollback restarts k3s too, since restoring the rules flushes its
     chains.
-  - Nothing else is reachable: the k3s API (6443), the kubelet (10250), Traefik
-    (80/443) and NodePorts are closed; kubectl and the app go through SSH tunnels.
-    Public access comes later through a Cloudflare Tunnel (outbound only), not by
-    opening ports.
+  - Nothing else is reachable: the k3s API (6443), the kubelet (10250), NodePorts and
+    Traefik's own ports (8080 dashboard, off; 9100 metrics) are closed, and so are
+    80/443 unless the demo is public. kubectl goes through an SSH tunnel.
 - **SSH:** keys only (`~/.ssh/larper_oci`), no passwords, no root login, 3 auth tries.
 - **Updates:** everything at bootstrap, then `unattended-upgrades` installs security
   updates daily and reboots at 04:30 when a kernel update needs it. k3s and all pods
@@ -285,6 +285,8 @@ infra/oci-k3s/test/run.sh up        # stand-in VM + S3, oci-up.sh, then checks (
 infra/oci-k3s/test/run.sh reboot    # restart the VM (as after an unattended-upgrades reboot), check again
 infra/oci-k3s/test/run.sh k3s-restart  # re-apply the firewall + restart k3s under requests, check again
 infra/oci-k3s/test/run.sh restore   # new VM, empty disks, restore Postgres from the last backup folder
+infra/oci-k3s/test/run.sh public    # the public deploy (PUBLIC_HOST, no certificate): 80/443 open, then visitor checks
+infra/oci-k3s/test/run.sh close     # oci-up.sh --close, then checks that only SSH is reachable
 infra/oci-k3s/test/run.sh down      # remove it all
 ```
 
@@ -348,6 +350,60 @@ scripts/demo-account.sh check           # sign-up mode and the account's setting
 - **Locked down:** the account can't delete itself or create organizations. `create` sets both, and `reset` keeps them.
 - **Why `reset` restores the password:** everyone knows it, so anyone signed in could change it, and the password goes back before anyone else can lock the demo.
 - **How the database part runs:** psql in the Postgres pod of the current kubectl context (the SSH tunnel that `oci-up.sh` prints). It deletes only that user's rows.
+
+## Going public
+
+The API answers on the internet at `https://$PUBLIC_HOST`, served by k3s's Traefik on the
+VM. There's no OCI load balancer and no reserved IP: the quotas forbid both.
+
+```bash
+cat ~/.oci/larper-public.env          # PUBLIC_HOST, WEB_ORIGIN, ACME_ENV, ACME_EMAIL (never committed)
+scripts/oci-up.sh                     # deploys public when PUBLIC_HOST is set
+SECURITY_LIST=closed scripts/oci-up.sh  # everything but the cloud edge (to check first)
+scripts/oci-up.sh --close             # back to SSH-only: security list, firewall, chart (fast)
+```
+
+**What changes:**
+
+- **VCN security list `larper-k3s`:** inbound TCP 80 and 443 from anywhere, added to TCP 22
+  and ICMP 3/4. `oci-up.sh` writes the whole rule list (an update replaces it) and does
+  nothing if it's already right. Opening happens last, after the chart; closing happens
+  first, before anything else.
+- **VM firewall (`bootstrap.sh`, `PUBLIC=1`):** the mangle guard passes TCP 22, 80 and 443.
+  INPUT stays SSH-only (traffic to Traefik is forwarded, never input), and UDP stays
+  dropped.
+- **Traefik (k3s HelmChartConfig, `bootstrap.sh`):** `externalTrafficPolicy: Local`, so the
+  client's address survives k3s's service load balancer. The dashboard is off, and memory
+  is capped at 256 Mi.
+- **Chart (`public.enabled`):**
+  - The Ingress answers only for `ingress.host`; other names get Traefik's 404.
+  - HTTP redirects to HTTPS.
+  - cert-manager gets the certificate from Let's Encrypt over HTTP-01 (`public.acme`:
+    staging first, then production).
+  - Traefik middlewares cap each client address at 20 req/s (burst 60), 30 concurrent
+    requests, and 64 KB bodies (413 past that).
+  - CORS and Clerk's authorized parties are the web app's origin.
+- **Client address:** `api.rateLimit.clientIp: forwarded`. Traefik replaces any
+  `X-Forwarded-For` a client sends with the connection's address, and the API believes
+  only that. (`cloudflare` would let any client choose its own address with
+  `CF-Connecting-IP`.)
+- **Health endpoints:** `/healthz` and `/readyz` say nothing about the server (no pod name).
+
+**Reachable from the internet:**
+
+- 22 (SSH, keys only).
+- 80: redirects, and cert-manager's challenge.
+- 443 at `$PUBLIC_HOST`: the API's routes, all behind a Clerk token except `/healthz` and
+  `/readyz`, which are static.
+- Nothing else: the checks below and in `test/run.sh public` scan for it.
+
+**If the public IP changes** (it does only if the instance is terminated: an ephemeral IP
+"remains assigned" through stop and start, per OCI's docs):
+
+1. Update the DNS A record for `$PUBLIC_HOST`.
+2. Refresh `~/larper-oci-instance.env` (`scripts/oci-capacity-probe.sh`) and
+   `ssh-keygen -R` the old address.
+3. Run `oci-up.sh`. The name doesn't change, so the certificate stays valid.
 
 ## Backup check
 

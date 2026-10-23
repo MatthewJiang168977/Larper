@@ -63,6 +63,24 @@ ingress:
   className: traefik
   host: ""   # empty = match any host (localhost:8080 locally)
 
+# The API on the internet over HTTPS at ingress.host (templates/public.yaml; on Oracle,
+# scripts/oci-up.sh with PUBLIC_HOST: infra/oci-k3s/README.md, "Going public").
+public:
+  enabled: false
+  # The host's certificate, from Let's Encrypt through cert-manager: staging (untrusted,
+  # generous rate limits: try it first), production, or off (no certificate: Traefik's
+  # self-signed default; the stand-in VM, which the internet can't reach).
+  acme: staging
+  # ACME account contact. Optional; oci-up.sh passes it from a local file, so it's never
+  # in the repo.
+  acmeEmail: ""
+  # A backstop at Traefik, per client address, before a request reaches Node. The API's
+  # own limits (api.rateLimit) stay; these only have to stop a flood cheaply.
+  edge:
+    rate: { average: 20, burst: 60 } # requests per second
+    inFlight: 30                     # concurrent requests
+    maxBodyBytes: 65536              # the API takes small JSON bodies only
+
 postgres:
   # Built from infra/postgres/Dockerfile: CNPG standard image (pgvector) + PostGIS.
   image: larper-registry:5111/larper-postgres:17

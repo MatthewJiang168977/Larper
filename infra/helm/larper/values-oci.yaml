@@ -11,20 +11,21 @@
 imagePullPolicy: IfNotPresent
 
 ingress:
-  # k3s's built-in Traefik. Its ports are closed by both firewalls (only SSH is
-  # open); reach it through an SSH tunnel (oci-up.sh prints it), later through a
-  # Cloudflare Tunnel.
+  # k3s's built-in Traefik. Closed by both firewalls unless oci-up.sh runs with
+  # PUBLIC_HOST (then 80 and 443 only, HTTPS at that name; infra/oci-k3s/README.md,
+  # "Going public"); otherwise reach it through the SSH tunnel oci-up.sh prints.
   className: traefik
 
 api:
   # The public demo ingests on request only in New York City (the five boroughs, the
   # same box as data/extract_overture.py): elsewhere a visitor gets what's loaded.
   ingestRegion: "-74.26,40.49,-73.70,40.92"
-  # Public traffic will come only through a Cloudflare Tunnel (cloudflared -> Traefik
-  # -> API), where CF-Connecting-IP is the visitor. Until then, and for an admin on the
-  # SSH tunnel, there's no such header and X-Forwarded-For is used.
+  # Visitors reach Traefik directly (no proxy in front), and Traefik sets
+  # X-Forwarded-For to the connection's address, keeping it thanks to
+  # externalTrafficPolicy Local (bootstrap.sh). "cloudflare" would be wrong here: any
+  # client could send its own CF-Connecting-IP and dodge the per-IP limit.
   rateLimit:
-    clientIp: cloudflare
+    clientIp: forwarded
   hpa:
     # On 2 OCPU: ~1.1 cores requested by the rest of the stack, so three API pods at
     # 300m fit and a fourth would stay Pending. values-demo.yaml takes it to 1-2.

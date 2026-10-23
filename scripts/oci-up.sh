@@ -5,6 +5,18 @@
 #   RESTORE_FROM=pg scripts/oci-up.sh        # new VM: restore Postgres from backup
 #                                            # (infra/oci-k3s/README.md, "rebuild")
 #   MONITORING=1 scripts/oci-up.sh           # also Prometheus + Grafana (~0.8 GiB more)
+#   scripts/oci-up.sh --close                # back to SSH-only, fast (no images or operators)
+#
+# Public (infra/oci-k3s/README.md, "Going public"): set PUBLIC_HOST, in the environment
+# or in PUBLIC_ENV (default ~/.oci/larper-public.env, never committed):
+#   PUBLIC_HOST=api.example.com     # the API's name; its A record points at the VM
+#   WEB_ORIGIN=https://example.com  # the web app (CORS and Clerk's authorized parties)
+#   ACME_ENV=staging                # staging | production | off (no certificate)
+#   ACME_EMAIL=you@example.com      # optional ACME contact
+# Then ports 80 and 443 open in the VCN security list and the VM's firewall, and the
+# API answers at https://$PUBLIC_HOST. Without PUBLIC_HOST both are SSH-only.
+#   SECURITY_LIST=open|closed|skip  # override the security list: e.g. closed to deploy
+#                                   # everything but the cloud edge; skip for the stand-in
 #
 # Needs: ~/larper-oci-instance.env (scripts/oci-capacity-probe.sh writes it), the SSH
 # key ~/.ssh/larper_oci, the OCI CLI, docker buildx (builder larper-multi), helm,
@@ -41,8 +53,82 @@ SSH_PORT=${SSH_PORT:-22}
 IMAGE_PLATFORM=${IMAGE_PLATFORM:-linux/arm64}
 BACKUP_ENDPOINT_URL=${BACKUP_ENDPOINT_URL:-} # set: skip Object Storage, use this S3 endpoint and $S3_ENV
 MONITORING=${MONITORING:-0}
+CLOSE=0
+[[ ${1:-} == --close ]] && CLOSE=1
 
 log() { echo "==> $*"; }
+winpath() { cygpath -w "$1" 2>/dev/null || echo "$1"; } # kubectl, helm, oci: Windows programs under Git Bash
+
+# Public settings: the environment wins over PUBLIC_ENV.
+PUBLIC_ENV=${PUBLIC_ENV:-$HOME/.oci/larper-public.env}
+if [[ -f $PUBLIC_ENV && $CLOSE == 0 ]]; then
+  while IFS='=' read -r k v; do
+    v=${v%$'\r'}
+    case $k in PUBLIC_HOST | WEB_ORIGIN | ACME_ENV | ACME_EMAIL) [[ -n ${!k:-} ]] || printf -v "$k" '%s' "$v" ;; esac
+  done < <(grep -E '^[A-Z_]+=' "$PUBLIC_ENV")
+fi
+PUBLIC_HOST=${PUBLIC_HOST:-}
+[[ $CLOSE == 1 ]] && PUBLIC_HOST=
+WEB_ORIGIN=${WEB_ORIGIN:-}
+ACME_ENV=${ACME_ENV:-staging}
+ACME_EMAIL=${ACME_EMAIL:-}
+PUBLIC=0
+if [[ -n $PUBLIC_HOST ]]; then
+  PUBLIC=1
+  [[ $PUBLIC_HOST =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] \
+    || { echo "PUBLIC_HOST must be a hostname, e.g. api.example.com" >&2; exit 1; }
+  [[ $WEB_ORIGIN =~ ^https://[a-z0-9.-]+(:[0-9]+)?$ ]] \
+    || { echo "PUBLIC_HOST needs WEB_ORIGIN, the web app's https:// origin (CORS, Clerk)" >&2; exit 1; }
+  [[ $ACME_ENV =~ ^(staging|production|off)$ ]] || { echo "ACME_ENV must be staging, production or off" >&2; exit 1; }
+fi
+SECURITY_LIST=${SECURITY_LIST:-$([[ $PUBLIC == 1 ]] && echo open || echo closed)}
+[[ $SECURITY_LIST =~ ^(open|closed|skip)$ ]] || { echo "SECURITY_LIST must be open, closed or skip" >&2; exit 1; }
+
+# The VCN security list larper-k3s (scripts/oci-capacity-probe.sh made it): its ingress
+# rules exactly as wanted. "closed": TCP 22 and ICMP 3/4 (path-MTU discovery), as the
+# probe made them. "open": also TCP 80 and 443. An update replaces the whole list, so
+# the full set is written; nothing happens if it's already right. Egress is untouched.
+security_list() { # open|closed
+  local want=$1 tenancy vcn sl cur new
+  tenancy=$(awk -F' *= *' '/^\[DEFAULT\]/{d=1;next} /^\[/{d=0} d&&$1=="tenancy"{print $2}' "$OCI_CONFIG")
+  vcn=$(oci network vcn list --compartment-id "$tenancy" --display-name larper-k3s --query 'data[0].id' --raw-output)
+  sl=$(oci network security-list list --compartment-id "$tenancy" --vcn-id "$vcn" --display-name larper-k3s \
+    --query 'data[0].id' --raw-output)
+  [[ $sl == ocid1.securitylist.* ]] || { echo "no security list larper-k3s in VCN larper-k3s" >&2; exit 1; }
+  new=$(mktemp)
+  python - "$want" >"$new" <<'PY'
+import json, sys
+tcp = lambda p, d=None: {"protocol": "6", "source": "0.0.0.0/0", "isStateless": False,
+                         "tcpOptions": {"destinationPortRange": {"min": p, "max": p}}, **({"description": d} if d else {})}
+rules = [tcp(22), {"protocol": "1", "source": "0.0.0.0/0", "isStateless": False, "icmpOptions": {"type": 3, "code": 4}}]
+if sys.argv[1] == "open":
+    rules += [tcp(80, "larper: HTTP (ACME challenge, redirect to HTTPS)"), tcp(443, "larper: HTTPS (Traefik)")]
+print(json.dumps(rules))
+PY
+  cur=$(oci network security-list get --security-list-id "$sl" --query 'data."ingress-security-rules"' --output json)
+  # The same rules? (protocol, source, ports or ICMP type/code; descriptions don't count)
+  if python -c '
+import json, sys
+def g(d, *ks):  # nested get; the CLI answers in kebab-case, the file is camelCase
+    for k in ks:
+        d = (d or {}).get(k)
+    return d
+def key(r):
+    return (str(r["protocol"]), r["source"],
+            g(r, "tcpOptions", "destinationPortRange", "min") or g(r, "tcp-options", "destination-port-range", "min"),
+            g(r, "icmpOptions", "type") if "icmpOptions" in r else g(r, "icmp-options", "type"),
+            g(r, "icmpOptions", "code") if "icmpOptions" in r else g(r, "icmp-options", "code"))
+want = sorted(map(key, json.load(open(sys.argv[1]))), key=str)
+have = sorted(map(key, json.load(sys.stdin)), key=str)
+sys.exit(0 if want == have else 1)' "$(winpath "$new")" <<<"$cur"; then
+    log "security list larper-k3s: already $want"
+  else
+    log "security list larper-k3s: setting $want ($( [[ $want == open ]] && echo 'TCP 22, 80, 443' || echo 'TCP 22' ) and ICMP 3/4 inbound)"
+    oci network security-list update --security-list-id "$sl" --ingress-security-rules "file://$(winpath "$new")" \
+      --force --wait-for-state AVAILABLE >/dev/null
+  fi
+  rm -f "$new"
+}
 [[ -f $ENV_FILE ]] || { echo "no $ENV_FILE: run scripts/oci-capacity-probe.sh (it saves the VM's address)" >&2; exit 1; }
 # shellcheck disable=SC1090
 source "$ENV_FILE"
@@ -51,10 +137,15 @@ HOST=ubuntu@$PUBLIC_IP
 SSH_OPTS=(-i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ConnectTimeout=15 -o Port="$SSH_PORT")
 vm() { ssh "${SSH_OPTS[@]}" "$HOST" "$@"; }
 
+# --- 0. the cloud edge, closing first ----------------------------------------------
+# Closing goes first, before anything on the VM changes. Opening goes last (after the
+# chart, below), so nothing is reachable before its rate limits and TLS are in place.
+[[ $SECURITY_LIST == closed ]] && security_list closed
+
 # --- 1. bootstrap -----------------------------------------------------------------
-log "bootstrapping $PUBLIC_IP"
+log "bootstrapping $PUBLIC_IP (PUBLIC=$PUBLIC$( [[ $CLOSE == 1 ]] && echo ', firewall only'))"
 scp "${SSH_OPTS[@]}" infra/oci-k3s/bootstrap.sh "$HOST:/tmp/larper-bootstrap.sh"
-vm "sudo K3S_VERSION=${K3S_VERSION:-v1.35.5+k3s1} bash /tmp/larper-bootstrap.sh"
+vm "sudo K3S_VERSION=${K3S_VERSION:-v1.35.5+k3s1} PUBLIC=$PUBLIC FIREWALL_ONLY=$CLOSE bash /tmp/larper-bootstrap.sh"
 # A fresh connection proves SSH survived the firewall change; only then keep it.
 if vm "systemctl list-timers --all | grep -q larper-fw-rollback"; then
   vm "sudo systemctl stop larper-fw-rollback.timer" && log "firewall confirmed (rollback cancelled)"
@@ -67,16 +158,26 @@ vm "sudo cat /etc/rancher/k3s/k3s.yaml" \
 chmod 600 "$KUBECONFIG_OCI"
 ssh "${SSH_OPTS[@]}" -N -o ExitOnForwardFailure=yes -L "$TUNNEL_PORT:127.0.0.1:6443" "$HOST" &
 TUNNEL=$!
-trap 'kill $TUNNEL 2>/dev/null' EXIT
+trap 'kill $TUNNEL 2>/dev/null || true' EXIT # under set -e a failing trap would turn exit 0 into 1
 # kubectl and helm are Windows programs under Git Bash: give them Windows paths, and
 # stop Git Bash rewriting arguments like /readyz into C:/Program Files/Git/readyz.
 export MSYS_NO_PATHCONV=1
-winpath() { cygpath -w "$1" 2>/dev/null || echo "$1"; }
 export KUBECONFIG=$(winpath "$KUBECONFIG_OCI")
-for _ in $(seq 1 20); do kubectl get --raw /readyz >/dev/null 2>&1 && break; sleep 2; done
+# A firewall change restarts k3s (bootstrap.sh); on one core its API server can take a
+# couple of minutes to be ready again.
+for _ in $(seq 1 90); do kubectl get --raw /readyz >/dev/null 2>&1 && break; sleep 2; done
 kubectl get --raw /readyz >/dev/null || { echo "k3s API not reachable through the tunnel" >&2; exit 1; }
 # The bootstrap's last act (the firewall) restarts k3s.
 kubectl wait node --all --for=condition=Ready --timeout=300s >/dev/null
+
+if [[ $CLOSE == 1 ]]; then
+  # The chart as it is, minus the public parts: no host, no TLS, no edge middlewares.
+  # Certificates and issuers left behind are harmless (nothing routes to them).
+  helm upgrade larper infra/helm/larper -n larper --reuse-values \
+    --set public.enabled=false --set-string ingress.host= --wait --timeout 10m >/dev/null
+  log "closed: SSH only, at the security list and on the VM"
+  exit 0
+fi
 
 # --- 3. images --------------------------------------------------------------------
 TAG=$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo -dirty)
@@ -183,6 +284,14 @@ else
   SERVER_NAME=${SERVER_NAME:-pg}
 fi
 
+# Public: the API's name, its certificate, and who may call it from a browser.
+public=(--set public.enabled=false)
+if [[ $PUBLIC == 1 ]]; then
+  public=(--set public.enabled=true --set-string ingress.host="$PUBLIC_HOST" --set public.acme="$ACME_ENV"
+    --set-string public.acmeEmail="$ACME_EMAIL" --set "api.cors.origins={$WEB_ORIGIN}"
+    --set-string clerk.authorizedParties="$WEB_ORIGIN")
+fi
+
 log "larper"
 # A cluster from before the per-service DB roles needs this once (see the script).
 scripts/pg-owner-createrole.sh
@@ -195,14 +304,43 @@ helm upgrade --install larper infra/helm/larper -n larper -f infra/helm/larper/v
   --set api.image="$REG/larper-api:$TAG" \
   --set postgres.backup.endpointURL="$ENDPOINT" \
   --set postgres.backup.serverName="$SERVER_NAME" \
-  "${restore[@]}" "${monitoring[@]}" \
+  "${restore[@]}" "${monitoring[@]}" "${public[@]}" \
   --wait --timeout 20m
 
 log "backups"
 kubectl -n larper get scheduledbackup,backup 2>/dev/null || true
+
+# --- 6. the cloud edge, opening last ------------------------------------------------
+if [[ $SECURITY_LIST == open ]]; then
+  security_list open
+  if [[ $ACME_ENV != off ]]; then
+    # HTTP-01: Let's Encrypt fetches a token from http://$PUBLIC_HOST/.well-known/...
+    log "certificate for $PUBLIC_HOST ($ACME_ENV)"
+    kubectl -n larper wait certificate/api-tls --for=condition=Ready --timeout=10m \
+      || { kubectl -n larper describe certificate api-tls | tail -20; exit 1; }
+  fi
+fi
+# What the internet can reach: the security list decides, whatever the VM allows.
+if [[ $PUBLIC == 1 && $SECURITY_LIST == open ]]; then
+  reach="SSH, HTTP and HTTPS"
+  cat <<EOF
+
+Public at https://$PUBLIC_HOST (certificate: $ACME_ENV).
+Only 22, 80 and 443 reach the VM. Close it all: scripts/oci-up.sh --close
+EOF
+elif [[ $PUBLIC == 1 ]]; then
+  reach="only SSH (the security list is $SECURITY_LIST; the VM itself would take 80 and 443)"
+  cat <<EOF
+
+Ready for https://$PUBLIC_HOST, but NOT reachable from the internet: security list $SECURITY_LIST.
+Open it with: scripts/oci-up.sh   (or SECURITY_LIST=open)
+EOF
+else
+  reach="only SSH"
+fi
 cat <<EOF
 
-Up on $PUBLIC_IP (only SSH is open). kubectl and the app go through SSH:
+Up on $PUBLIC_IP: $reach reaches it from the internet. kubectl goes through SSH:
   ssh -i ~/.ssh/larper_oci -N -L $TUNNEL_PORT:127.0.0.1:6443 $HOST &
   export KUBECONFIG=$KUBECONFIG_OCI
   kubectl -n kube-system port-forward svc/traefik 8081:80     # app at http://localhost:8081
