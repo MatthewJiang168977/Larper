@@ -1,5 +1,7 @@
 import { Show, SignInButton, SignUpButton } from "@clerk/nextjs";
 import { Suspense } from "react";
+import { demoEnabled } from "@/components/auth/demo-account";
+import { TryDemoButton } from "@/components/auth/try-demo";
 import { QuestHome } from "@/components/quest/quest-home";
 
 export default function Home() {
@@ -23,13 +25,19 @@ export default function Home() {
             <li>A photobooth bar.</li>
             <li>The dumpling counter with no sign.</li>
           </ul>
-          <div className="flex gap-3">
+          <div className="flex items-start gap-3">
             <SignInButton>
               <button className="stamp-btn rounded-md bg-paper px-4 py-2">Sign in</button>
             </SignInButton>
-            <SignUpButton>
-              <button className="stamp-btn rounded-md bg-oxblood px-4 py-2 text-paper">Start a quest log</button>
-            </SignUpButton>
+            {/* Sign-ups by invitation only (the public demo): the main button signs in
+                as the shared demo account instead. */}
+            {demoEnabled(process.env.NEXT_PUBLIC_SIGNUP_MODE) ? (
+              <TryDemoButton className="stamp-btn rounded-md bg-oxblood px-4 py-2 text-paper" />
+            ) : (
+              <SignUpButton>
+                <button className="stamp-btn rounded-md bg-oxblood px-4 py-2 text-paper">Start a quest log</button>
+              </SignUpButton>
+            )}
           </div>
         </main>
       </Show>

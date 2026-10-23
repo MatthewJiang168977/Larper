@@ -3,7 +3,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { FailOpenStorage } from './fail-open.storage';
-import { IpLimitGuard, UserLimitGuard } from './guards';
+import { DemoLimitGuard, IpLimitGuard, UserLimitGuard } from './guards';
 
 // Rate limits (limits.ts), counted in Redis so they hold across API replicas. One
 // round trip per limit window per request: a Lua script (INCR, PTTL, and a block key
@@ -25,7 +25,7 @@ import { IpLimitGuard, UserLimitGuard } from './guards';
       }),
     }),
   ],
-  providers: [UserLimitGuard, { provide: APP_GUARD, useClass: IpLimitGuard }],
-  exports: [UserLimitGuard],
+  providers: [UserLimitGuard, DemoLimitGuard, { provide: APP_GUARD, useClass: IpLimitGuard }],
+  exports: [UserLimitGuard, DemoLimitGuard],
 })
 export class ThrottleModule {}

@@ -59,47 +59,56 @@ function retryAfter(body: { retryAfterS?: unknown }, res: Response): number | un
   return Number.isFinite(s) && s > 0 ? s : undefined;
 }
 
-// fetch() against the API with the Clerk session token attached. Clerk tokens are
-// short-lived (60s); getToken() returns a cached one or refreshes it.
+// fetch() against the API: a timeout, no cookies, and failures as ApiError. With a
+// token, it's sent as the bearer (useApi); without, the call is anonymous.
+export async function apiRequest<T>(path: string, init: RequestInit = {}, token?: string | null): Promise<T> {
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      // Auth is the bearer token below, never a cookie: send none cross-origin.
+      credentials: "omit",
+      signal: timeout,
+      headers: {
+        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...init.headers,
+      },
+    });
+  } catch (e) {
+    if (timeout.aborted) throw new ApiError("timed out", 0, "timeout");
+    throw new ApiError((e as Error).message, 0, "network");
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    // Nest's validation errors carry a list of messages.
+    const message = Array.isArray(body.message) ? body.message.join("; ") : body.message;
+    throw new ApiError(
+      message ?? `${res.status} ${res.statusText}`,
+      res.status,
+      "http",
+      body.code,
+      res.status === 429 ? retryAfter(body, res) : undefined,
+    );
+  }
+  return res.json() as Promise<T>;
+}
+
+// apiRequest with the Clerk session token attached. Clerk tokens are short-lived
+// (60s); getToken() returns a cached one or refreshes it.
 export function useApi() {
   const { getToken } = useAuth();
   return useCallback(
-    async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
-      const token = await getToken();
-      const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-      let res: Response;
-      try {
-        res = await fetch(`${API_BASE}${path}`, {
-          ...init,
-          // Auth is the bearer token below, never a cookie: send none cross-origin.
-          credentials: "omit",
-          signal: timeout,
-          headers: {
-            ...(init.body ? { "Content-Type": "application/json" } : {}),
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            ...init.headers,
-          },
-        });
-      } catch (e) {
-        if (timeout.aborted) throw new ApiError("timed out", 0, "timeout");
-        throw new ApiError((e as Error).message, 0, "network");
-      }
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        // Nest's validation errors carry a list of messages.
-        const message = Array.isArray(body.message) ? body.message.join("; ") : body.message;
-        throw new ApiError(
-          message ?? `${res.status} ${res.statusText}`,
-          res.status,
-          "http",
-          body.code,
-          res.status === 429 ? retryAfter(body, res) : undefined,
-        );
-      }
-      return res.json() as Promise<T>;
-    },
+    async <T,>(path: string, init: RequestInit = {}): Promise<T> => apiRequest<T>(path, init, await getToken()),
     [getToken],
   );
+}
+
+/** A one-time Clerk sign-in token for the shared demo account (POST /demo/sign-in). */
+export async function demoTicket(): Promise<string> {
+  const { ticket } = await apiRequest<{ ticket: string }>("/demo/sign-in", { method: "POST" });
+  return ticket;
 }
 
 // --- quests (shapes mirror apps/api/src/quests/quests.service.ts) -----------

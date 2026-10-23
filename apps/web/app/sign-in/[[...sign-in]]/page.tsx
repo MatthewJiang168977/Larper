@@ -1,6 +1,7 @@
 import { SignIn } from "@clerk/nextjs";
 import { Suspense } from "react";
-import { DemoAccount, signInAppearance } from "@/components/auth/demo-account";
+import { signInAppearance } from "@/components/auth/demo-account";
+import { DemoPanel } from "@/components/auth/try-demo";
 
 // Clerk's form reads the URL (path routing) at request time, which can't be part of
 // the prerendered shell under Cache Components: the shell prerenders, the form streams in.
@@ -10,7 +11,7 @@ export default function SignInPage() {
       <Suspense fallback={<p className="field-label">Loading sign-in…</p>}>
         <SignIn appearance={signInAppearance(process.env.NEXT_PUBLIC_SIGNUP_MODE)} />
       </Suspense>
-      <DemoAccount email={process.env.NEXT_PUBLIC_DEMO_EMAIL} password={process.env.NEXT_PUBLIC_DEMO_PASSWORD} />
+      <DemoPanel signUpMode={process.env.NEXT_PUBLIC_SIGNUP_MODE} />
     </div>
   );
 }

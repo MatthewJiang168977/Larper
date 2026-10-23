@@ -107,6 +107,7 @@ jobs:
       TEST_TASTE_DATABASE_URL: postgres://larper_taste:taste-pw@localhost:5432/larper?sslmode=disable
       TEST_INGEST_DATABASE_URL: postgres://larper_ingest:ingest-pw@localhost:5432/larper?sslmode=disable
       TEST_BACKUP_CHECK_DATABASE_URL: postgres://larper_backup_check:check-pw@localhost:5432/larper?sslmode=disable
+      TEST_DEMO_RESET_DATABASE_URL: postgres://larper_demo_reset:demo-reset-pw@localhost:5432/larper?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       # The stack's image is CloudNativePG's with PostGIS added; this is the same pair

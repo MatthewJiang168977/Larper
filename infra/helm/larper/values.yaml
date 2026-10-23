@@ -54,10 +54,23 @@ api:
 
 clerk:
   # Public by design (it ships to every browser). The API derives the JWKS URL from it,
-  # so no Clerk secret lives in the cluster.
+  # so verifying tokens needs no Clerk secret (only demo.enabled brings one).
   publishableKey: pk_test_bmF0aW9uYWwtcmVkZmlzaC04MTA0LmNsZXJrLmFjY291bnRzLmRldiQ
   # Origins allowed in a token's azp claim (comma-separated).
   authorizedParties: http://localhost:3001
+
+# The public demo's shared account (apps/api/src/demo, scripts/demo-account.sh). On:
+# POST /demo/sign-in hands out one-time Clerk sign-in tokens for that one user, and a
+# CronJob resets it nightly. Needs the Secret secretName (keys secretKey: the Clerk
+# secret key, userId: the demo user's id), which scripts/oci-up.sh creates.
+demo:
+  enabled: false
+  secretName: clerk-demo
+  email: ""
+  reset:
+    # Every night at 04:00 New York time (the demo region's).
+    schedule: "0 4 * * *"
+    timeZone: America/New_York
 
 ingress:
   className: traefik
@@ -115,6 +128,8 @@ postgres:
     owner: { connectionLimit: 10 }
     # The hourly backup check: one connection, no grants (templates/backup-check.yaml).
     backup-check: { connectionLimit: 1 }
+    # The nightly demo reset: one connection; reads users, deletes quests (migration 0012).
+    demo-reset: { connectionLimit: 1 }
   # Connections outside the roles: CNPG's instance manager and the superuser
   # (superuser_reserved_connections is 3).
   reservedConnections: 10

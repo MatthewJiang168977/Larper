@@ -338,18 +338,19 @@ namespace; with `--cgroupns=private` the kubelet keeps track of running containe
 - The web app hides the sign-in form's "Sign up" link when `NEXT_PUBLIC_SIGNUP_MODE=restricted` is set (Vercel).
 - `scripts/demo-account.sh check` shows the mode, read from Clerk's public environment endpoint.
 
-**The demo account.** One shared Clerk user, shown on the sign-in page when Vercel has `NEXT_PUBLIC_DEMO_EMAIL` and `NEXT_PUBLIC_DEMO_PASSWORD` (public on purpose).
+**The demo account.** One shared Clerk user that every visitor signs in as with **Try the demo**: the landing page's main button, and a panel on the sign-in page, whenever `NEXT_PUBLIC_SIGNUP_MODE=restricted`.
+- **How it signs in:** the button calls the API's `POST /demo/sign-in`, which asks Clerk's Backend API for a sign-in token for that one user (60 s, single use), and the browser redeems it with Clerk's `signIn.ticket()`. There's no password to show, and no emailed code: the account has no inbox, and a token skips Clerk's new-device check.
+- **Limits:** 3 a minute and 10 an hour per client IP, 300 an hour for everyone (docs/decisions/0004). The request has no body: it can only ever sign in as the configured user.
+- **What the API needs:** `demo.enabled` (on in `values-oci.yaml`) and the Secret `clerk-demo` (keys `secretKey`, the Clerk secret key, and `userId`). `oci-up.sh` creates it from `apps/web/.env.local` and `~/.oci/larper-demo.env`; without them the demo is off and `/demo/sign-in` is 404. This is the one place a Clerk secret lives in the cluster.
+- **Locked down:** it can't delete itself or create organizations. Before each token the API takes off two-step verification or a lockout, either of which would stop the next visitor.
+- **Reset every night** at 04:00 New York time (CronJob `demo-reset`, `apps/api/src/ops/demo-reset.ts`): every session revoked; its one email back as primary; any other email, phone, social login, passkey, wallet, two-step verification, name or picture removed; a new random password nobody knows; and its quests deleted, as the role `larper_demo_reset` (migration 0012), which can read users and delete quests and nothing else. Its taste profile stays.
 
 ```bash
-scripts/demo-account.sh create          # once: the user, plus ~/.oci/larper-demo.env (email + generated password)
-scripts/demo-account.sh reset           # sign everyone out, restore the password, clear its quests
+scripts/demo-account.sh create          # once: the user, locked down; its id goes to ~/.oci/larper-demo.env
+scripts/demo-account.sh reset           # the nightly reset, now (a Job from the CronJob)
 scripts/demo-account.sh reset --taste   # ...and its taste profile (onboarding again)
 scripts/demo-account.sh check           # sign-up mode and the account's settings
 ```
-
-- **Locked down:** the account can't delete itself or create organizations. `create` sets both, and `reset` keeps them.
-- **Why `reset` restores the password:** everyone knows it, so anyone signed in could change it, and the password goes back before anyone else can lock the demo.
-- **How the database part runs:** psql in the Postgres pod of the current kubectl context (the SSH tunnel that `oci-up.sh` prints). It deletes only that user's rows.
 
 ## Going public
 
