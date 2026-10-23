@@ -120,10 +120,17 @@ fi
 #   every visitor would share one counter. One node, so no traffic is dropped.
 # - no dashboard (it was only on the pod's own port, never routed, but needn't exist)
 # - a memory limit, which k3s's Traefik doesn't have, so a flood can't take the node's
+#   Sized by the VM: 256Mi on the 6 GB VM, 512Mi and a 100m request on the 12 GB
+#   one (the Always Free maximum, values-oci-a1max.yaml). Measured ~20Mi at rest.
 if [[ $TEST != 1 ]]; then
   mkdir -p "$(dirname "$TRAEFIK_CONFIG")"
+  if (( $(awk '/^MemTotal:/ {print int($2 / 1048576)}' /proc/meminfo) >= 11 )); then
+    TRAEFIK_CPU=100m TRAEFIK_MEM=512Mi
+  else
+    TRAEFIK_CPU=50m TRAEFIK_MEM=256Mi
+  fi
   new_cfg=$(mktemp)
-  cat >"$new_cfg" <<'EOF'
+  cat >"$new_cfg" <<EOF
 # Written by infra/oci-k3s/bootstrap.sh.
 apiVersion: helm.cattle.io/v1
 kind: HelmChartConfig
@@ -138,14 +145,14 @@ spec:
     api:
       dashboard: false
     resources:
-      requests: { cpu: 50m, memory: 64Mi }
-      limits: { memory: 256Mi }
+      requests: { cpu: $TRAEFIK_CPU, memory: 64Mi }
+      limits: { memory: $TRAEFIK_MEM }
 EOF
   if cmp -s "$new_cfg" "$TRAEFIK_CONFIG"; then
     rm -f "$new_cfg"
   else
     install -m 0600 "$new_cfg" "$TRAEFIK_CONFIG" && rm -f "$new_cfg"
-    log "Traefik: client addresses kept, no dashboard, 256Mi limit (k3s upgrades it in the background)"
+    log "Traefik: client addresses kept, no dashboard, $TRAEFIK_MEM limit (k3s upgrades it in the background)"
   fi
 fi
 fi # FIREWALL_ONLY

@@ -1,0 +1,55 @@
+# The Oracle VM at the Always Free A1 maximum: 2 OCPU / 12 GB (Oracle: "1,500 OCPU
+# hours and 9,000 GB hours per month", i.e. 2 OCPUs and 12 GB running all month).
+# scripts/oci-up.sh layers it last, over values-oci.yaml and values-demo.yaml, when the
+# VM it deploys to has 2 CPUs and ~12 GB (it asks the VM); the 1 OCPU / 6 GB VM gets
+# values-demo.yaml alone. Only what the bigger VM changes is here.
+#
+# Memory at the limits below, with k3s, containerd and the OS (~1.2 GiB) and the system
+# pods (~0.25 GiB): ~8.5 GiB of the 11.4 usable, the rest page cache for Postgres.
+# Expected use ~3.5-4.5 GiB, so memory stays above Oracle's 20% idle-reclamation line.
+
+api:
+  # Two replicas always, so a rollout or a pod restart never takes the API away; up to
+  # four under load. 150m each: four of them are 0.6 of the 2 cores, the HPA scales at
+  # 60% (90m, ~4 req/s per pod in the demo measurements).
+  resources:
+    requests: { cpu: 150m, memory: 128Mi }
+    limits: { memory: 256Mi }
+  hpa:
+    minReplicas: 2
+    maxReplicas: 4
+
+postgres:
+  # ~1 GiB working set at full cache; room to 3 GiB for maintenance (index builds
+  # during a metro load) and the backends.
+  resources:
+    requests: { cpu: 250m, memory: 1Gi }
+    limits: { memory: 3Gi }
+  # shared_buffers a quarter of the limit; effective_cache_size what Postgres and the
+  # page cache can hold. maintenance_work_mem speeds the index work of a metro load.
+  # A change to shared_buffers or max_connections restarts Postgres (CNPG does it once).
+  parameters:
+    shared_buffers: 768MB
+    effective_cache_size: 2GB
+    work_mem: 8MB
+    maintenance_work_mem: 256MB
+    max_connections: "100"
+  # 60 of the 100, plus 10 reserved (the backup check and the demo reset keep their 1
+  # each from values.yaml). API: 4 pods + 1 surge = 5 x 5. Ingest: the worker, its
+  # surge and a metro load (load-places) = 3 x 4, plus room for one more run. The rest
+  # is headroom for a later step up without a Postgres restart.
+  roles:
+    api: { pool: 5, connectionLimit: 25 }
+    relay: { pool: 2, connectionLimit: 3 }
+    taste: { pool: 2, connectionLimit: 4 }
+    ingest: { pool: 4, connectionLimit: 16 }
+    owner: { connectionLimit: 10 }
+
+ingest:
+  # Still one DuckDB thread: a load keeps to about one core and leaves the other to
+  # the API. More memory, so a metro-sized extract spills less.
+  duckdbMemory: 1GB
+  duckdbThreads: 1
+  resources:
+    requests: { cpu: 50m, memory: 192Mi }
+    limits: { memory: 1536Mi }

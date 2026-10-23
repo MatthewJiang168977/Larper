@@ -6,6 +6,13 @@
 #                                            # (infra/oci-k3s/README.md, "rebuild")
 #   MONITORING=1 scripts/oci-up.sh           # also Prometheus + Grafana (~0.8 GiB more)
 #   scripts/oci-up.sh --close                # back to SSH-only, fast (no images or operators)
+#   scripts/oci-up.sh --resize-check 2 12    # can the VM become 2 OCPU / 12 GB at $0? (changes nothing)
+#   scripts/oci-up.sh --resize 2 12          # back up, resize (a reboot), then deploy for the new size
+#   scripts/oci-up.sh --resize 1 6           # the way back
+#
+# Sizes (infra/oci-k3s/README.md, "Resizing"): the chart profile follows the VM. With 2
+# CPUs and ~12 GB, values-oci-a1max.yaml goes over values-demo.yaml; otherwise
+# values-demo.yaml alone (sized for 1 OCPU / 6 GB).
 #
 # Public (infra/oci-k3s/README.md, "Going public"): set PUBLIC_HOST, in the environment
 # or in PUBLIC_ENV (default ~/.oci/larper-public.env, never committed):
@@ -30,7 +37,7 @@
 #   4. Object Storage: bucket larper-pg-backups + an S3 key for CNPG (Always Free:
 #      20 GB, 50k requests/month; see the README for the numbers)
 #   5. installs cert-manager, CloudNativePG + its Barman Cloud plugin, then the larper
-#      chart with values-oci.yaml + values-demo.yaml (the VM is 1 OCPU / 6 GB);
+#      chart with values-oci.yaml + values-demo.yaml (+ values-oci-a1max.yaml at 2 OCPU / 12 GB);
 #      monitoring only with MONITORING=1
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -54,7 +61,15 @@ IMAGE_PLATFORM=${IMAGE_PLATFORM:-linux/arm64}
 BACKUP_ENDPOINT_URL=${BACKUP_ENDPOINT_URL:-} # set: skip Object Storage, use this S3 endpoint and $S3_ENV
 MONITORING=${MONITORING:-0}
 CLOSE=0
-[[ ${1:-} == --close ]] && CLOSE=1
+RESIZE=          # "check" or "apply" (--resize-check / --resize OCPUS MEMORY_GB)
+case ${1:-} in
+  --close) CLOSE=1 ;;
+  --resize | --resize-check)
+    [[ $# -eq 3 ]] || { echo "usage: $0 $1 OCPUS MEMORY_GB   (e.g. 2 12, or 1 6 to go back)" >&2; exit 2; }
+    RESIZE=$([[ $1 == --resize ]] && echo apply || echo check)
+    RESIZE_OCPUS=$2 RESIZE_MEMORY_GB=$3
+    ;;
+esac
 
 log() { echo "==> $*"; }
 winpath() { cygpath -w "$1" 2>/dev/null || echo "$1"; } # kubectl, helm, oci: Windows programs under Git Bash
@@ -136,6 +151,102 @@ source "$ENV_FILE"
 HOST=ubuntu@$PUBLIC_IP
 SSH_OPTS=(-i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ConnectTimeout=15 -o Port="$SSH_PORT")
 vm() { ssh "${SSH_OPTS[@]}" "$HOST" "$@"; }
+
+# --- resize (--resize-check / --resize) ---------------------------------------------
+# Oracle's Always Free A1 allowance is 1,500 OCPU-hours and 9,000 GB-hours a month:
+# 2 OCPU / 12 GB running all month (744 h: 1,488 and 8,928), for all A1 instances in
+# the tenancy together. The quota policy larper-free-tier-caps holds the tenancy to it.
+# Changing a running instance's OCPUs and memory reboots it and keeps its public and
+# private IPs and volumes; without capacity or quota it keeps its old size.
+# The OCI CLI and Python print CRLF under Git Bash: every value is stripped and checked
+# before any arithmetic (a stray \r there aborts the function, not the script).
+nocr() { tr -d '\r'; }
+int() { [[ $2 =~ ^[0-9]+$ ]] || { echo "resize: $1 isn't a whole number: '$2'" >&2; exit 1; }; }
+resize_vm() { # ocpus memory_gb check|apply
+  local o=$1 m=$2 mode=$3 tenancy inst cur_o cur_m ad oo om avail_o avail_m cap
+  [[ -n ${INSTANCE_ID:-} ]] || { echo "no INSTANCE_ID in $ENV_FILE: resizing is for the Oracle VM" >&2; exit 1; }
+  [[ $o =~ ^[12]$ && $m =~ ^[0-9]+$ ]] && (( m >= 4 && m <= 12 )) \
+    || { echo "A1 sizes here: 1-2 OCPUs and 4-12 GB (Always Free: 2 OCPU / 12 GB in all)" >&2; exit 1; }
+  tenancy=$(awk -F' *= *' '/^\[DEFAULT\]/{d=1;next} /^\[/{d=0} d&&$1=="tenancy"{print $2}' "$OCI_CONFIG" | nocr)
+  inst=$(oci compute instance get --instance-id "$INSTANCE_ID" --query 'data' --output json)
+  read -r cur_o cur_m ad < <(python -c 'import json,sys; d=json.load(sys.stdin); c=d["shape-config"]
+print(int(c["ocpus"]), int(c["memory-in-gbs"]), d["availability-domain"])' <<<"$inst" | nocr)
+  int "current OCPUs" "$cur_o"; int "current memory" "$cur_m"
+  log "resize $( [[ $mode == check ]] && echo check || echo plan): $cur_o OCPU / $cur_m GB -> $o OCPU / $m GB ($ad)"
+
+  # 1. $0: this VM plus every other A1 instance that isn't terminated (stopped ones
+  #    hold no OCPU-hours, but would as soon as they start) within the allowance.
+  read -r oo om < <(oci compute instance list --compartment-id "$tenancy" --all --output json \
+    --query 'data[?shape==`VM.Standard.A1.Flex` && "lifecycle-state"!=`TERMINATED` && "lifecycle-state"!=`TERMINATING`]' \
+    | python -c 'import json,sys; xs=[x for x in json.load(sys.stdin) if x["id"]!=sys.argv[1]]
+print(sum(int(x["shape-config"]["ocpus"]) for x in xs), sum(int(x["shape-config"]["memory-in-gbs"]) for x in xs))' "$INSTANCE_ID" | nocr)
+  int "other A1 OCPUs" "$oo"; int "other A1 memory" "$om"
+  (( (o + oo) * 744 <= 1500 && (m + om) * 744 <= 9000 )) \
+    || { echo "over the Always Free allowance: $((o + oo)) OCPU / $((m + om)) GB across A1 instances" >&2; exit 1; }
+  log "  \$0: $((o + oo)) OCPU x 744 h = $(((o + oo) * 744)) of 1,500 OCPU-h; $((m + om)) GB x 744 h = $(((m + om) * 744)) of 9,000 GB-h (other A1 instances: $oo / $om)"
+
+  # 2. Quota: what's left for A1 in this AD, plus what this VM already holds.
+  avail_o=$(oci limits resource-availability get --compartment-id "$tenancy" --service-name compute \
+    --limit-name standard-a1-core-count --availability-domain "$ad" --query 'data.available' --raw-output)
+  avail_m=$(oci limits resource-availability get --compartment-id "$tenancy" --service-name compute \
+    --limit-name standard-a1-memory-count --availability-domain "$ad" --query 'data.available' --raw-output)
+  avail_o=$(nocr <<<"$avail_o") avail_m=$(nocr <<<"$avail_m")
+  avail_o=${avail_o%.*} avail_m=${avail_m%.*}
+  int "A1 OCPU quota left" "$avail_o"; int "A1 memory quota left" "$avail_m"
+  (( avail_o + cur_o >= o && avail_m + cur_m >= m )) \
+    || { echo "quota: only $((avail_o + cur_o)) OCPU / $((avail_m + cur_m)) GB allowed for this VM" >&2; exit 1; }
+  log "  quota: up to $((avail_o + cur_o)) OCPU / $((avail_m + cur_m)) GB for this VM"
+
+  # 3. Capacity in its AD right now (a report: it reserves nothing).
+  cap=$(oci compute compute-capacity-report create --compartment-id "$tenancy" --availability-domain "$ad" \
+    --shape-availabilities "[{\"instanceShape\":\"VM.Standard.A1.Flex\",\"instanceShapeConfig\":{\"ocpus\":$o,\"memoryInGBs\":$m}}]" \
+    --query 'data."shape-availabilities"[0]."availability-status"' --raw-output | nocr)
+  log "  capacity for $o OCPU / $m GB in $ad: $cap"
+  if [[ $mode == check ]]; then
+    log "check only: nothing changed"
+    exit 0
+  fi
+  [[ $cap == AVAILABLE ]] || { echo "no capacity for $o OCPU / $m GB now; the VM stays at $cur_o / $cur_m. Try later." >&2; exit 1; }
+  if (( cur_o == o && cur_m == m )); then
+    log "  already $o OCPU / $m GB"
+    return
+  fi
+
+  # 4. A fresh base backup first, through the VM's own kubectl (the tunnel isn't up yet).
+  local b=pg-before-resize-$(date -u +%Y%m%dt%H%M%S)
+  log "  base backup $b"
+  vm "sudo k3s kubectl -n larper apply -f -" <<EOF >/dev/null
+apiVersion: postgresql.cnpg.io/v1
+kind: Backup
+metadata: { name: $b }
+spec: { cluster: { name: pg }, method: plugin, pluginConfiguration: { name: barman-cloud.cloudnative-pg.io } }
+EOF
+  vm "sudo k3s kubectl -n larper wait backup/$b --for=jsonpath='{.status.phase}'=completed --timeout=15m" >/dev/null \
+    || { echo "the backup didn't complete; not resizing" >&2; exit 1; }
+
+  # 5. The change. Oracle reboots the VM (an ACPI shutdown: systemd stops k3s and the
+  #    pods) and boots it at the new size; the deploy below then retunes the chart.
+  local t0=$SECONDS
+  log "  resizing (the VM reboots: the API is down until k3s and the pods are back)"
+  oci compute instance update --instance-id "$INSTANCE_ID" --force \
+    --shape-config "{\"ocpus\": $o, \"memoryInGBs\": $m}" >/dev/null
+  for _ in $(seq 1 90); do
+    sleep 10
+    [[ $(oci compute instance get --instance-id "$INSTANCE_ID" \
+      --query 'join(`/`, [to_string(data."shape-config".ocpus), to_string(data."shape-config"."memory-in-gbs"), data."lifecycle-state"])' \
+      --raw-output 2>/dev/null | nocr) == "$o.0/$m.0/RUNNING" ]] && vm "true" 2>/dev/null && break
+  done
+  [[ $(vm nproc 2>/dev/null | nocr) == "$o" ]] || { echo "the VM isn't back at $o OCPU after 15 min: check the console" >&2; exit 1; }
+  log "  resized: $o OCPU / $m GB, SSH back after $((SECONDS - t0)) s"
+}
+if [[ -n $RESIZE ]]; then
+  resize_vm "$RESIZE_OCPUS" "$RESIZE_MEMORY_GB" "$RESIZE" || exit 1
+  # Whatever happened inside: a check never goes on to deploy, and a resize goes on
+  # only at the size it asked for.
+  [[ $RESIZE == check ]] && { echo "resize check stopped before the deploy" >&2; exit 1; }
+  [[ $(vm nproc 2>/dev/null | nocr) == "$RESIZE_OCPUS" ]] \
+    || { echo "the VM isn't at $RESIZE_OCPUS OCPU: not deploying" >&2; exit 1; }
+fi
 
 # --- 0. the cloud edge, closing first ----------------------------------------------
 # Closing goes first, before anything on the VM changes. Opening goes last (after the
@@ -301,6 +412,19 @@ else
   SERVER_NAME=${SERVER_NAME:-pg}
 fi
 
+# The chart profile follows the VM (asked, not assumed: the stand-in VM too). 11 GB:
+# 12 GB of shape is ~11.5 GiB after the kernel's share.
+vm_size=$(vm "echo \$(nproc) \$(awk '/^MemTotal:/ {print int(\$2 / 1048576)}' /proc/meminfo)" | tr -d '\r')
+vm_cpus=${vm_size% *} vm_mem_gb=${vm_size#* }
+[[ $vm_cpus =~ ^[0-9]+$ && $vm_mem_gb =~ ^[0-9]+$ ]] || { echo "couldn't read the VM's size: '$vm_size'" >&2; exit 1; }
+size=()
+if (( vm_cpus >= 2 && vm_mem_gb >= 11 )); then
+  size=(-f infra/helm/larper/values-oci-a1max.yaml)
+  log "VM: $vm_cpus CPUs / ${vm_mem_gb} GiB: values-oci-a1max.yaml over values-demo.yaml"
+else
+  log "VM: $vm_cpus CPU(s) / ${vm_mem_gb} GiB: values-demo.yaml (the 1 OCPU / 6 GB profile)"
+fi
+
 # Public: the API's name, its certificate, and who may call it from a browser.
 public=(--set public.enabled=false)
 if [[ $PUBLIC == 1 ]]; then
@@ -313,7 +437,7 @@ log "larper"
 # A cluster from before the per-service DB roles needs this once (see the script).
 scripts/pg-owner-createrole.sh
 helm upgrade --install larper infra/helm/larper -n larper -f infra/helm/larper/values-oci.yaml \
-  -f infra/helm/larper/values-demo.yaml \
+  -f infra/helm/larper/values-demo.yaml "${size[@]}" \
   --set postgres.image="$REG/larper-postgres:$PG_TAG" \
   --set migrate.image="$REG/larper-migrate:$TAG" \
   --set workers.image="$REG/larper-workers:$TAG" \

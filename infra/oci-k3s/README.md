@@ -407,6 +407,43 @@ scripts/oci-up.sh --close             # back to SSH-only: security list, firewal
    `ssh-keygen -R` the old address.
 3. Run `oci-up.sh`. The name doesn't change, so the certificate stays valid.
 
+## Resizing
+
+**The allowance.** Oracle's Always Free A1 allowance is 1,500 OCPU-hours and 9,000 GB-hours a month, "equivalent to 2 OCPUs and 12 GB of memory", for all A1 instances in the tenancy together. Running 2 OCPU / 12 GB all month uses 1,488 and 8,928 (744 h). The quota policy `larper-free-tier-caps` already caps A1 at exactly 2 / 12, so a second A1 instance can't be started while this one holds it all.
+
+```bash
+scripts/oci-up.sh --resize-check 2 12   # $0 math, quota and capacity; changes nothing
+scripts/oci-up.sh --resize 2 12         # backup, resize (a reboot), then deploy for the new size
+scripts/oci-up.sh --resize 1 6          # the way back
+```
+
+**What `--resize` does:**
+1. The checks above. It refuses anything over the allowance, counting every other A1 instance that isn't terminated.
+2. A fresh base backup (`pg-before-resize-<time>`) through the VM's own kubectl.
+3. `oci compute instance update` with the new OCPUs and memory. Oracle reboots the VM (an ACPI shutdown, so systemd stops k3s and the pods) and keeps its public and private IPs and its volumes. Without capacity or quota, the instance keeps its old size and isn't rebooted.
+4. The normal deploy. Its chart profile follows the VM: with 2 CPUs and about 12 GB, `values-oci-a1max.yaml` goes over `values-demo.yaml`.
+
+`bootstrap.sh` sizes Traefik the same way: 512Mi on 12 GB, 256Mi on 6 GB.
+
+**What changes at 2 / 12** (`values-oci-a1max.yaml`):
+
+| | 1 OCPU / 6 GB | 2 OCPU / 12 GB |
+|---|---|---|
+| API | 1-2 replicas, 100m | 2-4 replicas (never fewer than 2), 150m |
+| Postgres | 768Mi limit; shared_buffers 128MB; 50 connections | 3Gi limit; shared_buffers 768MB, effective_cache_size 2GB; 100 connections |
+| Role caps | api 15, ingest 12, owner 4 (50 of 50) | api 25, ingest 16, owner 10 (70 of 100) |
+| ingest-worker | DuckDB 384MB, 1 thread | DuckDB 1GB, still 1 thread |
+| Traefik | 256Mi | 512Mi, 100m request |
+
+The edge's per-client limits (20 req/s, 30 in flight, 64 KB bodies) don't change: they're for abuse, not capacity.
+
+**Downtime:** one window of about 5-8 minutes.
+- The reboot and k3s coming back: about 3-5 minutes (the OS boots in about 40 s).
+- The deploy then restarts Postgres once for the new `shared_buffers` and `max_connections`: about 1 minute.
+- The API keeps 2 replicas from then on, so later rollouts don't take it down.
+
+**Rollback:** `scripts/oci-up.sh --resize 1 6`, the same steps in reverse. The 1 OCPU profile's caps (50 connections) fit the smaller VM again, and the data stays: it's the same boot volume.
+
 ## Backup check
 
 The CronJob `backup-check` runs hourly at :17 (`postgres.backup.check`, on in `values-oci.yaml`;
