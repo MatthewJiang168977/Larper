@@ -417,6 +417,11 @@ scripts/oci-up.sh --resize 2 12         # backup, resize (a reboot), then deploy
 scripts/oci-up.sh --resize 1 6          # the way back
 ```
 
+**Fails closed** (`scripts/test/oci-up-guards.test.sh`, in CI's helm job):
+- `--resize-check` hands off to `scripts/oci-resize-check.sh`, which has no deploy code; `oci-up.sh` `exec`s it before anything else runs, so a check can't reach a deploy step whatever the OCI CLI answers.
+- The checks (`scripts/lib/oci-resize-preflight.sh`) run in a subshell with `set -euo pipefail`, called as a plain assignment. Every value from the CLI is stripped of CR and checked before any arithmetic.
+- `oci-up.sh` deploys only a clean working tree, with no uncommitted or untracked files. `--allow-dirty` overrides it; the local stand-in passes it.
+
 **What `--resize` does:**
 1. The checks above. It refuses anything over the allowance, counting every other A1 instance that isn't terminated.
 2. A fresh base backup (`pg-before-resize-<time>`) through the VM's own kubectl.

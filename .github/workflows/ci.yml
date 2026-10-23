@@ -188,6 +188,10 @@ jobs:
       # launch a second larper-k3s (a fake oci CLI; no Oracle account needed).
       - name: OCI probe never launches a second instance
         run: bash scripts/test/oci-capacity-probe.test.sh
+      # oci-up.sh fails closed: a check mode never reaches a deploy step (bad CLI values,
+      # CRLF, failures), and a dirty tree is refused without --allow-dirty (fake CLIs).
+      - name: oci-up.sh fails closed
+        run: bash scripts/test/oci-up-guards.test.sh
       - name: Render with each values file
         run: |
           chart=infra/helm/larper
