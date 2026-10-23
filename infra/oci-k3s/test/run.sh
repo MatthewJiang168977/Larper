@@ -106,11 +106,12 @@ deploy() { # extra env for oci-up.sh, e.g. RESTORE_FROM=pg SERVER_NAME=pg-2
   ssh-keygen -R "[127.0.0.1]:$SSH_PORT" >/dev/null 2>&1 || true
   log "running scripts/oci-up.sh against the stand-in"
   # Never the real tenancy or the real public settings: no security list (it's
-  # Oracle's), and no ~/.oci/larper-public.env.
+  # Oracle's), and no ~/.oci/larper-public.env. --allow-dirty: a rehearsal is for
+  # uncommitted work (only the real VM gets commits alone).
   env OCI_ENV_FILE="$STATE/instance.env" SSH_KEY="$STATE/id_ed25519" SSH_PORT=$SSH_PORT \
     S3_ENV="$STATE/s3.env" KUBECONFIG_OCI="$STATE/kubeconfig.yaml" TUNNEL_PORT=$TUNNEL_PORT \
     IMAGE_PLATFORM=linux/amd64 BACKUP_ENDPOINT_URL="http://$S3_IP:9000" \
-    SECURITY_LIST=skip PUBLIC_ENV=/nonexistent CHECK_ENV=/nonexistent "$@" scripts/oci-up.sh ${DEPLOY_ARGS:-}
+    SECURITY_LIST=skip PUBLIC_ENV=/nonexistent CHECK_ENV=/nonexistent "$@" scripts/oci-up.sh --allow-dirty ${DEPLOY_ARGS:-}
 }
 
 # The public demo on the stand-in: a made-up name, no certificate (the internet can't
