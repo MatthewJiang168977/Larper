@@ -11,6 +11,18 @@ const PITCH = 55;
 const BEARING = -20;
 const MIN_FRAME_ZOOM = 14.8;
 
+// Keep pins clear of the sheet, but never give up more than 45% of the screen (on
+// desktop the sheet is a narrow card, not a full-width panel).
+export function sheetPadding(bottomInset: number, containerHeight: number) {
+  return { top: 90, bottom: Math.min(bottomInset + 30, containerHeight * 0.45), left: 60, right: 60 };
+}
+
+// Whether a point on screen sits in the visible part: inside the container minus the
+// padding. A pin the sheet grew over fails this.
+export function inView(pt: { x: number; y: number }, w: number, h: number, pad: ReturnType<typeof sheetPadding>) {
+  return pt.x >= pad.left && pt.x <= w - pad.right && pt.y >= pad.top && pt.y <= h - pad.bottom;
+}
+
 export type MapView = "3d" | "2d";
 // The camera every move keeps, per view: tilted toward the city, or flat and north-up.
 export const VIEW_CAMERA: Record<MapView, { pitch: number; bearing: number }> = {
@@ -93,13 +105,17 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
   // view is read the same way, so switching it doesn't replay a fly-to.
   const meRef = useRef(me);
   const viewRef = useRef(view);
+  // The sheet's height is read the same way: it changes with the card's content, and a
+  // change alone mustn't replay the fly-to (that reset zoom and tilt on every resize).
+  const bottomInsetRef = useRef(bottomInset);
   const framedQuestRef = useRef<string | null>(null);
 
   useEffect(() => {
     onSelectRef.current = onSelect;
     meRef.current = me;
     viewRef.current = view;
-  }, [onSelect, me, view]);
+    bottomInsetRef.current = bottomInset;
+  }, [onSelect, me, view, bottomInset]);
 
   // Create the map once. maplibre-gl touches window, so it's imported client-side only.
   useEffect(() => {
@@ -209,10 +225,7 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
     const map = mapRef.current;
     const target = [quest?.place, ...deck.map((d) => d.place)].find((p) => p?.id === selectedId);
     if (!ready || !map || !target) return;
-    // Keep pins clear of the sheet, but never give up more than 45% of the screen
-    // (on desktop the sheet is a narrow card, not a full-width panel).
-    const h = map.getContainer().clientHeight;
-    const padding = { top: 90, bottom: Math.min(bottomInset + 30, h * 0.45), left: 60, right: 60 };
+    const padding = sheetPadding(bottomInsetRef.current, map.getContainer().clientHeight);
     const camera = { ...VIEW_CAMERA[viewRef.current], duration: 1600, essential: false }; // respects prefers-reduced-motion
 
     // First look at a new quest: frame it together with "you are here" so the walk
@@ -240,7 +253,32 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
       return;
     }
     map.flyTo({ ...camera, center: [target.lng, target.lat], zoom: 16.6, padding });
-  }, [ready, selectedId, quest, deck, bottomInset]);
+    // bottomInset is read through its ref, so a height change alone doesn't land here.
+  }, [ready, selectedId, quest, deck]);
+
+  // The sheet changed height. If the selected pin is now hidden, pan it back into view;
+  // zoom, tilt and bearing stay. Otherwise leave the camera alone: setting padding by
+  // itself would shift the picture, and the next fly-to passes the new padding anyway.
+  const firstInsetRef = useRef(true);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    if (firstInsetRef.current) {
+      firstInsetRef.current = false; // the focus effect's fly-to already used it
+      return;
+    }
+    // Mid-flight (a new quest resizes the card in the same render that starts its
+    // fly-to, which already read the new height) or mid-gesture: don't cut in.
+    if (map.isMoving()) return; // true for camera animations as well as gestures
+    const target = [quest?.place, ...deck.map((d) => d.place)].find((p) => p?.id === selectedId);
+    const el = map.getContainer();
+    const padding = sheetPadding(bottomInset, el.clientHeight);
+    if (target && !inView(map.project([target.lng, target.lat]), el.clientWidth, el.clientHeight, padding)) {
+      map.easeTo({ center: [target.lng, target.lat], padding, duration: 450, essential: false });
+    }
+    // Only a height change runs this; selection changes go through the focus effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, bottomInset]);
 
   // 2D/3D in place of MapLibre's compass. Either way the bearing resets: north-up when
   // flat, the usual angle when tilted.
