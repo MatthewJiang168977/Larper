@@ -78,7 +78,20 @@ Let *d* be the distance to the place and *a* the reported accuracy.
 
 ## When to revisit
 
-Once the `checkin` log has a few weeks of real attempts, look at:
+**Update 2026-10-24:** the log lines turned out to be no basis: logs go with the pod, so
+every redeploy (the VM resize that day included) wiped them. Attempts are now stored in
+`checkin_attempts` (migration 0014, kept 90 days, demo account flagged and left out of
+the figures). Run the report as the database owner:
+
+```
+DATABASE_URL=<owner URL> node dist/ops/checkin-report.js [--days N]
+```
+
+Real volume will be low, since demo visitors are mostly far from NYC, so the report
+leads with the sample size and flags a small one. **Decide on the tiers around
+2026-11-14, or after a few dozen real check-ins, whichever comes first.**
+
+With that data, look at:
 
 - **How often rough fixes happen:** the share of attempts with `accuracyM` > 100, and how
   many of them end `too_rough`.

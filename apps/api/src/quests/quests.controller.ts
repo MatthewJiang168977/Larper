@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { AuthUser, ClerkAuthGuard, CurrentUser } from '../auth/auth.guard';
+import { isDemoUser } from '../demo/demo-account';
 import { UserLimitGuard, userKey } from '../throttle/guards';
 import { actionOf, isCheckIn, LIMITS, OPT_IN_WINDOWS, USER_WINDOWS } from '../throttle/limits';
 import { QuestsService } from './quests.service';
@@ -95,6 +96,6 @@ export class QuestsController {
       Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
         ? { lat, lng, accuracyM: Number.isFinite(accuracy) && accuracy >= 0 ? accuracy : undefined }
         : undefined;
-    return this.quests.act(user.id, id, action, at);
+    return this.quests.act(user.id, id, action, at, isDemoUser(user.clerkId));
   }
 }

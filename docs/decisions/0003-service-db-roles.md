@@ -29,12 +29,15 @@ stays the owner: it alone runs DDL, and only the migrate Job logs in as it.
 | `area_stats`, `area_totals` | S | | | S I D |
 | `areas_ingested` | S | | | S I U |
 | `jobs` | S I | | | S U |
+| `checkin_attempts` | I (+ EXECUTE `prune_checkin_attempts()`) | | | |
 | `TEMPORARY` on the database | | | | yes (revoked from PUBLIC) |
 
 Two more login roles, outside the services: `larper_backup_check` (the hourly backup
 check, no grant at all) and `larper_demo_reset` (migrations 0012 and 0013, the public
 demo's nightly reset: S on `users` and `tags`, S D on `quests`, S I U on
-`taste_profiles`, to delete the shared demo account's quests and put its taste back). Each has a connection limit of 1. The API keeps never deleting.
+`taste_profiles`, to delete the shared demo account's quests and put its taste back). Each has a connection limit of 1. The API keeps never deleting: check-in attempts past their
+90 days go through `prune_checkin_attempts()` (migration 0014), a SECURITY DEFINER
+function that deletes only those rows, not a DELETE grant.
 
 S/I/U/D = SELECT/INSERT/UPDATE/DELETE. Why some cells are what they are:
 

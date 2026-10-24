@@ -5,6 +5,8 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
@@ -14,7 +16,7 @@ import { enqueueQuestEvent } from '../events/outbox';
 import { QuestAction as EventAction, SkipReason as EventSkipReason } from '../gen/larper/events/v1/events_pb';
 import { TagsService } from '../profile/tags.service';
 import { AreasService } from './areas.service';
-import { CheckInAttempt, checkInLogLine, judgeCheckIn, rejection } from './checkin';
+import { attemptParams, CheckInAttempt, checkInLogLine, judgeCheckIn, RECORD_ATTEMPT_SQL, rejection } from './checkin';
 import { cellOf, cellsCovering, haversineM } from './geo';
 import { AreaStats, Candidate, mmr, Reasons, score, Scored, weightsFromEnv } from './scoring';
 import { QuestAction, QuestStatus, REOFFER_AFTER_DAYS, SkipReason, TRANSITIONS } from './transitions';
@@ -26,6 +28,7 @@ const DECK_TTL_S = 600;
 const AREA_TTL_S = 3600;
 const OFFER_STALE_AFTER = '20 hours';
 const OFFER_STALE_METERS = 5000;
+const PRUNE_ATTEMPTS_EVERY_MS = 6 * 3600_000; // retention is 90 days; this only bounds the overshoot
 
 const EVENT_ACTION: Record<QuestAction, EventAction> = {
   accept: EventAction.ACCEPTED,
@@ -79,7 +82,7 @@ export interface DeckItem {
 }
 
 @Injectable()
-export class QuestsService {
+export class QuestsService implements OnModuleInit, OnModuleDestroy {
   private readonly weights = weightsFromEnv();
 
   private readonly logger = new Logger(QuestsService.name);
@@ -129,11 +132,11 @@ export class QuestsService {
 
   // Moves a quest through its state machine and records the event, atomically:
   // the UPDATE and the outbox INSERT share one transaction (see events/outbox.ts).
-  async act(userId: string, questId: string, action: QuestAction, at?: CheckInPosition) {
+  async act(userId: string, questId: string, action: QuestAction, at?: CheckInPosition, demo = false) {
     const t = TRANSITIONS[action];
-    // Every check-in attempt is logged once with how it ended (see checkin.ts).
+    // Every check-in attempt is logged and stored once with how it ended (see checkin.ts).
     const checkIn: CheckInAttempt | undefined =
-      action === 'complete' ? { questId, userId, outcome: 'error' } : undefined;
+      action === 'complete' ? { questId, userId, outcome: 'error', demo } : undefined;
     const tx = await this.pg.connect();
     try {
       await tx.query('BEGIN');
@@ -168,8 +171,42 @@ export class QuestsService {
       throw err;
     } finally {
       tx.release();
-      if (checkIn) this.logger.log(checkInLogLine(checkIn));
+      if (checkIn) {
+        this.logger.log(checkInLogLine(checkIn));
+        await this.recordAttempt(checkIn);
+      }
     }
+  }
+
+  // Outside the action's transaction: a rejected check-in rolls that back, and its
+  // attempt is the one we most want. Best effort: a failure here never changes the
+  // answer the user gets (the log line above still has it).
+  private async recordAttempt(a: CheckInAttempt) {
+    try {
+      await this.pg.query(RECORD_ATTEMPT_SQL, attemptParams(a));
+    } catch (err) {
+      this.logger.warn(`checkin attempt not recorded: ${(err as Error).message}`);
+    }
+  }
+
+  // Check-in attempts older than 90 days go (migration 0014's prune_checkin_attempts),
+  // on start and every few hours, so rows don't outlive the retention while it's quiet.
+  private pruneTimer?: NodeJS.Timeout;
+  onModuleInit() {
+    const prune = () =>
+      Promise.resolve()
+        .then(() => this.pg.query<{ n: string }>('SELECT prune_checkin_attempts() AS n'))
+        .then(({ rows }) => {
+          if (Number(rows[0]?.n) > 0) this.logger.log(`pruned ${rows[0].n} check-in attempts past 90 days`);
+        })
+        .catch((err: Error) => this.logger.warn(`check-in attempt pruning failed: ${err.message}`));
+    void prune();
+    this.pruneTimer = setInterval(() => void prune(), PRUNE_ATTEMPTS_EVERY_MS);
+    this.pruneTimer.unref();
+  }
+
+  onModuleDestroy() {
+    clearInterval(this.pruneTimer);
   }
 
   // After "Not today": the one reason the user gives, if any. "Not my thing" is a real
