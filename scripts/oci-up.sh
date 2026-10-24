@@ -45,7 +45,10 @@
 #      chart with values-oci.yaml + values-demo.yaml (+ values-oci-a1max.yaml at 2 OCPU / 12 GB);
 #      monitoring only with MONITORING=1
 set -euo pipefail
-# A failure inside $(...) stops the script too, not just the substitution.
+# A failure inside $(...) stops the script too, but only where bash uses the
+# substitution's status: a plain assignment (v=$(...)). As a command's argument its
+# status is thrown away, so Secret values go into variables first and are checked
+# (scripts/lib/oci-secrets.sh).
 shopt -s inherit_errexit
 cd "$(dirname "$0")/.."
 
@@ -125,6 +128,43 @@ if [[ -n $PUBLIC_HOST ]]; then
 fi
 SECURITY_LIST=${SECURITY_LIST:-$([[ $PUBLIC == 1 ]] && echo open || echo closed)}
 [[ $SECURITY_LIST =~ ^(open|closed|skip)$ ]] || { echo "SECURITY_LIST must be open, closed or skip" >&2; exit 1; }
+
+# The Secrets' values, read and checked up front (scripts/lib/oci-secrets.sh): a
+# missing or malformed value stops the deploy here, before anything remote changes (a
+# resize's backup and reboot included), never as an empty Secret after the images.
+# --close writes no Secret.
+WEB_ENV=${WEB_ENV:-apps/web/.env.local}
+DEMO_ENV=${DEMO_ENV:-$HOME/.oci/larper-demo.env}
+if [[ $CLOSE == 0 ]]; then
+  # shellcheck source=lib/oci-secrets.sh
+  source scripts/lib/oci-secrets.sh
+  # aws-sqs: the ingest-worker's SQS key (infra/terraform/aws). A failed output stops
+  # the script at the assignment.
+  SQS_ACCESS_KEY_ID=$(terraform -chdir=infra/terraform/aws output -raw access_key_id)
+  SQS_SECRET_ACCESS_KEY=$(terraform -chdir=infra/terraform/aws output -raw secret_access_key)
+  secret_shape "aws-sqs access_key_id (terraform output, infra/terraform/aws)" "$SQS_ACCESS_KEY_RE" "$SQS_ACCESS_KEY_ID"
+  secret_shape "aws-sqs secret_access_key (terraform output, infra/terraform/aws)" "$SQS_SECRET_KEY_RE" "$SQS_SECRET_ACCESS_KEY"
+  # pg-backup-s3: checked now if the file exists; a first deploy creates it in step 4,
+  # and it's checked again there before it's written.
+  if [[ -e $S3_ENV ]]; then read_s3_env "$S3_ENV"; fi
+  # backup-check: optional (without it the job runs and alerts nobody), but a file that
+  # exists must hold a ping URL.
+  CHECK_PING_URL=
+  if [[ -e $CHECK_ENV ]]; then
+    CHECK_PING_URL=$(env_value "$CHECK_ENV" pingURL)
+    secret_shape "backup-check pingURL ($CHECK_ENV)" "$PING_URL_RE" "$CHECK_PING_URL"
+  fi
+  # clerk-demo: the demo account is configured once DEMO_ENV names its user; then the
+  # Clerk key must be there too. (Before, a missing key quietly turned "Try the demo"
+  # off in production.) No user id: the demo is off, as on the stand-in.
+  DEMO_USER_ID=$(env_value "$DEMO_ENV" DEMO_USER_ID)
+  CLERK_SECRET_KEY=
+  if [[ -n $DEMO_USER_ID ]]; then
+    secret_shape "clerk-demo userId (DEMO_USER_ID in $DEMO_ENV)" "$CLERK_USER_ID_RE" "$DEMO_USER_ID"
+    CLERK_SECRET_KEY=$(env_value "$WEB_ENV" CLERK_SECRET_KEY)
+    secret_shape "clerk-demo secretKey (CLERK_SECRET_KEY in $WEB_ENV)" "$CLERK_SECRET_KEY_RE" "$CLERK_SECRET_KEY"
+  fi
+fi
 
 # The VCN security list larper-k3s (scripts/oci-capacity-probe.sh made it): its ingress
 # rules exactly as wanted. "closed": TCP 22 and ICMP 3/4 (path-MTU discovery), as the
@@ -329,16 +369,19 @@ else
   fi
   ENDPOINT="https://$NS.compat.objectstorage.$REGION.oraclecloud.com"
 fi
+# The Secrets, from the values checked at the top (scripts/lib/oci-secrets.sh); S3_ENV
+# may only have been created just above, so it's (re)checked here.
+read_s3_env "$S3_ENV"
 kubectl create namespace larper --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-kubectl -n larper create secret generic pg-backup-s3 --from-env-file="$(winpath "$S3_ENV")" \
+kubectl -n larper create secret generic pg-backup-s3 --from-literal=ACCESS_KEY_ID="$S3_ACCESS_KEY_ID" \
+  --from-literal=ACCESS_SECRET_KEY="$S3_SECRET_KEY" --from-literal=REGION="$S3_REGION" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 kubectl -n larper create secret generic aws-sqs \
-  --from-literal=access_key_id="$(terraform -chdir=infra/terraform/aws output -raw access_key_id)" \
-  --from-literal=secret_access_key="$(terraform -chdir=infra/terraform/aws output -raw secret_access_key)" \
+  --from-literal=access_key_id="$SQS_ACCESS_KEY_ID" --from-literal=secret_access_key="$SQS_SECRET_ACCESS_KEY" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 # The backup check's dead-man's switch (healthchecks.io ping URL, one line: pingURL=...).
-if [[ -s $CHECK_ENV ]]; then
-  kubectl -n larper create secret generic backup-check --from-env-file="$(winpath "$CHECK_ENV")" \
+if [[ -n $CHECK_PING_URL ]]; then
+  kubectl -n larper create secret generic backup-check --from-literal=pingURL="$CHECK_PING_URL" \
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 else
   log "no $CHECK_ENV: the backup check will run but alert nobody (infra/oci-k3s/README.md, \"Backup check\")"
@@ -347,18 +390,15 @@ fi
 # The demo account (values-oci.yaml demo.enabled; infra/oci-k3s/README.md, "The public
 # demo"): the Clerk secret key, for "Try the demo" sign-in tokens and the nightly reset,
 # and the demo user's id, which scripts/demo-account.sh create writes to DEMO_ENV.
-# Without both, the demo is off: /demo/sign-in answers 404 and nothing resets.
-DEMO_ENV=${DEMO_ENV:-$HOME/.oci/larper-demo.env}
+# Without a user id the demo is off: /demo/sign-in answers 404 and nothing resets.
 demo=(--set demo.enabled=false)
-demo_user=$(grep -E '^DEMO_USER_ID=' "$DEMO_ENV" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)
-clerk_key=$(grep -E '^CLERK_SECRET_KEY=' apps/web/.env.local 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"'"'"'\r ' || true)
-if [[ $demo_user =~ ^user_[A-Za-z0-9]+$ && -n $clerk_key ]]; then
+if [[ -n $DEMO_USER_ID ]]; then
   kubectl -n larper create secret generic clerk-demo \
-    --from-literal=secretKey="$clerk_key" --from-literal=userId="$demo_user" \
+    --from-literal=secretKey="$CLERK_SECRET_KEY" --from-literal=userId="$DEMO_USER_ID" \
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   demo=()
 else
-  log "no demo account (DEMO_USER_ID in $DEMO_ENV, CLERK_SECRET_KEY in apps/web/.env.local): \"Try the demo\" is off"
+  log "no demo account (no DEMO_USER_ID in $DEMO_ENV): \"Try the demo\" is off"
 fi
 
 # --- 5. operators and the app -----------------------------------------------------
