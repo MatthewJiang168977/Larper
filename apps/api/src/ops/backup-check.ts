@@ -18,18 +18,27 @@ import { Pool } from 'pg';
 // first commits a transaction that writes WAL (heartbeat). archive_timeout (1 h) then
 // ships it within the hour, and on a healthy cluster the WAL age stays under ~2 h
 // however quiet the app is. If the heartbeat itself fails, that's reported.
+//
+// pg_stat_archiver's counters start over when Postgres restarts uncleanly (a VM reboot,
+// as in the resize on 2026-10-24): last_archived_time is NULL until the next segment
+// ships, up to an hour later. Right after such a reset "nothing archived" is no news,
+// so for a grace period it's a note, not a failure. The grace only covers having no
+// data yet: an archive failure reported since the reset fails the check at once.
 
 export interface BackupState {
   now: Date;
   lastArchived: Date | null; // pg_stat_archiver.last_archived_time
   lastFailed: Date | null; // pg_stat_archiver.last_failed_time
   failedWal: string | null; // pg_stat_archiver.last_failed_wal
+  statsReset: Date | null; // pg_stat_archiver.stats_reset: when its counters started over
   lastBaseBackup: Date | null; // ObjectStore status: lastSuccessfulBackupTime
 }
 
 export interface Limits {
   walMaxAgeHours: number;
   baseBackupMaxAgeDays: number;
+  /** After the archiver's counters reset, how long "nothing archived yet" is only a note. */
+  resetGraceHours: number;
 }
 
 export interface Verdict {
@@ -46,8 +55,24 @@ export function judge(s: BackupState, limits: Limits): Verdict {
   const problems: string[] = [];
   const parts: string[] = [];
 
-  if (!s.lastArchived) {
-    problems.push('no WAL segment has ever been archived');
+  // Counters reset recently, nothing shipped since: wait, unless something failed.
+  const resetAgo = s.statsReset ? age(s.now, s.statsReset) : null;
+  const inGrace = !s.lastArchived && resetAgo !== null && resetAgo <= limits.resetGraceHours;
+  if (inGrace) {
+    parts.push(
+      `archiver counters reset ${fmt(resetAgo!)} ago, nothing archived since yet (grace ${limits.resetGraceHours} h)`,
+    );
+    if (s.lastFailed) {
+      problems.push(
+        `archiving failed since the counters reset ${fmt(resetAgo!)} ago (last failure ${fmt(age(s.now, s.lastFailed))} ago${s.failedWal ? `, ${s.failedWal}` : ''})`,
+      );
+    }
+  } else if (!s.lastArchived) {
+    problems.push(
+      resetAgo !== null
+        ? `no WAL segment archived since the archiver's counters reset ${fmt(resetAgo)} ago (grace ${limits.resetGraceHours} h)`
+        : 'no WAL segment has ever been archived',
+    );
   } else {
     const h = age(s.now, s.lastArchived);
     parts.push(`last WAL archived ${fmt(h)} ago`);
@@ -55,7 +80,7 @@ export function judge(s: BackupState, limits: Limits): Verdict {
   }
   // Failing right now: the last attempt failed after the last success. Not a problem on
   // its own (Postgres retries every minute and a blip clears), but it says why.
-  if (s.lastFailed && (!s.lastArchived || s.lastFailed > s.lastArchived)) {
+  if (!inGrace && s.lastFailed && (!s.lastArchived || s.lastFailed > s.lastArchived)) {
     const note = `archiving is failing (last failure ${fmt(age(s.now, s.lastFailed))} ago${s.failedWal ? `, ${s.failedWal}` : ''})`;
     parts.push(note);
     if (problems.length) problems.push(note);
@@ -83,7 +108,7 @@ const SA = '/var/run/secrets/kubernetes.io/serviceaccount';
 // record: something to archive.
 export const HEARTBEAT_SQL = 'SELECT pg_current_xact_id()';
 export const ARCHIVER_SQL = `SELECT now() AS now, last_archived_time AS archived, last_failed_time AS failed,
-       last_failed_wal AS "failedWal"
+       last_failed_wal AS "failedWal", stats_reset AS "statsReset"
   FROM pg_stat_archiver`;
 
 async function readState(pool: Pool): Promise<{ state: BackupState; heartbeatError?: string }> {
@@ -93,9 +118,13 @@ async function readState(pool: Pool): Promise<{ state: BackupState; heartbeatErr
   } catch (e) {
     heartbeatError = `heartbeat failed: ${(e as Error).message}`;
   }
-  const { rows } = await pool.query<{ now: Date; archived: Date | null; failed: Date | null; failedWal: string | null }>(
-    ARCHIVER_SQL,
-  );
+  const { rows } = await pool.query<{
+    now: Date;
+    archived: Date | null;
+    failed: Date | null;
+    failedWal: string | null;
+    statsReset: Date | null;
+  }>(ARCHIVER_SQL);
   const ns = readFileSync(`${SA}/namespace`, 'utf8').trim();
   const token = readFileSync(`${SA}/token`, 'utf8').trim();
   const store = process.env.OBJECT_STORE ?? 'pg-backups';
@@ -116,6 +145,7 @@ async function readState(pool: Pool): Promise<{ state: BackupState; heartbeatErr
       lastArchived: r.archived,
       lastFailed: r.failed,
       failedWal: r.failedWal,
+      statsReset: r.statsReset,
       lastBaseBackup: last ? new Date(last) : null,
     },
     heartbeatError,
@@ -133,6 +163,9 @@ async function main() {
   const limits: Limits = {
     walMaxAgeHours: Number(process.env.WAL_MAX_AGE_HOURS ?? 48),
     baseBackupMaxAgeDays: Number(process.env.BASE_BACKUP_MAX_AGE_DAYS ?? 8),
+    // archive_timeout (1 h) plus the hourly heartbeat: a healthy cluster ships within
+    // ~2 h of a reset; one more hourly run of margin, still far under the WAL limit.
+    resetGraceHours: Number(process.env.RESET_GRACE_HOURS ?? 3),
   };
   const ping = process.env.PING_URL || undefined;
   const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1, connectionTimeoutMillis: 10_000 });

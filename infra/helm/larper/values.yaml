@@ -157,6 +157,9 @@ postgres:
       walMaxAgeHours: 48
       # Weekly base backups, plus a day.
       baseBackupMaxAgeDays: 8
+      # After an unclean restart resets Postgres's archiver counters, "nothing archived
+      # yet" is only a note for this long (an archive failure still fails at once).
+      resetGraceHours: 3
   # Start from a backup instead of an empty database (infra/oci-k3s/README.md).
   restore:
     enabled: false

@@ -2,12 +2,13 @@ import { BackupState, judge } from './backup-check';
 
 const NOW = new Date('2026-10-21T12:00:00Z');
 const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3_600_000);
-const LIMITS = { walMaxAgeHours: 48, baseBackupMaxAgeDays: 8 };
+const LIMITS = { walMaxAgeHours: 48, baseBackupMaxAgeDays: 8, resetGraceHours: 3 };
 const healthy: BackupState = {
   now: NOW,
   lastArchived: hoursAgo(0.5),
   lastFailed: null,
   failedWal: null,
+  statsReset: hoursAgo(72),
   lastBaseBackup: hoursAgo(6 * 24), // weekly: up to 7 days old is normal
 };
 
@@ -29,7 +30,9 @@ describe('judge: are the backups fresh?', () => {
   });
 
   it('fails when nothing was ever archived', () => {
-    expect(judge({ ...healthy, lastArchived: null }, LIMITS).problems).toEqual(['no WAL segment has ever been archived']);
+    expect(judge({ ...healthy, lastArchived: null, statsReset: null }, LIMITS).problems).toEqual([
+      'no WAL segment has ever been archived',
+    ]);
   });
 
   it('notes a failing archiver without alerting while the recovery point is still fresh', () => {
@@ -58,5 +61,50 @@ describe('judge: are the backups fresh?', () => {
 
   it('reports every problem at once', () => {
     expect(judge({ ...healthy, lastArchived: null, lastBaseBackup: null }, LIMITS).problems).toHaveLength(2);
+  });
+});
+
+describe('judge: right after the archiver counters reset (an unclean restart)', () => {
+  // A reboot reset pg_stat_archiver: last_archived_time is NULL until the next segment
+  // ships. The check at 22:17 on 2026-10-24 failed this way, 51 min after the reset.
+  const reset = (h: number, over: Partial<BackupState> = {}): BackupState => ({
+    ...healthy,
+    lastArchived: null,
+    lastFailed: null,
+    statsReset: hoursAgo(h),
+    ...over,
+  });
+
+  it('only notes "nothing archived yet" during the grace period (the 2026-10-24 false alarm)', () => {
+    const v = judge(reset(0.85), LIMITS);
+    expect(v.ok).toBe(true);
+    expect(v.summary).toContain('archiver counters reset 0.8 h ago, nothing archived since yet (grace 3 h)');
+  });
+
+  it('still fails at once if Postgres reports an archive failure during the grace period', () => {
+    const v = judge(reset(0.5, { lastFailed: hoursAgo(0.2), failedWal: '000000010000000000000068' }), LIMITS);
+    expect(v.ok).toBe(false);
+    expect(v.problems).toEqual([
+      'archiving failed since the counters reset 0.5 h ago (last failure 0.2 h ago, 000000010000000000000068)',
+    ]);
+  });
+
+  it('fails once the grace period is over and still nothing has been archived', () => {
+    const v = judge(reset(3.5), LIMITS);
+    expect(v.ok).toBe(false);
+    expect(v.problems).toEqual(["no WAL segment archived since the archiver's counters reset 3.5 h ago (grace 3 h)"]);
+  });
+
+  it('is back to the usual rules as soon as a segment ships after the reset', () => {
+    const v = judge(reset(1, { lastArchived: hoursAgo(0.2) }), LIMITS);
+    expect(v).toMatchObject({ ok: true, problems: [] });
+    expect(v.summary).toContain('last WAL archived 0.2 h ago');
+    expect(v.summary).not.toContain('reset');
+  });
+
+  it("doesn't excuse a stale base backup during the grace period", () => {
+    expect(judge(reset(0.5, { lastBaseBackup: hoursAgo(9 * 24) }), LIMITS).problems).toEqual([
+      'last base backup 9.0 days ago (limit 8 days)',
+    ]);
   });
 });
