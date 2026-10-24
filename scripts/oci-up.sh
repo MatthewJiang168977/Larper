@@ -6,6 +6,18 @@
 #                                            # (infra/oci-k3s/README.md, "rebuild")
 #   MONITORING=1 scripts/oci-up.sh           # also Prometheus + Grafana (~0.8 GiB more)
 #   scripts/oci-up.sh --close                # back to SSH-only, fast (no images or operators)
+#   scripts/oci-up.sh --resize-check 2 12    # can the VM become 2 OCPU / 12 GB at $0? Runs
+#                                            # scripts/oci-resize-check.sh and nothing else
+#   scripts/oci-up.sh --resize 2 12          # back up, resize (a reboot), then deploy for the new size
+#   scripts/oci-up.sh --resize 1 6           # the way back
+#
+# It deploys only a clean working tree (no uncommitted or untracked files): what runs on
+# the VM is then a commit. --allow-dirty, anywhere on the line, deploys one anyway (the
+# local stand-in, infra/oci-k3s/test/run.sh, does: it rehearses uncommitted work).
+#
+# Sizes (infra/oci-k3s/README.md, "Resizing"): the chart profile follows the VM. With 2
+# CPUs and ~12 GB, values-oci-a1max.yaml goes over values-demo.yaml; otherwise
+# values-demo.yaml alone (sized for 1 OCPU / 6 GB).
 #
 # Public (infra/oci-k3s/README.md, "Going public"): set PUBLIC_HOST, in the environment
 # or in PUBLIC_ENV (default ~/.oci/larper-public.env, never committed):
@@ -30,9 +42,11 @@
 #   4. Object Storage: bucket larper-pg-backups + an S3 key for CNPG (Always Free:
 #      20 GB, 50k requests/month; see the README for the numbers)
 #   5. installs cert-manager, CloudNativePG + its Barman Cloud plugin, then the larper
-#      chart with values-oci.yaml + values-demo.yaml (the VM is 1 OCPU / 6 GB);
+#      chart with values-oci.yaml + values-demo.yaml (+ values-oci-a1max.yaml at 2 OCPU / 12 GB);
 #      monitoring only with MONITORING=1
 set -euo pipefail
+# A failure inside $(...) stops the script too, not just the substitution.
+shopt -s inherit_errexit
 cd "$(dirname "$0")/.."
 
 ENV_FILE=${OCI_ENV_FILE:-$HOME/larper-oci-instance.env}
@@ -54,7 +68,35 @@ IMAGE_PLATFORM=${IMAGE_PLATFORM:-linux/arm64}
 BACKUP_ENDPOINT_URL=${BACKUP_ENDPOINT_URL:-} # set: skip Object Storage, use this S3 endpoint and $S3_ENV
 MONITORING=${MONITORING:-0}
 CLOSE=0
-[[ ${1:-} == --close ]] && CLOSE=1
+RESIZE=0 # --resize OCPUS MEMORY_GB
+ALLOW_DIRTY=0
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+  case ${args[i]} in
+    # Any check mode is a separate, read-only script, run in place of this one: exec
+    # never returns, so no check can reach a step below, whatever goes wrong in it.
+    --resize-check) exec "$BASH" scripts/oci-resize-check.sh "${args[@]:i+1}" ;; # this bash, not a PATH search
+    --*-check) echo "unknown check ${args[i]}" >&2; exit 2 ;;
+    --close) CLOSE=1 ;;
+    --allow-dirty) ALLOW_DIRTY=1 ;;
+    --resize)
+      RESIZE=1 RESIZE_OCPUS=${args[i+1]:-} RESIZE_MEMORY_GB=${args[i+2]:-}
+      [[ $RESIZE_OCPUS =~ ^[0-9]+$ && $RESIZE_MEMORY_GB =~ ^[0-9]+$ ]] \
+        || { echo "usage: $0 --resize OCPUS MEMORY_GB   (e.g. 2 12, or 1 6 to go back)" >&2; exit 2; }
+      i=$((i + 2))
+      ;;
+    *) echo "unknown argument ${args[i]} (see the top of $0)" >&2; exit 2 ;;
+  esac
+done
+
+# Only a commit goes to the VM: a dirty tree (uncommitted or untracked files) could
+# deploy a chart, script or image nobody reviewed. Checked before anything remote.
+dirty=$(git status --porcelain --untracked-files=normal)
+if [[ -n $dirty && $ALLOW_DIRTY != 1 ]]; then
+  echo "refusing to deploy from a dirty working tree (commit or stash first, or pass --allow-dirty):" >&2
+  head -20 <<<"$dirty" >&2
+  exit 1
+fi
 
 log() { echo "==> $*"; }
 winpath() { cygpath -w "$1" 2>/dev/null || echo "$1"; } # kubectl, helm, oci: Windows programs under Git Bash
@@ -136,6 +178,62 @@ source "$ENV_FILE"
 HOST=ubuntu@$PUBLIC_IP
 SSH_OPTS=(-i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ConnectTimeout=15 -o Port="$SSH_PORT")
 vm() { ssh "${SSH_OPTS[@]}" "$HOST" "$@"; }
+
+# --- resize (--resize OCPUS MEMORY_GB) ---------------------------------------------
+# The read-only checks are scripts/lib/oci-resize-preflight.sh (also what
+# scripts/oci-resize-check.sh runs). Changing a running instance's OCPUs and memory
+# reboots it and keeps its public and private IPs and volumes; without capacity or
+# quota it keeps its old size.
+# shellcheck source=lib/oci-resize-preflight.sh
+source scripts/lib/oci-resize-preflight.sh
+resize_vm() { # ocpus memory_gb
+  local o=$1 m=$2 pre cur_o cur_m cap
+  # A plain assignment (not `|| exit`: bash ignores set -e on the left of ||), so any
+  # failure inside the preflight ends the script here, before the backup or the reboot.
+  pre=$(INSTANCE_ID=${INSTANCE_ID:-} OCI_CONFIG=$OCI_CONFIG resize_preflight "$o" "$m")
+  cur_o=$(sed -n 's/^current_ocpus=//p' <<<"$pre")
+  cur_m=$(sed -n 's/^current_memory_gb=//p' <<<"$pre")
+  cap=$(sed -n 's/^capacity=//p' <<<"$pre")
+  [[ $cap == AVAILABLE ]] || { echo "no capacity for $o OCPU / $m GB now; the VM stays at $cur_o / $cur_m. Try later." >&2; exit 1; }
+  if [[ $cur_o == "$o" && $cur_m == "$m" ]]; then
+    log "  already $o OCPU / $m GB"
+    return
+  fi
+
+  # A fresh base backup first, through the VM's own kubectl (the tunnel isn't up yet).
+  local b
+  b=pg-before-resize-$(date -u +%Y%m%dt%H%M%S)
+  log "  base backup $b"
+  vm "sudo k3s kubectl -n larper apply -f -" <<EOF >/dev/null
+apiVersion: postgresql.cnpg.io/v1
+kind: Backup
+metadata: { name: $b }
+spec: { cluster: { name: pg }, method: plugin, pluginConfiguration: { name: barman-cloud.cloudnative-pg.io } }
+EOF
+  vm "sudo k3s kubectl -n larper wait backup/$b --for=jsonpath='{.status.phase}'=completed --timeout=15m" >/dev/null \
+    || { echo "the backup didn't complete; not resizing" >&2; exit 1; }
+
+  # The change. Oracle reboots the VM (an ACPI shutdown: systemd stops k3s and the
+  # pods) and boots it at the new size; the deploy below then retunes the chart.
+  local t0=$SECONDS
+  log "  resizing (the VM reboots: the API is down until k3s and the pods are back)"
+  oci compute instance update --instance-id "$INSTANCE_ID" --force \
+    --shape-config "{\"ocpus\": $o, \"memoryInGBs\": $m}" >/dev/null
+  for _ in $(seq 1 90); do
+    sleep 10
+    [[ $(oci compute instance get --instance-id "$INSTANCE_ID" \
+      --query 'join(`/`, [to_string(data."shape-config".ocpus), to_string(data."shape-config"."memory-in-gbs"), data."lifecycle-state"])' \
+      --raw-output 2>/dev/null | tr -d '\r') == "$o.0/$m.0/RUNNING" ]] && vm "true" 2>/dev/null && break
+  done
+  [[ $(vm nproc 2>/dev/null | tr -d '\r') == "$o" ]] || { echo "the VM isn't back at $o OCPU after 15 min: check the console" >&2; exit 1; }
+  log "  resized: $o OCPU / $m GB, SSH back after $((SECONDS - t0)) s"
+}
+if [[ $RESIZE == 1 ]]; then
+  resize_vm "$RESIZE_OCPUS" "$RESIZE_MEMORY_GB"
+  # Go on only at the size asked for.
+  [[ $(vm nproc 2>/dev/null | tr -d '\r') == "$RESIZE_OCPUS" ]] \
+    || { echo "the VM isn't at $RESIZE_OCPUS OCPU: not deploying" >&2; exit 1; }
+fi
 
 # --- 0. the cloud edge, closing first ----------------------------------------------
 # Closing goes first, before anything on the VM changes. Opening goes last (after the
@@ -301,6 +399,19 @@ else
   SERVER_NAME=${SERVER_NAME:-pg}
 fi
 
+# The chart profile follows the VM (asked, not assumed: the stand-in VM too). 11 GB:
+# 12 GB of shape is ~11.5 GiB after the kernel's share.
+vm_size=$(vm "echo \$(nproc) \$(awk '/^MemTotal:/ {print int(\$2 / 1048576)}' /proc/meminfo)" | tr -d '\r')
+vm_cpus=${vm_size% *} vm_mem_gb=${vm_size#* }
+[[ $vm_cpus =~ ^[0-9]+$ && $vm_mem_gb =~ ^[0-9]+$ ]] || { echo "couldn't read the VM's size: '$vm_size'" >&2; exit 1; }
+size=()
+if (( vm_cpus >= 2 && vm_mem_gb >= 11 )); then
+  size=(-f infra/helm/larper/values-oci-a1max.yaml)
+  log "VM: $vm_cpus CPUs / ${vm_mem_gb} GiB: values-oci-a1max.yaml over values-demo.yaml"
+else
+  log "VM: $vm_cpus CPU(s) / ${vm_mem_gb} GiB: values-demo.yaml (the 1 OCPU / 6 GB profile)"
+fi
+
 # Public: the API's name, its certificate, and who may call it from a browser.
 public=(--set public.enabled=false)
 if [[ $PUBLIC == 1 ]]; then
@@ -313,7 +424,7 @@ log "larper"
 # A cluster from before the per-service DB roles needs this once (see the script).
 scripts/pg-owner-createrole.sh
 helm upgrade --install larper infra/helm/larper -n larper -f infra/helm/larper/values-oci.yaml \
-  -f infra/helm/larper/values-demo.yaml \
+  -f infra/helm/larper/values-demo.yaml "${size[@]}" \
   --set postgres.image="$REG/larper-postgres:$PG_TAG" \
   --set migrate.image="$REG/larper-migrate:$TAG" \
   --set workers.image="$REG/larper-workers:$TAG" \

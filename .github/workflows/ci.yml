@@ -188,6 +188,10 @@ jobs:
       # launch a second larper-k3s (a fake oci CLI; no Oracle account needed).
       - name: OCI probe never launches a second instance
         run: bash scripts/test/oci-capacity-probe.test.sh
+      # oci-up.sh fails closed: a check mode never reaches a deploy step (bad CLI values,
+      # CRLF, failures), and a dirty tree is refused without --allow-dirty (fake CLIs).
+      - name: oci-up.sh fails closed
+        run: bash scripts/test/oci-up-guards.test.sh
       - name: Render with each values file
         run: |
           chart=infra/helm/larper
@@ -202,6 +206,9 @@ jobs:
           helm template larper $chart -n larper -f $chart/values-demo.yaml > /dev/null
           helm template larper $chart -n larper -f $chart/values-oci.yaml -f $chart/values-demo.yaml \
             --set postgres.backup.endpointURL=https://objectstorage.example.invalid > /dev/null
+          # The Oracle VM at the Always Free maximum (2 OCPU / 12 GB): one more layer.
+          helm template larper $chart -n larper -f $chart/values-oci.yaml -f $chart/values-demo.yaml \
+            -f $chart/values-oci-a1max.yaml --set postgres.backup.endpointURL=https://objectstorage.example.invalid > /dev/null
           # The public demo (oci-up.sh with PUBLIC_HOST): issuers, edge middlewares, TLS.
           helm template larper $chart -n larper -f $chart/values-oci.yaml -f $chart/values-demo.yaml \
             --set postgres.backup.endpointURL=https://objectstorage.example.invalid \
@@ -235,7 +242,8 @@ jobs:
           chart=infra/helm/larper
           oci="-f $chart/values-oci.yaml --set postgres.backup.endpointURL=https://objectstorage.example.invalid"
           for values in "" "-f $chart/values-aks.yaml" "-f $chart/values-eks.yaml" "$oci" \
-                        "-f $chart/values-demo.yaml" "$oci -f $chart/values-demo.yaml"; do
+                        "-f $chart/values-demo.yaml" "$oci -f $chart/values-demo.yaml" \
+                        "$oci -f $chart/values-demo.yaml -f $chart/values-oci-a1max.yaml"; do
             # shellcheck disable=SC2086
             helm template larper $chart -n larper $values | grep -q 'name: RATE_LIMIT_ENABLED, value: "1"' ||
               { echo "rate limits off with: ${values:-defaults}"; exit 1; }
