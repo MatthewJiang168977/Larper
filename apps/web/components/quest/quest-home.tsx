@@ -3,12 +3,12 @@
 import { UserButton } from "@clerk/nextjs";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, type Located } from "@/hooks/use-location";
 import { ApiError, describeError, useApi, type Me, type SkipReason, type Today } from "@/lib/api";
 import { DEMO_MIDTOWN, DEMO_SPOT } from "@/lib/demo-spot";
 import { getPreciseFix } from "@/lib/precise-fix";
-import { QuestSheet, type QuestAction } from "./quest-sheet";
+import { type Covered, QuestSheet, type QuestAction } from "./quest-sheet";
 
 export const SURVEY_POLL_MS = 4000;
 
@@ -67,9 +67,17 @@ export function QuestHome() {
   const [fixing, setFixing] = useState(false);
   // The quest just set aside with "Not today", while its reasons are on offer.
   const [setAside, setSetAside] = useState<string | null>(null);
-  const [sheetH, setSheetH] = useState(280);
+  // What the bottom card or side panel covers, so fly-to keeps pins in view.
+  const [covered, setCovered] = useState<Covered>({ bottom: 280, left: 0 });
+  const onCoveredChange = useCallback(
+    (c: Covered) => setCovered((p) => (p.bottom === c.bottom && p.left === c.left ? p : c)),
+    [],
+  );
   const [reloads, setReloads] = useState(0);
   const sheetRef = useRef<HTMLDivElement>(null);
+  // Where the notices end: the quest sheet's full height stops below them.
+  const noticesRef = useRef<HTMLDivElement>(null);
+  const [noticesBottom, setNoticesBottom] = useState(64);
 
   useEffect(() => {
     api<Me>("/me").then(
@@ -141,14 +149,25 @@ export function QuestHome() {
     return () => clearTimeout(t);
   }, [surveying, surveyOverdue, loading, surveyStart, answered, pollDelay]);
 
-  // Keep fly-to centering above the sheet as its height changes.
+  // The fixed cards (errors, surveying) report their height here; the quest sheet
+  // reports its own settled height through onCoveredChange.
   useEffect(() => {
     const el = sheetRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setSheetH(el.offsetHeight));
+    const ro = new ResizeObserver(() => onCoveredChange({ bottom: el.offsetHeight, left: 0 }));
     ro.observe(el);
     return () => ro.disconnect();
-  }, [today]);
+  }, [today, todayError, meError, onCoveredChange]);
+
+  useEffect(() => {
+    const el = noticesRef.current;
+    if (!el) return;
+    const measure = () => setNoticesBottom(el.offsetTop + el.offsetHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const reload = () => setReloads((n) => n + 1);
   const retryMe = () => {
@@ -237,7 +256,8 @@ export function QuestHome() {
         deck={today?.deck ?? []}
         selectedId={selectedId}
         onSelect={setSelectedId}
-        bottomInset={sheetH}
+        bottomInset={covered.bottom}
+        leftInset={covered.left}
       />}
 
       <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start gap-2 p-3">
@@ -253,8 +273,13 @@ export function QuestHome() {
         </div>
       </header>
 
-      {/* Notices under the header, stacked so they never overlap. */}
-      <div className="pointer-events-none absolute inset-x-3 top-16 z-20 flex flex-col items-center gap-2 [&>*]:pointer-events-auto">
+      {/* Notices under the header, stacked so they never overlap. On desktop they sit
+          beside the quest panel, not over it. */}
+      <div
+        ref={noticesRef}
+        style={covered.left ? { left: covered.left + 12 } : undefined}
+        className="pointer-events-none absolute inset-x-3 top-16 z-20 flex flex-col items-center gap-2 [&>*]:pointer-events-auto"
+      >
         {loc?.source === "demo" ? (
           <DemoNotice loc={loc} onRetry={retryLocation} retrying={locating} />
         ) : (
@@ -367,13 +392,14 @@ export function QuestHome() {
         />
       ) : today.quest || today.deck.length ? (
         <QuestSheet
-          ref={sheetRef}
           quest={today.quest}
           deck={today.deck}
           selectedId={selectedId}
           onSelect={setSelectedId}
           onAction={act}
           busy={busy}
+          topLimit={noticesBottom}
+          onCoveredChange={onCoveredChange}
         />
       ) : (
         <Panel
