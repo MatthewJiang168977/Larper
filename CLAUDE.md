@@ -54,6 +54,12 @@ You may merge a PR you opened only when **all** of these hold:
   - Terraform (`infra/terraform/`);
   - dependencies: any `package.json`, `pnpm-lock.yaml`, `go.mod` or `go.sum`;
   - CI (`.github/`);
+  - the web app (`apps/web/`): Vercel deploys `main` to playlarper.com
+    automatically, so merging web code changes production. The one exception is
+    a PR whose `apps/web/` changes are all test files (`*.test.ts`, `*.test.tsx`,
+    or files under `apps/web/test/`); `vitest.config.mts` and other config don't
+    count. Test files under an excluded area, such as the auth or demo tests,
+    stay excluded;
 - It makes no user-facing product decision (copy, flows, what the app shows or
   offers).
 
@@ -63,8 +69,9 @@ The reviewer is `.claude/agents/code-reviewer.md`. Give it the PR number, its he
 SHA and the plan the PR was meant to carry out. Its approval counts only for the
 commit it reviewed: a new push needs a new review.
 
-Merging is not deploying. A merge never permits a change to a live system; the
-approval rule above still applies to every deploy.
+Merging permits no change to a live system; the approval rule above still applies
+to every deploy. Outside `apps/web/` a merge deploys nothing. Inside it, a merge
+is a Vercel production deploy, which is why web code is excluded.
 
 **Reverts.** If a PR you merged under this rule breaks production, you may revert
 it at once: open a revert PR and merge it without waiting for CI or the reviewer.
