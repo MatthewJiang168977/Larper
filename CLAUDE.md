@@ -32,3 +32,39 @@ or to the same change later.
 
 A check must not write anything: no `create job`, no backups, no test sessions.
 When unsure whether something writes, treat it as a change and ask.
+
+## Merging your own PRs
+
+You may merge a PR you opened only when **all** of these hold:
+
+- CI is green on the PR's current head commit (check the run for that exact SHA;
+  `gh pr checks` can show an older run).
+- An independent reviewer subagent, one that didn't write any of the code, has
+  reviewed that same commit and approved it.
+- It touches none of:
+  - database migrations (`db/migrations/`);
+  - auth, Clerk or the demo account (`apps/api/src/auth/`, `apps/api/src/demo/`,
+    `apps/api/src/ops/demo-reset.ts`, sign-in/sign-up and the demo button in
+    `apps/web`, `scripts/demo-account.sh`);
+  - security: rate limits, CORS, secret scanning, redaction, database roles and
+    grants;
+  - `scripts/oci-up.sh` and the scripts it runs;
+  - the Helm chart (`infra/helm/`) and its values files;
+  - the firewall (`infra/oci-k3s/bootstrap.sh`);
+  - CI (`.github/`);
+- It makes no user-facing product decision (copy, flows, what the app shows or
+  offers).
+
+Everything else waits for the user. When unsure whether a PR qualifies, it doesn't.
+
+Merging is not deploying. A merge never permits a change to a live system; the
+approval rule above still applies to every deploy.
+
+## End-of-session digest
+
+At the end of each session, give the user a short digest:
+
+- what merged;
+- decisions you made, and why;
+- anything surprising;
+- anything waiting on the user.
