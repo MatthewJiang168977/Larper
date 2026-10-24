@@ -2,7 +2,7 @@ import { act, configure, fireEvent, render, screen, waitFor } from "@testing-lib
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeckItem, QuestView } from "@/lib/api";
 import { haloDiameterPx } from "./accuracy-halo";
-import MapLibreQuestMap, { VIEW_CAMERA } from "./maplibre-quest-map";
+import MapLibreQuestMap, { inView, sheetPadding, VIEW_CAMERA } from "./maplibre-quest-map";
 import type { QuestMapProps } from "./quest-map";
 
 // The component loads maplibre-gl with a dynamic import(). The first one in a cold test
@@ -28,6 +28,11 @@ const fake = vi.hoisted(() => {
     flyTo = vi.fn();
     remove = vi.fn();
     cameraForBounds = vi.fn(() => ({ center: [-73.99, 40.73], zoom: 16 }));
+    // Where a coordinate lands on screen; tests set it to put a pin under the sheet.
+    projected = { x: 200, y: 300 };
+    project = vi.fn(() => this.projected);
+    moving = false;
+    isMoving = () => this.moving;
     constructor(opts: { container: HTMLElement }) {
       this.container = opts.container;
       state.maps.push(this);
@@ -242,5 +247,82 @@ describe("2D/3D toggle", () => {
     rerender(<MapLibreQuestMap {...props({ selectedId: "p2" })} />);
     expect(map().flyTo).toHaveBeenCalledTimes(1);
     expect(map().flyTo).toHaveBeenLastCalledWith(expect.objectContaining({ pitch: 0, bearing: 0 }));
+  });
+});
+
+describe("sheet height changes", () => {
+  // The map gets ready after an async import, outside act(), so the toggle can be on
+  // screen before React has run the first fly-to. Wait for it before clearing spies.
+  const firstFlight = async () => {
+    await toggleButton();
+    await waitFor(() => expect(map().flyTo).toHaveBeenCalled());
+  };
+  // jsdom has no layout: give the map container a phone-sized box.
+  const sized = () => {
+    const el = map().getContainer();
+    Object.defineProperty(el, "clientHeight", { configurable: true, value: 800 });
+    Object.defineProperty(el, "clientWidth", { configurable: true, value: 400 });
+  };
+
+  it("doesn't replay the fly-to (which reset zoom and tilt) when only the sheet's height changes", async () => {
+    const { rerender } = render(<MapLibreQuestMap {...props()} />);
+    await firstFlight();
+    sized();
+    map().flyTo.mockClear();
+
+    for (const bottomInset of [300, 340, 260]) rerender(<MapLibreQuestMap {...props({ bottomInset })} />);
+    expect(map().flyTo).not.toHaveBeenCalled();
+    expect(map().easeTo).not.toHaveBeenCalled(); // the pin (y 300) stays clear of the sheet
+  });
+
+  it("pans the pin back into view if the sheet grows over it, keeping zoom, tilt and bearing", async () => {
+    const { rerender } = render(<MapLibreQuestMap {...props()} />);
+    await firstFlight();
+    sized();
+    map().projected = { x: 200, y: 600 }; // under a 360 px sheet (visible part ends at 800 - 360 = 440)
+    map().flyTo.mockClear();
+
+    rerender(<MapLibreQuestMap {...props({ bottomInset: 330 })} />);
+    expect(map().flyTo).not.toHaveBeenCalled();
+    expect(map().easeTo).toHaveBeenCalledTimes(1);
+    const call = map().easeTo.mock.calls[0][0];
+    expect(call).toMatchObject({ center: [-73.997, 40.731], padding: sheetPadding(330, 800) });
+    expect(call).not.toHaveProperty("zoom");
+    expect(call).not.toHaveProperty("pitch");
+    expect(call).not.toHaveProperty("bearing");
+  });
+
+  it("doesn't cut into a fly-to or a gesture already under way", async () => {
+    const { rerender } = render(<MapLibreQuestMap {...props()} />);
+    await firstFlight();
+    sized();
+    map().projected = { x: 200, y: 600 };
+    map().moving = true;
+    rerender(<MapLibreQuestMap {...props({ bottomInset: 330 })} />);
+    expect(map().easeTo).not.toHaveBeenCalled();
+  });
+
+  it("uses the latest sheet height on the next fly-to", async () => {
+    const { rerender } = render(<MapLibreQuestMap {...props()} />);
+    await firstFlight();
+    sized();
+    rerender(<MapLibreQuestMap {...props({ bottomInset: 200 })} />);
+    rerender(<MapLibreQuestMap {...props({ bottomInset: 200, selectedId: "p2" })} />);
+    expect(map().flyTo).toHaveBeenLastCalledWith(expect.objectContaining({ padding: sheetPadding(200, 800) }));
+  });
+});
+
+describe("padding helpers", () => {
+  it("leaves room for the sheet, but never more than 45% of the screen", () => {
+    expect(sheetPadding(280, 800).bottom).toBe(310);
+    expect(sheetPadding(600, 800).bottom).toBe(360);
+  });
+
+  it("tells whether a point is in the visible part", () => {
+    const pad = sheetPadding(280, 800); // visible y: 90..490, x: 60..340
+    expect(inView({ x: 200, y: 300 }, 400, 800, pad)).toBe(true);
+    expect(inView({ x: 200, y: 600 }, 400, 800, pad)).toBe(false);
+    expect(inView({ x: 200, y: 50 }, 400, 800, pad)).toBe(false);
+    expect(inView({ x: 20, y: 300 }, 400, 800, pad)).toBe(false);
   });
 });
