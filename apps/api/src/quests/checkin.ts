@@ -55,6 +55,19 @@ export interface CheckInAttempt {
   userId: string;
   outcome: CheckInOutcome;
   geofence?: Geofence;
+  /** The shared demo account (demo/demo-account.ts): recorded, but reported apart. */
+  demo: boolean;
+}
+
+// Each attempt is also stored (migration 0014, kept 90 days), since logs go with the
+// pod; ops/checkin-report.ts summarizes them. The quest id is stored only if the quest
+// is the user's own, so a not_found or someone else's id records NULL.
+export const RECORD_ATTEMPT_SQL = `INSERT INTO checkin_attempts (quest_id, outcome, distance_m, accuracy_m, allowed_m, demo)
+  VALUES ((SELECT id FROM quests WHERE id = $1::bigint AND user_id = $2::bigint), $3, $4, $5, $6, $7)`;
+
+export function attemptParams(a: CheckInAttempt) {
+  const g = a.geofence;
+  return [a.questId, a.userId, a.outcome, g?.distanceM ?? null, g?.accuracyM ?? null, g?.allowedM ?? null, a.demo];
 }
 
 // One line per attempt, JSON after a fixed prefix, so `grep checkin` + a JSON parser

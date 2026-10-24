@@ -41,6 +41,7 @@ const EXPECTED: Record<Role, Record<string, string[]>> = {
     area_stats: [S],
     area_totals: [S],
     areas_ingested: [S],
+    checkin_attempts: [I],
   },
   larper_relay: {
     outbox: [S, U, D],
@@ -144,7 +145,7 @@ describeDb('per-service database roles (real database)', () => {
     expect(actual).toEqual(expected);
   });
 
-  it('grants nothing else: no column, sequence or function grants, no memberships or owned objects', async () => {
+  it('grants nothing else: no column or sequence grants, one function, no memberships or owned objects', async () => {
     const { rows } = await owner.query<{ what: string; role: string; obj: string }>(
       `SELECT 'column' AS what, grantee AS role, table_name || '.' || column_name AS obj
          FROM information_schema.column_privileges c
@@ -167,7 +168,15 @@ describeDb('per-service database roles (real database)', () => {
          FROM pg_class WHERE pg_get_userbyid(relowner) = ANY($1)`,
       [ROLES],
     );
-    expect(rows).toEqual([]);
+    // The one function grant: the API prunes check-in attempts past 90 days (migration
+    // 0014) through a SECURITY DEFINER function instead of a DELETE grant.
+    expect(rows).toEqual([{ what: 'routine', role: 'larper_api', obj: 'prune_checkin_attempts' }]);
+    const exec = await owner.query<{ rolname: string; can: boolean }>(
+      `SELECT rolname, has_function_privilege(rolname, 'prune_checkin_attempts()', 'EXECUTE') AS can
+       FROM pg_roles WHERE rolname = ANY($1) ORDER BY rolname`,
+      [ROLES],
+    );
+    expect(exec.rows.filter((r) => r.can).map((r) => r.rolname)).toEqual(['larper_api']);
   });
 
   it('has no role attributes beyond LOGIN, and DDL rights on nothing', async () => {
@@ -202,6 +211,8 @@ describeDb('per-service database roles (real database)', () => {
     it('api: never deletes, and writes no place data', async () => {
       await denied('larper_api', 'DELETE FROM users');
       await denied('larper_api', 'DELETE FROM quests');
+      await denied('larper_api', 'DELETE FROM checkin_attempts');
+      await denied('larper_api', 'SELECT * FROM checkin_attempts'); // it writes attempts, never reads them
       await denied('larper_api', 'UPDATE places SET name = name');
       await denied('larper_api', 'UPDATE users SET clerk_id = clerk_id');
       await denied('larper_api', 'SELECT * FROM outbox');

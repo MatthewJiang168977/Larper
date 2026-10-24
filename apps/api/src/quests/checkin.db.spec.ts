@@ -8,7 +8,8 @@ import type { AreasService } from './areas.service';
 import { QuestsService } from './quests.service';
 
 // The check-in path end to end against a real database: the geofence query, the 422
-// bodies the web app reads, and one structured log line per attempt. Skipped unless
+// bodies the web app reads, one structured log line per attempt, and the stored attempt
+// (migration 0014) with its 90-day pruning. Skipped unless
 // TEST_DATABASE_URL is set (CI's db job sets it), and refuses to run (fails) unless that
 // is a disposable database with no outbox relay. It brings its own user, place and
 // quest, and deletes them (and the outbox rows its check-ins write) afterwards.
@@ -31,12 +32,14 @@ describeDb('check-in (real database)', () => {
   let userId: string;
   let placeId: string;
   let lines: string[];
+  let startedAt: Date;
 
   beforeAll(async () => {
     pool = createPool(URL);
     owner = createPool(OWNER_URL);
     // Before writing anything: never against a live stack (see db/test-guard.ts).
     await assertDisposableDatabase(owner, 'checkin.db.spec');
+    startedAt = (await owner.query<{ now: Date }>('SELECT now()')).rows[0].now;
     quests = new QuestsService(pool, {} as CacheService, {} as TagsService, {} as AreasService);
     const u = await owner.query<{ id: string }>(
       `INSERT INTO users (clerk_id) VALUES ('test_checkin_' || gen_random_uuid()) RETURNING id::text`,
@@ -56,7 +59,9 @@ describeDb('check-in (real database)', () => {
   afterAll(async () => {
     if (userId) {
       await owner.query('DELETE FROM outbox WHERE key = $1', [userId]);
-      await owner.query('DELETE FROM users WHERE id = $1', [userId]); // cascades to quests
+      await owner.query('DELETE FROM users WHERE id = $1', [userId]); // cascades to quests and their attempts
+      // Attempts stored without a quest (not_found) don't cascade.
+      await owner.query('DELETE FROM checkin_attempts WHERE quest_id IS NULL AND created_at >= $1', [startedAt]);
       await owner.query('DELETE FROM places WHERE id = $1', [placeId]);
     } // else refused before writing anything
     await pool.end();
@@ -83,6 +88,14 @@ describeDb('check-in (real database)', () => {
     expect(checkins).toHaveLength(1); // exactly one line per attempt
     return JSON.parse(checkins[0].slice('checkin '.length));
   };
+  // The attempts stored for this test's quest, oldest first (as the owner: the API can't read them).
+  const stored = async (id = questId) =>
+    (
+      await owner.query<{ outcome: string; distance_m: number | null; accuracy_m: number | null; allowed_m: number | null; demo: boolean }>(
+        'SELECT outcome, distance_m, accuracy_m, allowed_m, demo FROM checkin_attempts WHERE quest_id = $1 ORDER BY id',
+        [id],
+      )
+    ).rows;
   const statusOf = async () =>
     (await pool.query<{ status: string }>('SELECT status FROM quests WHERE id = $1', [questId])).rows[0].status;
   const rejected = async (p: Promise<unknown>) => {
@@ -135,5 +148,84 @@ describeDb('check-in (real database)', () => {
   it('logs nothing for actions other than check-in', async () => {
     await quests.act(userId, questId, 'skip');
     expect(lines.filter((l) => l.startsWith('checkin '))).toHaveLength(0);
+  });
+
+  describe('stored attempts', () => {
+    it('stores an accepted check-in with its geofence numbers, and no coordinates', async () => {
+      await quests.act(userId, questId, 'complete', { ...metersNorth(30), accuracyM: 12 });
+      const rows = await stored();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ outcome: 'accepted', accuracy_m: 12, allowed_m: 87, demo: false });
+      expect(rows[0].distance_m).toBeCloseTo(30, 0);
+      const cols = await owner.query<{ column_name: string }>(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'checkin_attempts'`,
+      );
+      expect(cols.rows.map((c) => c.column_name)).not.toEqual(expect.arrayContaining(['lat']));
+      expect(cols.rows.map((c) => c.column_name).some((c) => /lat|lng|lon|geom|user/.test(c))).toBe(false);
+    });
+
+    it('stores rejected attempts too, though their transaction rolls back', async () => {
+      await rejected(quests.act(userId, questId, 'complete', { ...metersNorth(400), accuracyM: 15 }));
+      await rejected(quests.act(userId, questId, 'complete', { ...metersNorth(250), accuracyM: 900 }));
+      await expect(quests.act(userId, questId, 'complete')).rejects.toThrow('needs your position');
+      const rows = await stored();
+      expect(rows.map((r) => r.outcome)).toEqual(['too_far', 'too_rough', 'no_position']);
+      expect(rows[1]).toMatchObject({ accuracy_m: 900, allowed_m: 125 });
+      expect(rows[2]).toMatchObject({ distance_m: null, accuracy_m: null, allowed_m: null });
+    });
+
+    it("records no quest id for someone else's quest or one that doesn't exist", async () => {
+      const other = await owner.query<{ id: string }>(
+        `INSERT INTO users (clerk_id) VALUES ('test_checkin_other_' || gen_random_uuid()) RETURNING id::text`,
+      );
+      try {
+        await expect(quests.act(other.rows[0].id, questId, 'complete', metersNorth(10))).rejects.toThrow('no such quest');
+        await expect(quests.act(userId, '999999999999', 'complete', metersNorth(10))).rejects.toThrow('no such quest');
+        expect(await stored()).toHaveLength(0); // nothing tied to this user's quest
+        const orphans = await owner.query<{ outcome: string }>(
+          'SELECT outcome FROM checkin_attempts WHERE quest_id IS NULL AND created_at >= $1 ORDER BY id DESC LIMIT 2',
+          [startedAt],
+        );
+        expect(orphans.rows.map((r) => r.outcome)).toEqual(['not_found', 'not_found']);
+      } finally {
+        await owner.query('DELETE FROM users WHERE id = $1', [other.rows[0].id]);
+      }
+    });
+
+    it("marks the demo account's attempts", async () => {
+      await quests.act(userId, questId, 'complete', { ...metersNorth(10), accuracyM: 10 }, true);
+      expect((await stored())[0]).toMatchObject({ outcome: 'accepted', demo: true });
+    });
+
+    it("doesn't change the answer when storing fails", async () => {
+      const real = pool.query.bind(pool);
+      jest.spyOn(pool, 'query').mockImplementation(((text: unknown, ...rest: unknown[]) =>
+        typeof text === 'string' && text.includes('checkin_attempts')
+          ? Promise.reject(new Error('simulated'))
+          : (real as (...a: unknown[]) => unknown)(text, ...rest)) as typeof pool.query);
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      await expect(quests.act(userId, questId, 'complete', { ...metersNorth(10), accuracyM: 10 })).resolves.toEqual({
+        id: questId,
+        status: 'completed',
+      });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('checkin attempt not recorded'));
+      expect(logged()).toMatchObject({ outcome: 'accepted' }); // the log line still has it
+    });
+
+    it('stores nothing for actions other than check-in', async () => {
+      await quests.act(userId, questId, 'skip');
+      expect(await stored()).toHaveLength(0);
+    });
+
+    it('prunes attempts past 90 days, as the API role, and keeps the rest', async () => {
+      await owner.query(
+        `INSERT INTO checkin_attempts (quest_id, outcome, demo, created_at)
+         VALUES ($1, 'too_far', false, now() - interval '91 days'), ($1, 'accepted', false, now() - interval '89 days')`,
+        [questId],
+      );
+      const { rows } = await pool.query<{ n: string }>('SELECT prune_checkin_attempts() AS n');
+      expect(Number(rows[0].n)).toBeGreaterThanOrEqual(1);
+      expect((await stored()).map((r) => r.outcome)).toEqual(['accepted']);
+    });
   });
 });

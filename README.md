@@ -249,6 +249,9 @@ flowchart LR
    state machine, so a double-click can't complete a skipped quest.
 2. **Geofenced check-in.** `complete` requires a position within 75 m of the place, plus the
    phone's reported GPS accuracy (capped at 50 m). Otherwise it returns 422 and rolls back.
+   Every attempt, accepted or not, is stored with its outcome, distance and accuracy (no
+   coordinates; `checkin_attempts`, kept 90 days) for decision 0002;
+   `node dist/ops/checkin-report.js` summarizes them with sample sizes.
 3. **Relay.** `outbox-relay` claims unsent rows `FOR UPDATE SKIP LOCKED`, produces them keyed by
    user id, and marks them sent **only after Kafka acks**. Delivery is at-least-once.
 4. **Consume.** `taste-worker` replicas share the 6 partitions as a consumer group. Each event:
