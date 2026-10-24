@@ -302,6 +302,17 @@ describe("sheet height changes", () => {
     expect(map().easeTo).not.toHaveBeenCalled();
   });
 
+  it("pans a pin the desktop panel now covers back into view", async () => {
+    const { rerender } = render(<MapLibreQuestMap {...props()} />);
+    await firstFlight();
+    sized();
+    map().flyTo.mockClear();
+    map().projected = { x: 150, y: 300 }; // under a 396 px panel on the left
+    rerender(<MapLibreQuestMap {...props({ bottomInset: 0, leftInset: 396 })} />);
+    expect(map().easeTo).toHaveBeenCalledWith(expect.objectContaining({ padding: sheetPadding(0, 800, 396) }));
+    expect(map().flyTo).not.toHaveBeenCalled();
+  });
+
   it("uses the latest sheet height on the next fly-to", async () => {
     const { rerender } = render(<MapLibreQuestMap {...props()} />);
     await firstFlight();
@@ -316,6 +327,10 @@ describe("padding helpers", () => {
   it("leaves room for the sheet, but never more than 45% of the screen", () => {
     expect(sheetPadding(280, 800).bottom).toBe(310);
     expect(sheetPadding(600, 800).bottom).toBe(360);
+  });
+
+  it("leaves room on the left for the desktop side panel", () => {
+    expect(sheetPadding(0, 800, 396)).toEqual({ top: 90, bottom: 30, left: 456, right: 60 });
   });
 
   it("tells whether a point is in the visible part", () => {

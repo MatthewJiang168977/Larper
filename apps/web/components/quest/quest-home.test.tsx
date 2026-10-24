@@ -43,21 +43,30 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 const preciseFix = vi.fn<() => Promise<{ lat: number; lng: number; accuracyM: number } | null>>();
 vi.mock("@/lib/precise-fix", () => ({ getPreciseFix: () => preciseFix() }));
 
-// The sheet itself is tested by eye; here it only has to show what it got and act.
+// The sheet has its own tests (quest-sheet.test.tsx); here it only has to show what it
+// got and act, and report what it covers the way the real one does.
 vi.mock("./quest-sheet", () => ({
-  QuestSheet: forwardRef<HTMLDivElement, { quest: Today["quest"]; deck: Today["deck"]; onAction: (a: string) => void }>(
-    function QuestSheet({ quest, deck, onAction }, ref) {
-      return (
-        <section ref={ref}>
-          <p>quest: {quest?.place.name ?? "none"}</p>
-          <p>deck: {deck.length}</p>
-          <button onClick={() => onAction("complete")}>I went</button>
-          <button onClick={() => onAction("not-today")}>Set aside</button>
-          <button onClick={() => onAction("skip")}>Skip</button>
-        </section>
-      );
-    },
-  ),
+  QuestSheet: forwardRef<
+    HTMLDivElement,
+    {
+      quest: Today["quest"];
+      deck: Today["deck"];
+      onAction: (a: string) => void;
+      topLimit: number;
+      onCoveredChange: (c: { bottom: number; left: number }) => void;
+    }
+  >(function QuestSheet({ quest, deck, onAction, topLimit, onCoveredChange }, ref) {
+    return (
+      <section ref={ref} data-top-limit={topLimit}>
+        <p>quest: {quest?.place.name ?? "none"}</p>
+        <p>deck: {deck.length}</p>
+        <button onClick={() => onAction("complete")}>I went</button>
+        <button onClick={() => onAction("not-today")}>Set aside</button>
+        <button onClick={() => onAction("skip")}>Skip</button>
+        <button onClick={() => onCoveredChange({ bottom: 0, left: 396 })}>As side panel</button>
+      </section>
+    );
+  }),
 }));
 
 // --- fixtures -------------------------------------------------------------------
@@ -590,5 +599,22 @@ describe("QuestHome: the demo account goes to Midtown", () => {
     await settle();
     expect(screen.getByText("Outside the demo area")).toBeTruthy();
     expect(calls.some((c) => c.includes(MIDTOWN))).toBe(false);
+  });
+});
+
+describe("QuestHome: room for the quest sheet", () => {
+  it("tells the sheet where the notices end, and moves the notices beside a desktop side panel", async () => {
+    location = demoSpot("denied");
+    routes["/quests/today"] = ok(withQuest);
+    render(<QuestHome />);
+    await settle();
+    const notice = screen.getByRole("region", { name: "Demo area" });
+    const stack = notice.parentElement!;
+    // jsdom has no layout, so the measured bottom is 0 here: it's passed, as a number.
+    expect(screen.getByText("quest: Cafe Uno").closest("section")!.dataset.topLimit).toMatch(/^\d+$/);
+    expect(stack.style.left).toBe("");
+
+    fireEvent.click(screen.getByText("As side panel"));
+    expect(stack.style.left).toBe("408px");
   });
 });

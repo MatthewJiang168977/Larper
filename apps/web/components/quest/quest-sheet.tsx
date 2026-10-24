@@ -1,12 +1,21 @@
 "use client";
 
+import { animate, motion, useDragControls, useMotionValue, useReducedMotion, type PanInfo } from "motion/react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { NumberTicker } from "@/components/ui/number-ticker";
+import { DESKTOP_QUERY, useMediaQuery } from "@/hooks/use-media-query";
 import type { DeckItem, PlaceView, QuestView, Reasons } from "@/lib/api";
-import { forwardRef } from "react";
+import { fullHeight, offsetFor, resolveSnap, type Snap, snapForKey } from "./sheet-snap";
 
 // "not-today" sets an accepted quest aside without counting against the place.
 export type QuestAction = "accept" | "skip" | "not-today" | "complete";
+
+/** What the sheet covers of the map, so fly-to keeps pins in the part you can see. */
+export interface Covered {
+  bottom: number;
+  left: number;
+}
 
 interface Props {
   quest: QuestView | null;
@@ -15,33 +24,269 @@ interface Props {
   onSelect: (placeId: string) => void;
   onAction: (action: QuestAction) => void;
   busy: boolean;
+  /** Where the notices end, in px from the top: full stops below it. */
+  topLimit: number;
+  onCoveredChange: (c: Covered) => void;
 }
 
 const humanize = (s: string) => s.replaceAll("_", " ").replaceAll("-", " ");
 const WALK_M_PER_MIN = 80;
+// Desktop side panel width (24rem), shared with the notices' offset in quest-home.
+export const PANEL_W = 384;
+const SPRING = { type: "spring", stiffness: 420, damping: 40 } as const;
 
-// The bottom sheet: the focused place's field notes, links, and quest actions, with
-// the other leads as a strip of numbered tabs matching their map pins.
-export const QuestSheet = forwardRef<HTMLDivElement, Props>(function QuestSheet(
-  { quest, deck, selectedId, onSelect, onAction, busy },
-  ref,
-) {
+// The focused place's field notes, links and quest actions. On a phone, a bottom sheet
+// with two snaps: peek (name, distance, category and the main action) and full
+// (everything, scrollable, stopping below the notices). On desktop, a side panel
+// showing everything, beside the map like Google Maps.
+export function QuestSheet(props: Props) {
+  const desktop = useMediaQuery(DESKTOP_QUERY);
+  return desktop ? <SidePanel {...props} /> : <BottomSheet {...props} />;
+}
+
+function useFocused({ quest, deck, selectedId }: Pick<Props, "quest" | "deck" | "selectedId">) {
   const leadIndex = deck.findIndex((d) => d.place.id === selectedId);
-  const focusedIsQuest = !!quest && (selectedId === null || selectedId === quest.place.id);
-  const focused = focusedIsQuest ? quest : leadIndex >= 0 ? deck[leadIndex] : null;
+  const isQuest = !!quest && (selectedId === null || selectedId === quest.place.id);
+  const focused = isQuest ? quest : leadIndex >= 0 ? deck[leadIndex] : null;
+  const label = isQuest ? `Today's quest · ${quest!.status}` : `Lead ${leadIndex + 1}`;
+  return { focused, isQuest, label };
+}
+
+function SidePanel(props: Props) {
+  const { onCoveredChange } = props;
+  const { focused, isQuest, label } = useFocused(props);
+  useEffect(() => onCoveredChange({ bottom: 0, left: PANEL_W + 12 }), [onCoveredChange]);
+  return (
+    <aside
+      aria-label="Quest details"
+      style={{ width: PANEL_W }}
+      className="absolute bottom-3 left-3 top-16 z-10 overflow-y-auto rounded-2xl border border-paper-edge bg-paper px-5 py-4 shadow-[0_6px_24px_rgba(43,41,37,0.12)]"
+    >
+      {focused ? (
+        <>
+          <Peek place={focused.place} label={label} {...props} isQuest={isQuest} />
+          <Rest {...props} focused={focused} isQuest={isQuest} />
+        </>
+      ) : (
+        <Empty />
+      )}
+    </aside>
+  );
+}
+
+function BottomSheet(props: Props) {
+  const { topLimit, onCoveredChange } = props;
+  const { focused, isQuest, label } = useFocused(props);
+  const reduce = useReducedMotion();
+  const restId = useId();
+  const sectionRef = useRef<HTMLElement>(null);
+  const peekRef = useRef<HTMLDivElement>(null);
+  const handleRef = useRef<HTMLButtonElement>(null);
+  const restRef = useRef<HTMLDivElement>(null);
+  const restContentRef = useRef<HTMLDivElement>(null);
+  // Whether the current press turned into a drag: its release also fires a click, which
+  // mustn't toggle the sheet a second time. (motion may end the drag a frame after that
+  // click, so a timestamp from onDragEnd would be too late.)
+  const pressDragged = useRef(false);
+  const dragControls = useDragControls();
+  const y = useMotionValue(0);
+  const [snap, setSnap] = useState<Snap>("peek");
+  const [peekH, setPeekH] = useState(0);
+  const [restH, setRestH] = useState(0);
+  const [viewH, setViewH] = useState(0);
+  const [announce, setAnnounce] = useState("");
+  // Full is as tall as its content, up to just below the notices (then it scrolls).
+  const fullH = Math.min(fullHeight(viewH, topLimit, peekH), peekH + restH);
+  const range = Math.max(0, fullH - peekH);
+
+  // Measure peek (the visible part when collapsed) and the screen it sits on.
+  useLayoutEffect(() => {
+    const peek = peekRef.current;
+    const host = sectionRef.current?.offsetParent as HTMLElement | null;
+    if (!peek) return;
+    const content = restContentRef.current;
+    const measure = () => {
+      setPeekH(peek.offsetHeight);
+      setRestH(content?.offsetHeight ?? 0);
+      setViewH(host?.clientHeight || window.innerHeight);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(peek);
+    if (content) ro.observe(content);
+    if (host) ro.observe(host);
+    return () => ro.disconnect();
+  }, []);
+
+  // Rest at the current snap whenever it or the measurements change: animated on a snap
+  // change, straight there on a resize (or always, with reduced motion). Before paint, so
+  // the first frame isn't the sheet wide open.
+  const lastSnap = useRef(snap);
+  useLayoutEffect(() => {
+    const to = offsetFor(snap, fullH, peekH);
+    const changed = lastSnap.current !== snap;
+    lastSnap.current = snap;
+    if (changed && !reduce) {
+      const a = animate(y, to, SPRING);
+      return () => a.stop();
+    }
+    y.set(to);
+  }, [snap, fullH, peekH, reduce, y]);
+
+  // The map only hears about settled heights. At full it keeps the last peek inset: the
+  // map is mostly hidden then, and dropping back to peek shouldn't jump.
+  useEffect(() => {
+    if (snap === "peek" && peekH > 0) onCoveredChange({ bottom: peekH, left: 0 });
+  }, [snap, peekH, onCoveredChange]);
+
+  const go = useCallback(
+    (next: Snap) => {
+      setSnap(next);
+      setAnnounce(next === "full" ? "Quest details expanded" : "Quest details collapsed");
+      // Collapsing hides the rest: don't leave focus on something you can't see.
+      if (next === "peek" && restRef.current?.contains(document.activeElement)) handleRef.current?.focus();
+    },
+    [],
+  );
+
+  const onDragEnd = (_: unknown, info: PanInfo) => {
+    const next = resolveSnap(y.get(), info.velocity.y, range, snap, info.offset.y);
+    // Settle from wherever it was let go, even back to the snap it started at (the
+    // snap effect only runs on a change, so it wouldn't move it).
+    const to = offsetFor(next, fullH, peekH);
+    if (reduce) y.set(to);
+    else animate(y, to, SPRING);
+    go(next);
+  };
 
   return (
-    <section
-      ref={ref}
+    <motion.section
+      ref={sectionRef}
       aria-label="Quest details"
-      className="absolute inset-x-0 bottom-0 z-10 mx-auto max-w-xl rounded-t-2xl border-t border-x border-paper-edge bg-paper px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-6px_24px_rgba(43,41,37,0.12)]"
+      drag="y"
+      dragListener={false}
+      dragControls={dragControls}
+      dragConstraints={{ top: 0, bottom: range }}
+      dragElastic={0.08}
+      dragMomentum={false}
+      onDragStart={() => (pressDragged.current = true)}
+      onDragEnd={onDragEnd}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && snap === "full") {
+          e.stopPropagation();
+          go("peek");
+          handleRef.current?.focus();
+        }
+      }}
+      style={{ y, height: fullH || undefined }}
+      data-snap={snap}
+      className="absolute inset-x-0 bottom-0 z-10 mx-auto flex max-w-xl flex-col rounded-t-2xl border-x border-t border-paper-edge bg-paper shadow-[0_-6px_24px_rgba(43,41,37,0.12)]"
     >
-      <div aria-hidden className="mx-auto mb-3 h-1 w-10 rounded-full bg-rule" />
+      <div ref={peekRef} className="shrink-0 px-5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {/* The handle strip: drag it, tap it, or use the keyboard on it. */}
+        <button
+          ref={handleRef}
+          type="button"
+          aria-expanded={snap === "full"}
+          aria-controls={restId}
+          aria-label={snap === "full" ? "Show less" : "Show more about this place"}
+          aria-keyshortcuts="ArrowUp ArrowDown Home End"
+          onPointerDown={(e) => {
+            pressDragged.current = false;
+            dragControls.start(e);
+          }}
+          onClick={(e) => {
+            // A pointer press that dragged already settled the sheet. Keyboard clicks
+            // (detail 0) always count, whatever an earlier drag left behind.
+            if (e.detail !== 0 && pressDragged.current) return;
+            go(snap === "peek" ? "full" : "peek");
+          }}
+          onKeyDown={(e) => {
+            const next = snapForKey(e.key);
+            if (next) {
+              e.preventDefault();
+              go(next);
+            }
+          }}
+          className="-mx-5 flex h-11 w-[calc(100%+2.5rem)] touch-none items-center justify-center"
+        >
+          <span aria-hidden className="h-1 w-10 rounded-full bg-rule" />
+        </button>
+        {focused ? <Peek place={focused.place} label={label} {...props} isQuest={isQuest} /> : <Empty />}
+      </div>
 
+      <div
+        ref={restRef}
+        id={restId}
+        inert={snap === "peek"}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5"
+      >
+        <div ref={restContentRef} className="pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+          {focused && <Rest {...props} focused={focused} isQuest={isQuest} />}
+        </div>
+      </div>
+
+      <p aria-live="polite" className="sr-only">
+        {announce}
+      </p>
+    </motion.section>
+  );
+}
+
+function Empty() {
+  return <p className="py-6 text-center text-ink-soft">Nothing on the map yet.</p>;
+}
+
+// Peek: what you came for. The place, how far, and the one action that matters now.
+function Peek({
+  place,
+  label,
+  isQuest,
+  quest,
+  onAction,
+  busy,
+}: Props & { place: PlaceView; label: string; isQuest: boolean }) {
+  const walkMin = Math.max(1, Math.round(place.distanceM / WALK_M_PER_MIN));
+  return (
+    <BlurFade key={place.id} duration={0.25} offset={4}>
+      <p className="field-label">{label}</p>
+      {/* The name gets the full width (two lines at most: names run long); the action
+          sits beside the distance underneath. */}
+      <h2 className="mt-1 line-clamp-2 text-2xl font-semibold leading-tight [font-variation-settings:'opsz'_96]">
+        {place.name}
+      </h2>
+      <div className="mt-1 flex items-center gap-3">
+        <p className="min-w-0 flex-1 text-ink-soft">
+          {humanize(place.category)} · <NumberTicker value={place.distanceM} className="text-ink-soft" /> m, about{" "}
+          {walkMin} min on foot
+        </p>
+        {isQuest && quest && <PrimaryAction status={quest.status} onAction={onAction} busy={busy} />}
+      </div>
+    </BlurFade>
+  );
+}
+
+// Full: the leads, why this place, its tags, the links, and the quieter action.
+function Rest({
+  quest,
+  deck,
+  selectedId,
+  onSelect,
+  onAction,
+  busy,
+  focused,
+  isQuest,
+}: Props & { focused: QuestView | DeckItem; isQuest: boolean }) {
+  const { place, reasons } = focused;
+  return (
+    <div className="pt-1">
       {deck.length > 0 && (
-        <nav aria-label="Leads" className="-mx-5 -mt-2.5 mb-2.5 flex gap-2 overflow-x-auto px-5 pb-2.5 pt-2.5 [scrollbar-color:var(--rule)_transparent] [scrollbar-width:thin]">
+        <nav
+          aria-label="Leads"
+          className="-mx-5 flex gap-2 overflow-x-auto px-5 py-2.5 [scrollbar-color:var(--rule)_transparent] [scrollbar-width:thin]"
+        >
           {quest && (
-            <Tab active={focusedIsQuest} onClick={() => onSelect(quest.place.id)} seal>
+            <Tab active={isQuest} onClick={() => onSelect(quest.place.id)} seal>
               Quest
             </Tab>
           )}
@@ -53,29 +298,46 @@ export const QuestSheet = forwardRef<HTMLDivElement, Props>(function QuestSheet(
         </nav>
       )}
 
-      {focused ? (
-        <BlurFade key={focused.place.id} duration={0.25} offset={4}>
-          <PlaceNotes
-            label={focusedIsQuest ? `Today's quest · ${quest!.status}` : `Lead ${leadIndex + 1}`}
-            place={focused.place}
-            reasons={focused.reasons}
-          />
-          <div className="mt-4 flex flex-wrap gap-2">
-            {focusedIsQuest ? (
-              <QuestButtons status={quest!.status} onAction={onAction} busy={busy} />
-            ) : (
-              <p className="text-sm text-ink-soft">
-                A lead, not your quest. Skip today&apos;s quest and the best remaining lead takes its place.
-              </p>
-            )}
-          </div>
-        </BlurFade>
-      ) : (
-        <p className="py-6 text-center text-ink-soft">Nothing on the map yet.</p>
+      <Why reasons={reasons} />
+      {place.tags.length > 0 && (
+        <p className="mt-3 font-mono text-xs text-ink-label">
+          <span className="sr-only">Tags: </span>
+          {place.tags.slice(0, 6).map(humanize).join(" · ")}
+        </p>
       )}
-    </section>
+      <Links place={place} />
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {isQuest && quest ? (
+          <SecondaryAction status={quest.status} onAction={onAction} busy={busy} />
+        ) : (
+          <p className="text-sm text-ink-soft">
+            A lead, not your quest. Skip today&apos;s quest and the best remaining lead takes its place.
+          </p>
+        )}
+      </div>
+    </div>
   );
-});
+}
+
+function Why({ reasons }: { reasons: Reasons }) {
+  return (
+    <ul
+      aria-label="Why this place"
+      className="mt-2 space-y-1 border-l-2 border-rule pl-3 font-mono text-[0.8rem] text-ink"
+    >
+      {reasons.liked.length > 0 && <li>You marked {reasons.liked.slice(0, 3).map(humanize).join(" + ")}.</li>}
+      {reasons.rarest && (
+        <li>
+          {reasons.rarest.nearby <= 1
+            ? `The only ${humanize(reasons.rarest.tag)} spot around here.`
+            : `1 of ${reasons.rarest.nearby} ${humanize(reasons.rarest.tag)} spots around here.`}
+        </li>
+      )}
+      {reasons.indie && <li>Independent. No other locations.</li>}
+    </ul>
+  );
+}
 
 function Tab({
   active,
@@ -116,29 +378,9 @@ export function hoursSearchUrl(place: Pick<PlaceView, "name" | "lat" | "lng">) {
   return `https://www.google.com/maps/search/${encodeURIComponent(place.name)}/@${place.lat},${place.lng},18z`;
 }
 
-function PlaceNotes({ label, place, reasons }: { label: string; place: PlaceView; reasons: Reasons }) {
-  const walkMin = Math.max(1, Math.round(place.distanceM / WALK_M_PER_MIN));
+function Links({ place }: { place: PlaceView }) {
   return (
-    <div>
-      <p className="field-label">{label}</p>
-      <h2 className="mt-1 text-2xl font-semibold leading-tight [font-variation-settings:'opsz'_96]">{place.name}</h2>
-      <p className="mt-1 text-ink-soft">
-        {humanize(place.category)} ·{" "}
-        <NumberTicker value={place.distanceM} className="text-ink-soft" /> m, about {walkMin} min on foot
-      </p>
-
-      <ul className="mt-3 space-y-1 border-l-2 border-rule pl-3 font-mono text-[0.8rem] text-ink">
-        {reasons.liked.length > 0 && <li>You marked {reasons.liked.slice(0, 3).map(humanize).join(" + ")}.</li>}
-        {reasons.rarest && (
-          <li>
-            {reasons.rarest.nearby <= 1
-              ? `The only ${humanize(reasons.rarest.tag)} spot around here.`
-              : `1 of ${reasons.rarest.nearby} ${humanize(reasons.rarest.tag)} spots around here.`}
-          </li>
-        )}
-        {reasons.indie && <li>Independent. No other locations.</li>}
-      </ul>
-
+    <>
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
         <a
           className="underline decoration-oxblood underline-offset-4"
@@ -168,43 +410,44 @@ function PlaceNotes({ label, place, reasons }: { label: string; place: PlaceView
         </a>
       </div>
       <p className="mt-2 text-xs text-ink-label">No opening hours yet. Check before you go.</p>
-    </div>
+    </>
   );
 }
 
-function QuestButtons({
-  status,
-  onAction,
-  busy,
-}: {
-  status: QuestView["status"];
-  onAction: (a: QuestAction) => void;
-  busy: boolean;
-}) {
-  const primary = "stamp-btn rounded-md bg-oxblood px-4 py-2 font-medium text-paper disabled:opacity-50";
-  const secondary = "stamp-btn rounded-md bg-paper px-4 py-2 text-ink disabled:opacity-50";
+const PRIMARY = "stamp-btn shrink-0 rounded-md bg-oxblood px-4 py-2 font-medium text-paper disabled:opacity-50";
+const SECONDARY = "stamp-btn rounded-md bg-paper px-4 py-2 text-ink disabled:opacity-50";
+
+function PrimaryAction({ status, onAction, busy }: { status: QuestView["status"]; onAction: (a: QuestAction) => void; busy: boolean }) {
   if (status === "offered") {
     return (
-      <>
-        <button className={primary} disabled={busy} onClick={() => onAction("accept")}>
-          Accept quest
-        </button>
-        <button className={secondary} disabled={busy} onClick={() => onAction("skip")}>
-          Skip
-        </button>
-      </>
+      <button className={PRIMARY} disabled={busy} onClick={() => onAction("accept")}>
+        Accept quest
+      </button>
     );
   }
   if (status === "accepted") {
     return (
-      <>
-        <button className={primary} disabled={busy} onClick={() => onAction("complete")}>
-          I went
-        </button>
-        <button className={secondary} disabled={busy} onClick={() => onAction("not-today")}>
-          Not today
-        </button>
-      </>
+      <button className={PRIMARY} disabled={busy} onClick={() => onAction("complete")}>
+        I went
+      </button>
+    );
+  }
+  return null;
+}
+
+function SecondaryAction({ status, onAction, busy }: { status: QuestView["status"]; onAction: (a: QuestAction) => void; busy: boolean }) {
+  if (status === "offered") {
+    return (
+      <button className={SECONDARY} disabled={busy} onClick={() => onAction("skip")}>
+        Skip
+      </button>
+    );
+  }
+  if (status === "accepted") {
+    return (
+      <button className={SECONDARY} disabled={busy} onClick={() => onAction("not-today")}>
+        Not today
+      </button>
     );
   }
   return null;
