@@ -1,4 +1,17 @@
+# Every text file is stored and checked out with LF, on Windows too. Most of the repo
+# ends up inside Linux: images, the VM, ConfigMaps with embedded scripts. (text=auto
+# alone would check out CRLF on Windows, since core.eol defaults to native.)
+* text=auto eol=lf
+
 # Shell scripts must keep LF endings: Git Bash fails on CRLF ("$'\r': command not found").
 *.sh text eol=lf
 # Copied into the Oracle stand-in VM as-is: iptables-restore rejects CRLF ("table name 'filter' invalid").
 infra/oci-k3s/test/oracle-rules.* text eol=lf
+# Built on Linux: a CRLF in a RUN line's continuation breaks the build.
+Dockerfile text eol=lf
+
+*.ico binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.parquet binary
