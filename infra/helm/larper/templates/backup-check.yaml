@@ -78,6 +78,7 @@ spec:
                 - { name: SERVER_NAME, value: {{ .serverName | quote }} }
                 - { name: WAL_MAX_AGE_HOURS, value: {{ .check.walMaxAgeHours | quote }} }
                 - { name: BASE_BACKUP_MAX_AGE_DAYS, value: {{ .check.baseBackupMaxAgeDays | quote }} }
+                - { name: RESET_GRACE_HOURS, value: {{ .check.resetGraceHours | default 3 | quote }} }
               resources:
                 requests: { cpu: 10m, memory: 48Mi }
                 limits: { memory: 128Mi }
