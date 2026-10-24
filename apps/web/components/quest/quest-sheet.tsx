@@ -108,6 +108,14 @@ function Tab({
   );
 }
 
+// We have no opening hours (Overture has none), so link to a maps search for the place,
+// centred on it so a same-name place elsewhere doesn't win. A plain link: no API call,
+// nothing stored. The documented `?api=1&query=` form has no way to centre the search,
+// and a visitor from out of town would get the nearest same-name place to them.
+export function hoursSearchUrl(place: Pick<PlaceView, "name" | "lat" | "lng">) {
+  return `https://www.google.com/maps/search/${encodeURIComponent(place.name)}/@${place.lat},${place.lng},18z`;
+}
+
 function PlaceNotes({ label, place, reasons }: { label: string; place: PlaceView; reasons: Reasons }) {
   const walkMin = Math.max(1, Math.round(place.distanceM / WALK_M_PER_MIN));
   return (
@@ -155,6 +163,9 @@ function PlaceNotes({ label, place, reasons }: { label: string; place: PlaceView
             Call
           </a>
         )}
+        <a className="underline underline-offset-4" href={hoursSearchUrl(place)} target="_blank" rel="noreferrer">
+          Check hours
+        </a>
       </div>
       <p className="mt-2 text-xs text-ink-label">No opening hours yet. Check before you go.</p>
     </div>
