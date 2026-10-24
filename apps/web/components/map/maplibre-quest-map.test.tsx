@@ -251,6 +251,12 @@ describe("2D/3D toggle", () => {
 });
 
 describe("sheet height changes", () => {
+  // The map gets ready after an async import, outside act(), so the toggle can be on
+  // screen before React has run the first fly-to. Wait for it before clearing spies.
+  const firstFlight = async () => {
+    await toggleButton();
+    await waitFor(() => expect(map().flyTo).toHaveBeenCalled());
+  };
   // jsdom has no layout: give the map container a phone-sized box.
   const sized = () => {
     const el = map().getContainer();
@@ -260,7 +266,7 @@ describe("sheet height changes", () => {
 
   it("doesn't replay the fly-to (which reset zoom and tilt) when only the sheet's height changes", async () => {
     const { rerender } = render(<MapLibreQuestMap {...props()} />);
-    await toggleButton();
+    await firstFlight();
     sized();
     map().flyTo.mockClear();
 
@@ -271,7 +277,7 @@ describe("sheet height changes", () => {
 
   it("pans the pin back into view if the sheet grows over it, keeping zoom, tilt and bearing", async () => {
     const { rerender } = render(<MapLibreQuestMap {...props()} />);
-    await toggleButton();
+    await firstFlight();
     sized();
     map().projected = { x: 200, y: 600 }; // under a 360 px sheet (visible part ends at 800 - 360 = 440)
     map().flyTo.mockClear();
@@ -288,7 +294,7 @@ describe("sheet height changes", () => {
 
   it("doesn't cut into a fly-to or a gesture already under way", async () => {
     const { rerender } = render(<MapLibreQuestMap {...props()} />);
-    await toggleButton();
+    await firstFlight();
     sized();
     map().projected = { x: 200, y: 600 };
     map().moving = true;
@@ -298,7 +304,7 @@ describe("sheet height changes", () => {
 
   it("uses the latest sheet height on the next fly-to", async () => {
     const { rerender } = render(<MapLibreQuestMap {...props()} />);
-    await toggleButton();
+    await firstFlight();
     sized();
     rerender(<MapLibreQuestMap {...props({ bottomInset: 200 })} />);
     rerender(<MapLibreQuestMap {...props({ bottomInset: 200, selectedId: "p2" })} />);
