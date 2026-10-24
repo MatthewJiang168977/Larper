@@ -25,6 +25,9 @@ preflight_nocr() { tr -d '\r'; }
 preflight_int() { # what, value: a whole number, or the subshell ends
   [[ $2 =~ ^[0-9]+$ ]] || { echo "resize: $1 isn't a whole number: '$2'" >&2; exit 1; }
 }
+preflight_signed() { # what, value: a whole number that may be negative (quota already overrun)
+  [[ $2 =~ ^-?[0-9]+$ ]] || { echo "resize: $1 isn't a whole number: '$2'" >&2; exit 1; }
+}
 preflight_log() { echo "==> $*" >&2; }
 
 resize_preflight() (
@@ -57,14 +60,26 @@ print(sum(int(x["shape-config"]["ocpus"]) for x in xs), sum(int(x["shape-config"
     || { echo "resize: over the Always Free allowance: $((o + oo)) OCPU / $((m + om)) GB across A1 instances" >&2; exit 1; }
   preflight_log "  \$0: $((o + oo)) OCPU x 744 h = $(((o + oo) * 744)) of 1,500 OCPU-h; $((m + om)) GB x 744 h = $(((m + om) * 744)) of 9,000 GB-h (other A1 instances: $oo / $om)"
 
-  # 2. Quota: what's left for A1 in this AD, plus what this VM already holds.
-  avail_o=$(oci limits resource-availability get --compartment-id "$tenancy" --service-name compute \
-    --limit-name standard-a1-core-count --availability-domain "$ad" --query 'data.available' --raw-output | preflight_nocr)
-  avail_m=$(oci limits resource-availability get --compartment-id "$tenancy" --service-name compute \
-    --limit-name standard-a1-memory-count --availability-domain "$ad" --query 'data.available' --raw-output | preflight_nocr)
-  avail_o=${avail_o%.0} avail_m=${avail_m%.0}
-  preflight_int "A1 OCPU quota left" "$avail_o"
-  preflight_int "A1 memory quota left" "$avail_m"
+  # 2. Quota: what's left for A1, plus what this VM already holds. Two limits each:
+  #    per AD (standard-a1-*-count) and regional (standard-a1-*-regional-count). A
+  #    resize is checked against the regional one (2026-10-24: per AD allowed 2/12,
+  #    regional was zeroed, Oracle said QuotaExceeded), so the smaller one counts.
+  #    "available" goes negative when a quota is already overrun.
+  quota_left() { # limit-name [availability-domain]
+    oci limits resource-availability get --compartment-id "$tenancy" --service-name compute \
+      --limit-name "$1" ${2:+--availability-domain "$2"} --query 'data.available' --raw-output | preflight_nocr
+  }
+  ad_o=$(quota_left standard-a1-core-count "$ad")
+  ad_m=$(quota_left standard-a1-memory-count "$ad")
+  rg_o=$(quota_left standard-a1-core-regional-count)
+  rg_m=$(quota_left standard-a1-memory-regional-count)
+  ad_o=${ad_o%.0} ad_m=${ad_m%.0} rg_o=${rg_o%.0} rg_m=${rg_m%.0}
+  preflight_signed "A1 OCPU quota left in $ad" "$ad_o"
+  preflight_signed "A1 memory quota left in $ad" "$ad_m"
+  preflight_signed "A1 OCPU quota left in the region" "$rg_o"
+  preflight_signed "A1 memory quota left in the region" "$rg_m"
+  avail_o=$(( ad_o < rg_o ? ad_o : rg_o )) avail_m=$(( ad_m < rg_m ? ad_m : rg_m ))
+  preflight_log "  quota left: $ad_o OCPU / $ad_m GB in the AD, $rg_o OCPU / $rg_m GB in the region"
   (( avail_o + cur_o >= o && avail_m + cur_m >= m )) \
     || { echo "resize: quota allows only $((avail_o + cur_o)) OCPU / $((avail_m + cur_m)) GB for this VM" >&2; exit 1; }
   preflight_log "  quota: up to $((avail_o + cur_o)) OCPU / $((avail_m + cur_m)) GB for this VM"

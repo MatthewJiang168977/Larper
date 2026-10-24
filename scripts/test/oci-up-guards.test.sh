@@ -26,7 +26,9 @@ check() { # description, command...
 
 # A sandbox: fake HOME, OCI config, instance env, and fake CLIs on PATH.
 # FAKE_OCI: good | crlf (good values, Windows line endings) | bad-quota (a value that
-# isn't a number) | bad-instance (the instance lookup fails) | no-capacity.
+# isn't a number) | bad-instance (the instance lookup fails) | no-capacity |
+# regional-zero (per-AD quota allows 2/12, the regional quota is zeroed and already
+# overrun by the 1/6 VM, as on 2026-10-24).
 # FAKE_GIT_STATUS: what `git status --porcelain` prints (empty: a clean tree).
 sandbox() {
   BOX=$(mktemp -d)
@@ -46,7 +48,12 @@ case "$*" in
   "compute instance list "*) out '[]' ;;
   "limits resource-availability get "*)
     [[ $FAKE_OCI == bad-quota ]] && { out 'None oops'; exit 0; }
-    [[ "$*" == *core-count* ]] && out '1.0' || out '6.0' ;;
+    case "$*" in
+      *core-regional-count*) [[ $FAKE_OCI == regional-zero ]] && out '-1.0' || out '1.0' ;;
+      *memory-regional-count*) [[ $FAKE_OCI == regional-zero ]] && out '-6.0' || out '6.0' ;;
+      *core-count*) out '1.0' ;;
+      *) out '6.0' ;;
+    esac ;;
   "compute compute-capacity-report create "*)
     [[ $FAKE_OCI == no-capacity ]] && out 'OUT_OF_HOST_CAPACITY' || out 'AVAILABLE' ;;
   *) echo "MUTATE oci $*" >>"$FAKE_DIR/deploy-calls"; out '{}' ;;
@@ -108,6 +115,18 @@ run_up no-capacity "" --resize-check 2 12
 check "check, no capacity: exits 3" test "$RC" -eq 3
 check "check, no capacity: says try later" said "try later"
 check "check, no capacity: no deploy step" no_deploy
+
+# 4b. Per-AD quota allows it but the regional quota doesn't: refuses (Oracle checks
+#     a resize against the regional one), with the negative availability parsed.
+run_up regional-zero "" --resize-check 2 12
+check "check, regional quota zeroed: exits non-zero" test "$RC" -ne 0
+check "check, regional quota zeroed: says the quota allows less" said "quota allows only 0 OCPU / 0 GB"
+check "check, regional quota zeroed: shows both limits" said "in the region"
+check "check, regional quota zeroed: no deploy step" no_deploy
+check "check, regional quota zeroed: asked for the regional limits" grep -q 'core-regional-count' "$BOX/oci-calls"
+run_up regional-zero "" --resize 2 12
+check "resize, regional quota zeroed: exits non-zero" test "$RC" -ne 0
+check "resize, regional quota zeroed: no deploy step and no instance update" no_deploy
 
 # 5. A check from a dirty tree is still only a check (it's read-only).
 run_up good " M scripts/oci-up.sh" --resize-check 2 12
