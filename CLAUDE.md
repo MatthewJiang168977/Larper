@@ -51,14 +51,26 @@ You may merge a PR you opened only when **all** of these hold:
   - `scripts/oci-up.sh` and the scripts it runs;
   - the Helm chart (`infra/helm/`) and its values files;
   - the firewall (`infra/oci-k3s/bootstrap.sh`);
+  - Terraform (`infra/terraform/`);
+  - dependencies: any `package.json`, `pnpm-lock.yaml`, `go.mod` or `go.sum`;
   - CI (`.github/`);
 - It makes no user-facing product decision (copy, flows, what the app shows or
   offers).
 
 Everything else waits for the user. When unsure whether a PR qualifies, it doesn't.
 
+The reviewer is `.claude/agents/code-reviewer.md`. Give it the PR number, its head
+SHA and the plan the PR was meant to carry out. Its approval counts only for the
+commit it reviewed: a new push needs a new review.
+
 Merging is not deploying. A merge never permits a change to a live system; the
 approval rule above still applies to every deploy.
+
+**Reverts.** If a PR you merged under this rule breaks production, you may revert
+it at once: open a revert PR and merge it without waiting for CI or the reviewer.
+Then tell the user right away: what broke, how you saw it, and the revert PR. The
+revert only changes `main`. Redeploying the reverted code is still a live change
+and needs approval.
 
 ## End-of-session digest
 
