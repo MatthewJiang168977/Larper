@@ -45,14 +45,18 @@ func Recompute(ctx context.Context, db interface {
 		return fmt.Errorf("stats: %w", err)
 	}
 
+	// A place whose point is suspect (places.location_suspect) isn't really in the area,
+	// so it doesn't count toward what's there. It does still count as a location of its
+	// chain below: it exists, just elsewhere.
 	areaStmts := []string{
 		`DELETE FROM area_stats WHERE left(geohash6, 5) = ANY($1)`,
 		`INSERT INTO area_stats (geohash6, tag, count)
 		 SELECT geohash6, tag, count(*) FROM places, unnest(tags) AS tag
-		 WHERE left(geohash6, 5) = ANY($1) GROUP BY 1, 2`,
+		 WHERE left(geohash6, 5) = ANY($1) AND location_suspect IS NULL GROUP BY 1, 2`,
 		`DELETE FROM area_totals WHERE left(geohash6, 5) = ANY($1)`,
 		`INSERT INTO area_totals (geohash6, places)
-		 SELECT geohash6, count(*) FROM places WHERE left(geohash6, 5) = ANY($1) GROUP BY 1`,
+		 SELECT geohash6, count(*) FROM places
+		 WHERE left(geohash6, 5) = ANY($1) AND location_suspect IS NULL GROUP BY 1`,
 	}
 	for _, s := range areaStmts {
 		if _, err := tx.Exec(ctx, s, geohash5); err != nil {

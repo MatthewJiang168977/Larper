@@ -65,6 +65,8 @@ workers:
 
 ingest:
   replicas: 1
+  # The NYC region's ZIP prefixes, matching api.ingestRegion above (places/location.go).
+  postcodePrefixes: nyc
 
 queue:
   # Jobs are delivered by Amazon SQS (infra/terraform/aws); the jobs table stays the

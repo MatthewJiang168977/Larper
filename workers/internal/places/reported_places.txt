@@ -1,0 +1,4 @@
+# Places reported as mislocated that no address rule catches (no postcode in Overture).
+# The loader flags them (places.location_suspect), so they never reach a deck.
+# "<overture id> <note>", one per line.
+58475f4b-e8ba-4aae-b246-1efa5e33f6b5 VerKeerderkill Falls (Sams Point Preserve, Catskills) pinned in Manhattan; seen in a Union Square deck 2026-10-24

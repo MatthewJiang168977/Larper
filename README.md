@@ -452,8 +452,14 @@ python data/extract_overture.py --out data/nyc.parquet        # ~566k places, ~1
 kubectl -n larper port-forward svc/pg-rw 55432:5432 &
 PW=$(kubectl -n larper get secret pg-ingest -o jsonpath='{.data.password}' | base64 -d)    # the ingest-worker's role
 cd workers && DATABASE_URL="postgres://larper_ingest:$PW@127.0.0.1:55432/larper?sslmode=require&pool_max_conns=4" \
-  go run ./cmd/load-places -in ../data/nyc.parquet           # ~80k quest-worthy places, idempotent
+  go run ./cmd/load-places -in ../data/nyc.parquet -postcode-prefixes nyc   # ~80k quest-worthy places, idempotent
 ```
+`-postcode-prefixes nyc` (or `PLACE_POSTCODE_PREFIXES`; Helm `ingest.postcodePrefixes` for the
+ingest-worker) flags places whose Overture address contradicts their point: a postcode outside the
+region, or a foreign address. About 116 of the 80k NYC places, mostly shops abroad and businesses
+elsewhere pinned in Manhattan by a city-only address. A flagged place keeps its row but never reaches a
+deck or the area stats (`places.location_suspect`). Places with no postcode that are still wrong go in
+`workers/internal/places/reported_places.txt`. Existing rows get the flag on their area's next load.
 
 ### Auth
 The browser calls the API directly at `NEXT_PUBLIC_API_URL`, cross-origin. Auth is a Clerk session

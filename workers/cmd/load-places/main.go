@@ -24,6 +24,8 @@ func main() {
 	in := flag.String("in", "", "parquet file from extract_overture.py")
 	release := flag.String("release", "2026-09-23.1", "Overture release the file came from")
 	minConf := flag.Float64("min-confidence", 0.5, "drop places Overture is less sure exist")
+	prefixes := flag.String("postcode-prefixes", os.Getenv("PLACE_POSTCODE_PREFIXES"),
+		`US ZIP prefixes inside the region ("nyc", or a comma list): places whose postcode contradicts it are flagged; empty checks only the reported list`)
 	flag.Parse()
 	if *in == "" || os.Getenv("DATABASE_URL") == "" {
 		fmt.Fprintln(os.Stderr, "usage: DATABASE_URL=... load-places -in file.parquet")
@@ -42,7 +44,8 @@ func main() {
 	}
 	defer pool.Close()
 
-	res, err := places.Load(ctx, pool, tax, places.Options{Path: *in, Release: *release, MinConf: *minConf})
+	res, err := places.Load(ctx, pool, tax, places.Options{Path: *in, Release: *release, MinConf: *minConf,
+		Location: places.LocationCheck{PostcodePrefixes: places.ParsePrefixes(*prefixes)}})
 	if err != nil {
 		fail(err)
 	}

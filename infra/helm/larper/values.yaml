@@ -192,6 +192,10 @@ ingest:
   # DuckDB's own cap, kept under the container limit so it spills instead of OOMing.
   duckdbMemory: 512MB
   duckdbThreads: 2
+  # US ZIP prefixes inside the ingest region ("nyc", or a comma list): a place whose
+  # postcode contradicts them is flagged and kept out of decks (places/location.go).
+  # Empty: only the reported list (local development, any area).
+  postcodePrefixes: ""
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { memory: 1Gi }

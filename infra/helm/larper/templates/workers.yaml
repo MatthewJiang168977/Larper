@@ -114,6 +114,7 @@ spec:
             - { name: JOB_LEASE_SECONDS, value: {{ .Values.ingest.leaseSeconds | quote }} }
             - { name: DUCKDB_MEMORY_LIMIT, value: {{ .Values.ingest.duckdbMemory | quote }} }
             - { name: DUCKDB_THREADS, value: {{ .Values.ingest.duckdbThreads | quote }} }
+            - { name: PLACE_POSTCODE_PREFIXES, value: {{ .Values.ingest.postcodePrefixes | default "" | quote }} }
             - { name: QUEUE_BACKEND, value: {{ .Values.queue.backend | quote }} }
             {{- if eq .Values.queue.backend "sqs" }}
             - { name: SQS_QUEUE_PREFIX, value: {{ .Values.queue.sqsPrefix | quote }} }

@@ -42,6 +42,7 @@ type config struct {
 	duckMem   string
 	duckCores int
 	minConf   float64
+	location  places.LocationCheck
 }
 
 func main() {
@@ -56,6 +57,9 @@ func main() {
 		duckMem:   platform.Env("DUCKDB_MEMORY_LIMIT", "512MB"),
 		duckCores: platform.EnvInt("DUCKDB_THREADS", 2),
 		minConf:   0.5,
+		// US ZIP prefixes inside the region (Helm ingest.postcodePrefixes): flags places
+		// whose address contradicts their point (places/location.go).
+		location: places.LocationCheck{PostcodePrefixes: places.ParsePrefixes(platform.Env("PLACE_POSTCODE_PREFIXES", ""))},
 	}
 
 	pool, err := platform.Postgres(ctx)
@@ -196,7 +200,7 @@ func ingest(ctx context.Context, pool *pgxpool.Pool, tax *taxonomy.Taxonomy, gh 
 	// Mark exactly the requested cell: even a cell of river with no quest-worthy places
 	// has been surveyed, and the API must stop asking for it.
 	return places.Load(ctx, pool, tax, places.Options{
-		Path: out, Release: cfg.release, MinConf: cfg.minConf, MarkOnly: []string{gh},
+		Path: out, Release: cfg.release, MinConf: cfg.minConf, MarkOnly: []string{gh}, Location: cfg.location,
 	})
 }
 

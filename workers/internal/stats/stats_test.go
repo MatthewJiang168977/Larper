@@ -345,3 +345,54 @@ func waitUntil(t *testing.T, ctx context.Context, what, query string) {
 	}
 	t.Fatalf("timed out waiting for %s", what)
 }
+
+// A place whose point is suspect (places.location_suspect, migration 0015) isn't
+// counted in its area's stats, but still counts as a location of its chain.
+func TestRecomputeSkipsSuspectPlacesInAreaStats(t *testing.T) {
+	if testPool == nil {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	tx, err := testPool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+
+	add := func(key string, suspect any) {
+		t.Helper()
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO places (overture_id, name, geom, categories, chain_key, tags, tag_vec, confidence, location_suspect)
+			VALUES ($1, $1, ST_SetSRID(ST_MakePoint(0.001, -60.001), 4326)::geography, '{test}', 'stats-test-suspect-chain',
+			        '{stats_test_tag}', array_fill(0::real, ARRAY[160])::vector, 1, $2)`,
+			"stats-test-"+key, suspect); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("here", nil)
+	add("elsewhere", "postcode 33401 is outside the region")
+
+	var area, cell string
+	if err := tx.QueryRow(ctx, `SELECT left(geohash6, 5), geohash6 FROM places WHERE overture_id = 'stats-test-here'`).Scan(&area, &cell); err != nil {
+		t.Fatal(err)
+	}
+	if err := Recompute(ctx, tx, []string{area}); err != nil {
+		t.Fatal(err)
+	}
+	var tagCount, total, chain int
+	if err := tx.QueryRow(ctx, `SELECT count FROM area_stats WHERE geohash6 = $1 AND tag = 'stats_test_tag'`, cell).Scan(&tagCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.QueryRow(ctx, `SELECT places FROM area_totals WHERE geohash6 = $1`, cell).Scan(&total); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.QueryRow(ctx, `SELECT chain_locations FROM places WHERE overture_id = 'stats-test-here'`).Scan(&chain); err != nil {
+		t.Fatal(err)
+	}
+	if tagCount != 1 || total != 1 {
+		t.Errorf("area counts include the suspect place: tag %d, total %d, want 1 and 1", tagCount, total)
+	}
+	if chain != 2 {
+		t.Errorf("chain_locations = %d, want 2 (a mislocated place is still a location of its chain)", chain)
+	}
+}
