@@ -10,6 +10,11 @@
 #   BBOX=xmin,ymin,xmax,ymax PREFIXES=... scripts/oci-reload-places.sh
 #   DRY_RUN=1 scripts/oci-reload-places.sh       # print the manifests, change nothing
 #
+# Fails closed, as oci-up.sh does: a clean working tree only (--allow-dirty to override),
+# every value checked before anything remote, and the first remote steps are reads, so a
+# failed check or a failed read stops it before the backup or the Job
+# (scripts/test/oci-up-guards.test.sh covers it).
+#
 # It changes the live database: run it only with approval (CLAUDE.md). It prints the
 # extract and load times from the Job's log, and its wall time on the VM.
 set -euo pipefail
@@ -21,14 +26,33 @@ SSH_KEY=${SSH_KEY:-$HOME/.ssh/larper_oci}
 BBOX=${BBOX:--74.26,40.49,-73.70,40.92} # the NYC region (Helm api.ingestRegion)
 PREFIXES=${PREFIXES:-nyc}                # its ZIP prefixes (Helm ingest.postcodePrefixes)
 BACKUP=1
+ALLOW_DIRTY=0
 for a in "$@"; do
   case $a in
     --no-backup) BACKUP=0 ;;
+    --allow-dirty) ALLOW_DIRTY=1 ;;
     *) echo "unknown argument $a (see the top of $0)" >&2; exit 2 ;;
   esac
 done
-[[ $BBOX =~ ^-?[0-9.]+,-?[0-9.]+,-?[0-9.]+,-?[0-9.]+$ ]] || { echo "BBOX must be xmin,ymin,xmax,ymax" >&2; exit 2; }
-[[ $PREFIXES =~ ^[a-z0-9,]*$ ]] || { echo "PREFIXES must be \"nyc\" or a comma list of digits" >&2; exit 2; }
+
+# Only a commit's script reaches the cluster: a dirty tree could run a Job nobody reviewed.
+dirty=$(git status --porcelain --untracked-files=normal)
+if [[ -n $dirty && $ALLOW_DIRTY != 1 ]]; then
+  echo "refusing to reload from a dirty working tree (commit first, or pass --allow-dirty):" >&2
+  head -20 <<<"$dirty" >&2
+  exit 1
+fi
+
+# The box: four numbers, lng then lat, min < max, on the globe. load-places checks it too,
+# but only inside the Job, after the backup; this checks it before anything remote.
+num='-?[0-9]+(\.[0-9]+)?'
+[[ $BBOX =~ ^$num,$num,$num,$num$ ]] || { echo "BBOX must be xmin,ymin,xmax,ymax (numbers), got '$BBOX'" >&2; exit 2; }
+IFS=, read -r xmin ymin xmax ymax <<<"$BBOX"
+awk -v a="$xmin" -v b="$ymin" -v c="$xmax" -v d="$ymax" \
+  'BEGIN { exit !(a < c && b < d && a >= -180 && c <= 180 && b >= -90 && d <= 90) }' \
+  || { echo "BBOX isn't a box (lng,lat,lng,lat; min < max; on the globe): '$BBOX'" >&2; exit 2; }
+[[ $PREFIXES == nyc || $PREFIXES =~ ^([0-9]{1,5})(,[0-9]{1,5})*$ || -z $PREFIXES ]] \
+  || { echo "PREFIXES must be \"nyc\", a comma list of ZIP prefixes, or empty, got '$PREFIXES'" >&2; exit 2; }
 
 [[ -f $ENV_FILE ]] || { echo "no $ENV_FILE" >&2; exit 1; }
 # shellcheck disable=SC1090
