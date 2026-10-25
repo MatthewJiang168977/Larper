@@ -1,5 +1,14 @@
 # M9 plan: Profile & Taste Identity
 
+> **Renumbered 2026-10-25.** Migrations 0010-0015 are taken (service roles, skip reasons,
+> the demo reset, check-in attempts, `places.location_suspect`), so M9's start at **0016**;
+> decision records 0002-0004 are taken too, so M9's are **0005** and **0006**. The
+> per-service database roles (0010, decision 0003) are live: every M9 migration grants its
+> tables to the roles that need them and updates `apps/api/src/db/roles.db.spec.ts`.
+> Other parts of this plan predate the public demo (restricted sign-ups, the shared demo
+> account and its nightly reset, rate limits already in place, the web app on Vercel); the
+> profile proposal of 2026-10-25 covers those and should be folded in before building.
+
 Plan for the spec in [`M9-profile.md`](M9-profile.md), written 2026-10-17 against commit
 `b843f4e`. Nothing here is built yet. File paths are real unless marked **new**. Decisions
 that need the owner are collected under [Open questions](#open-questions-and-risks); where
@@ -79,14 +88,14 @@ them. No contract step is needed in M9. Each migration gets a `.down.sql`.
 
 | Migration (**new**) | Change | Why / rollout note |
 |---|---|---|
-| `0010_quest_facts` | `quests` add `accepted_at timestamptz`, `completed_at timestamptz`, `rarity real` (all nullable) | Makes the projection a function of stored facts. The new API sets them in `act()` and `offer()`. Rows written by old pods during the rollout, and all earlier rows, have NULLs; the projection reads `coalesce(completed_at, updated_at)` for completed rows (exact, since completed is terminal) and treats `status = 'completed'` as accepted (complete is only allowed from accepted). Legacy `rarity` stays NULL (see open question 6). |
-| `0011_profile_stats` | `profile_stats (user_id PK → users ON DELETE CASCADE, checkins, neighborhoods, accepts, skips, streak_longest, streak_run, streak_last_day date, niche_score real, rarest_tag text, projection_version int, updated_at)`; index on `niche_score` | The consumer's projection. `streak_run`/`streak_last_day` let the API compute the *current* streak at read time (it decays without events). |
-| `0012_tag_families` | `tags` add `family text` (nullable) | Hue per family for the palette. Old ingest-workers keep upserting `(slot, tag)` without it. |
-| `0013_share_cards` | `share_cards (token_hash bytea PK, user_id → users ON DELETE CASCADE, payload jsonb, created_at, revoked_at)`; partial unique index on `user_id WHERE revoked_at IS NULL` | Only a SHA-256 of the token is stored, so a database leak doesn't expose live links. One active card per user (open question 4). |
-| `0014_star_sign` (optional, last) | `users` add `birth_month smallint`, `birth_day smallint`, both nullable, with range checks | Opt-in only; month and day, never a year. |
+| `0016_quest_facts` | `quests` add `accepted_at timestamptz`, `completed_at timestamptz`, `rarity real` (all nullable) | Makes the projection a function of stored facts. The new API sets them in `act()` and `offer()`. Rows written by old pods during the rollout, and all earlier rows, have NULLs; the projection reads `coalesce(completed_at, updated_at)` for completed rows (exact, since completed is terminal) and treats `status = 'completed'` as accepted (complete is only allowed from accepted). Legacy `rarity` stays NULL (see open question 6). |
+| `0017_profile_stats` | `profile_stats (user_id PK → users ON DELETE CASCADE, checkins, neighborhoods, accepts, skips, streak_longest, streak_run, streak_last_day date, niche_score real, rarest_tag text, projection_version int, updated_at)`; index on `niche_score` | The consumer's projection. `streak_run`/`streak_last_day` let the API compute the *current* streak at read time (it decays without events). |
+| `0018_tag_families` | `tags` add `family text` (nullable) | Hue per family for the palette. Old ingest-workers keep upserting `(slot, tag)` without it. |
+| `0019_share_cards` | `share_cards (token_hash bytea PK, user_id → users ON DELETE CASCADE, payload jsonb, created_at, revoked_at)`; partial unique index on `user_id WHERE revoked_at IS NULL` | Only a SHA-256 of the token is stored, so a database leak doesn't expose live links. One active card per user (open question 4). |
+| `0020_star_sign` (optional, last) | `users` add `birth_month smallint`, `birth_day smallint`, both nullable, with range checks | Opt-in only; month and day, never a year. |
 
-If the audit's per-service database roles (`docs/audit-2026-10.md` item 3) land first,
-each of these migrations also grants its tables to the roles that need them, and
+The per-service database roles (`docs/audit-2026-10.md` item 3, migration 0010) are live,
+so each of these migrations also grants its tables to the roles that need them, and
 profile-stats gets its own role (`profile_stats` read/write, `quests`, `places`,
 `processed_events` read/insert).
 
@@ -258,7 +267,7 @@ All in `apps/api/src/profile/` unless noted.
 | Chaos: kill consumer, no lost or double-counted stats | Extend `loadtest/chaos.sh`: kill a profile-stats pod (force and graceful) next to taste-worker at t=180, and at the end wait for lag 0 on both groups (`rpk group describe profile-stats`), then run `profile-stats rebuild -compare` and record the number of differing rows (must be 0). Needs a **new** k6 scenario that produces events: accept the offered quest, then complete it posting the place's own coordinates (passes the geofence), then fetch the next offer. Uses the existing load-test users (Clerk dev cap of 100). |
 | Palette deterministic | **New** `apps/api/src/profile/palette.spec.ts`: same vector → deep-equal output across calls; a vector with tiny float noise → same output; 3-5 colors always; a family's hue never depends on other families; snapshot of a few fixed vectors. |
 | Share-card payload has no place names, coordinates or timestamps | **New** `apps/api/src/profile/share-card.spec.ts`: build the payload from a fixture user whose places have distinctive names; assert its keys equal the whitelist exactly, that no string in it contains a fixture place name, and that no value matches a coordinate pattern, an ISO date or a user id. Controller test: unknown and revoked tokens both 404 with identical bodies; the 61st request in a window gets 429. |
-| README M9 section + ADRs | Review: `docs/decisions/0002-profile-stats-consumer.md` and `docs/decisions/0003-aggregate-only-sharing.md` (**new**), README section and trade-offs entry. |
+| README M9 section + ADRs | Review: `docs/decisions/0005-profile-stats-consumer.md` and `docs/decisions/0006-aggregate-only-sharing.md` (**new**), README section and trade-offs entry. |
 
 Also: migrations up/down on an empty database and on one with M8 data; archetype names
 test; `buf breaking` unaffected (no proto change unless the "closed" action from audit
@@ -266,15 +275,15 @@ item 10 is added).
 
 ## Build order (one commit each)
 
-1. **ADRs as drafts.** `docs/decisions/0002-profile-stats-consumer.md` (separate consumer
+1. **ADRs as drafts.** `docs/decisions/0005-profile-stats-consumer.md` (separate consumer
    vs computing in the API; per-user recompute; rebuild from Postgres and why) and
-   `0003-aggregate-only-sharing.md` (snapshot payload, whitelist, hashed tokens). Locks
+   `0006-aggregate-only-sharing.md` (snapshot payload, whitelist, hashed tokens). Locks
    the decisions before code; finalized in step 15.
-2. **Quest facts.** Migration 0010; `act()` sets `accepted_at`/`completed_at`, `offer()`
+2. **Quest facts.** Migration 0016; `act()` sets `accepted_at`/`completed_at`, `offer()`
    stores `rarity`; Jest for both.
 3. **Extract the consumer loop** into `workers/internal/consumer`; taste-worker uses it,
    behaviour unchanged.
-4. **Projection.** Migration 0011; `workers/internal/profile` with `Recompute` and the
+4. **Projection.** Migration 0017; `workers/internal/profile` with `Recompute` and the
    advisory lock; DB-backed tests with hand-computed values.
 5. **profile-stats consumer.** `cmd/profile-stats` (consume, dedupe, DLQ), Deployment in
    `templates/workers.yaml`; duplicate-event test.
@@ -282,20 +291,20 @@ item 10 is added).
    test.
 7. **Worker metrics and lag.** `platform/metrics.go`, ServiceMonitor(s), `workers.json`
    dashboard.
-8. **Tag families.** `taxonomy.yaml` families, parser, migration 0012, `syncTags` at
+8. **Tag families.** `taxonomy.yaml` families, parser, migration 0018, `syncTags` at
    ingest-worker startup; taxonomy tests.
 9. **Palette.** `palette.ts` and its tests.
 10. **Archetypes.** `cmd/archetypes`, committed `archetypes.json`, name map, nearest
     centroid and cold-start gating; tests.
 11. **`GET /me/profile`** with read-time streak and percentile; tests.
-12. **Share cards.** Migration 0013, `POST`/`DELETE /me/share-card`, `GET /share/:token`,
+12. **Share cards.** Migration 0019, `POST`/`DELETE /me/share-card`, `GET /share/:token`,
     rate-limit guard; payload whitelist and 404/429 tests.
 13. **Web profile page** and header link.
 14. **Web share page and OG image.**
 15. **Chaos and docs.** k6 event scenario, `chaos.sh` changes, run it and commit the
     report under `loadtest/results/`; README M9 section, privacy trade-offs, Status line;
     finalize the ADRs.
-16. **Optional: star sign.** Migration 0014, endpoint, UI toggle.
+16. **Optional: star sign.** Migration 0020, endpoint, UI toggle.
 
 Steps 2-7 can ship before any UI, since nothing reads the new data yet. Every migration is
 additive, so they can go out together or release by release.
@@ -320,7 +329,7 @@ additive, so they can go out together or release by release.
    (`infra/helm/larper/values.yaml`). A shareable link needs the web app hosted somewhere
    public (a Deployment in the chart, or Vercel) with the share route reachable and
    `API_URL` set. This is outside M9's spec but blocks its demo.
-6. **Legacy rarity.** Quests offered before 0010 have no stored rarity. Leave them out of
+6. **Legacy rarity.** Quests offered before 0016 have no stored rarity. Leave them out of
    the niche score (proposed), or backfill once from current `area_stats` and accept that
    those values aren't offer-time values.
 7. **Lag source.** Check whether Redpanda v24.2.7's metrics include consumer-group lag or

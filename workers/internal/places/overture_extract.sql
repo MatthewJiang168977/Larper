@@ -22,7 +22,10 @@ COPY (
            x -> NOT regexp_matches(x, '(facebook|instagram)[.]com', 'i'))[1] AS website,
          list_filter(coalesce(socials, []) || coalesce(websites, []),
            x -> regexp_matches(x, 'instagram[.]com/[^/?#]+', 'i'))[1]   AS instagram,
-         phones[1]               AS phone
+         phones[1]               AS phone,
+         -- The address, to catch a point that contradicts it (location.go).
+         addresses[1].postcode   AS postcode,
+         addresses[1].freeform   AS street
   FROM read_parquet('s3://overturemaps-us-west-2/release/${release}/theme=places/type=place/*.parquet')
   WHERE bbox.xmin >= ${xmin} AND bbox.xmin < ${xmax}
     AND bbox.ymin >= ${ymin} AND bbox.ymin < ${ymax}

@@ -364,6 +364,7 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
          CROSS JOIN o
          LEFT JOIN taste_profiles t ON t.user_id = $1
          WHERE ST_DWithin(p.geom, o.g, $4)
+           AND p.location_suspect IS NULL -- its address says it's elsewhere (migration 0015)
          ORDER BY taste DESC, p.id
          LIMIT ${MAX_CANDIDATES}
        )

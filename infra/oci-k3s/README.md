@@ -175,8 +175,11 @@ oci compute instance update --instance-id <id> --shape-config '{"ocpus": 2, "mem
 To launch at another size in the first place, run `OCPUS=2 MEMORY_GB=12
 scripts/oci-capacity-probe.sh`, or change `OCPUS` / `MEMORY_GB` in `oci-probe.yml`.
 
-Then load the place data (repo README, "Load place data", against the
-`larper-oci` context through the tunnel `oci-up.sh` prints).
+Then load the place data: `scripts/oci-reload-places.sh` runs `load-places -bbox` as a Job on
+the VM (base backup first; `DRY_RUN=1` prints the manifests) and reports the extract and load
+times. It's also how a later reload picks up loader changes, such as the location check
+(`places.location_suspect`). The repo README's "Load place data" does the same from your
+machine through the tunnel `oci-up.sh` prints.
 
 ## Restore drill (do it once after the first base backup)
 
