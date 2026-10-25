@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { DeckItem, QuestView } from "@/lib/api";
-import { hoursSearchUrl, PANEL_W, QuestSheet } from "./quest-sheet";
+import { hoursSearchUrl, QuestSheet } from "./quest-sheet";
 
 const reasons = { liked: ["ramen"], rarest: { tag: "hand_pulled_noodles", nearby: 2 }, indie: true };
 const place = (id: string, name: string) => ({
@@ -44,13 +44,6 @@ const handle = () => screen.getByRole("button", { name: /^Show (more|less)/ });
 const rest = () => document.getElementById(handle().getAttribute("aria-controls")!)!;
 const expand = () => fireEvent.click(handle());
 
-// matchMedia for the desktop layout (jsdom has none, so the phone sheet is the default).
-const desktop = () =>
-  vi.stubGlobal(
-    "matchMedia",
-    vi.fn((q: string) => ({ matches: true, media: q, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
-  );
-
 describe("QuestSheet on a phone: peek", () => {
   it("shows the place, how far, its category and the main action", () => {
     sheet("offered");
@@ -80,7 +73,7 @@ describe("QuestSheet on a phone: peek", () => {
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(150);
     const onCoveredChange = vi.fn();
     sheet("offered", { onCoveredChange });
-    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 150, left: 0 });
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 150, right: 0 });
   });
 });
 
@@ -220,18 +213,55 @@ describe("QuestSheet on a phone: full", () => {
   });
 });
 
-describe("QuestSheet on desktop", () => {
-  it("is a side panel with everything showing and no handle, covering the map's left", () => {
-    desktop();
+describe("QuestSheet on a wide screen", () => {
+  // jsdom has no layout or media queries: these pin the classes that do the work.
+  it("is the same bottom sheet, a card centred at the bottom no wider than 36rem", () => {
+    sheet("offered");
+    const section = screen.getByRole("region", { name: "Quest details" });
+    expect(section.className.split(" ")).toContain("inset-x-0");
+    expect(section.className.split(" ")).toContain("mx-auto");
+    expect(section.className.split(" ")).toContain("max-w-xl");
+    expect(handle()).toBeTruthy(); // the same handle, snaps and keys as on a phone
+  });
+
+  it("open on a wide screen, tells the map to keep pins left of the card, not behind it", () => {
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(150);
+    vi.spyOn(HTMLElement.prototype, "offsetLeft", "get").mockReturnValue(352); // (1280 - 576) / 2
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1280);
+    vi.stubGlobal("innerWidth", 1280); // jsdom: no positioned parent, so the window's width
     const onCoveredChange = vi.fn();
     sheet("offered", { onCoveredChange });
-    const panel = screen.getByRole("complementary", { name: "Quest details" });
-    expect(screen.queryByRole("button", { name: /^Show (more|less)/ })).toBeNull();
-    expect(within(panel).getByRole("button", { name: "Accept quest" })).toBeTruthy();
-    expect(within(panel).getByRole("button", { name: "Skip" })).toBeTruthy();
-    expect(within(panel).getByRole("navigation", { name: "Leads" })).toBeTruthy();
-    expect(panel.querySelector("[inert]")).toBeNull();
-    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 0, left: PANEL_W + 12 });
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 150, right: 0 }); // peek
+    expect(onCoveredChange).toHaveBeenCalledTimes(1);
+    expand();
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 0, right: 1280 - 352 + 24 });
+    expand();
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 150, right: 0 });
     vi.unstubAllGlobals();
+  });
+
+  it("open on a phone, keeps the peek inset (the map is mostly hidden then)", () => {
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(150);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(390); // offsetLeft 0: full width
+    const onCoveredChange = vi.fn();
+    sheet("offered", { onCoveredChange });
+    expand();
+    expect(onCoveredChange).toHaveBeenCalledTimes(1);
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 150, right: 0 });
+  });
+
+  it("wraps the lead chips with whole names and no scrollbar (phones keep one scrolling row)", () => {
+    sheet("offered");
+    const nav = screen.getByRole("navigation", { name: "Leads" });
+    expect(nav.className).toContain("overflow-x-auto"); // phones
+    expect(nav.className).toContain("lg:flex-wrap");
+    expect(nav.className).toContain("lg:overflow-visible");
+    const chip = screen.getByRole("button", { name: "1. A Very Long Lead Name That Truncates" });
+    expect(chip.className).toContain("max-w-[11rem]"); // phones
+    expect(chip.className).toContain("lg:max-w-full");
+    const text = chip.querySelector("span")!;
+    expect(text.className).toContain("truncate"); // phones
+    expect(text.className).toContain("lg:whitespace-normal");
+    expect(text.className).toContain("lg:overflow-visible");
   });
 });

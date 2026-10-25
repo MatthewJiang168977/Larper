@@ -13,6 +13,6 @@ export interface QuestMapProps {
   onSelect: (placeId: string) => void;
   /** Pixels covered by the bottom sheet, so fly-to centers the pin in the visible part. */
   bottomInset: number;
-  /** Pixels covered on the left (the desktop side panel). */
-  leftInset?: number;
+  /** Pixels covered on the right (the open sheet on a wide screen: pins go left of it). */
+  rightInset?: number;
 }
