@@ -6,7 +6,7 @@ const none: Reasons = { liked: [], rarest: null, indie: false };
 const lines = (category: string, reasons: Partial<Reasons>, name = "Some Place") =>
   whyLines({ name, category }, { ...none, ...reasons });
 
-const INDIE = "Independent. No other locations.";
+const INDIE = "Independent. No other locations that we know of.";
 
 describe("whyLines: Independent", () => {
   it.each([

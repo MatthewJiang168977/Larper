@@ -93,7 +93,7 @@ export function whyLines(place: Pick<PlaceView, "name" | "category">, reasons: R
   }
 
   if (reasons.indie && !NOT_A_BUSINESS.has(place.category) && !SEQUEL.test(place.name.trim())) {
-    lines.push("Independent. No other locations.");
+    lines.push("Independent. No other locations that we know of.");
   }
   return lines;
 }
