@@ -8,7 +8,8 @@ import { useLocation, type Located } from "@/hooks/use-location";
 import { ApiError, describeError, useApi, type Me, type SkipReason, type Today } from "@/lib/api";
 import { DEMO_MIDTOWN, DEMO_SPOT } from "@/lib/demo-spot";
 import { getPreciseFix } from "@/lib/precise-fix";
-import { type Covered, QuestSheet, type QuestAction } from "./quest-sheet";
+import { formatDistance } from "@/lib/format";
+import { type Covered, QuestSheet, type QuestAction, type SheetNote } from "./quest-sheet";
 
 export const SURVEY_POLL_MS = 4000;
 
@@ -65,6 +66,8 @@ export function QuestHome() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<{ text: string; retry: (() => void) | null } | null>(null);
   const [fixing, setFixing] = useState(false);
+  // The last check-in's result, shown in the sheet beside "I went".
+  const [checkIn, setCheckIn] = useState<SheetNote | null>(null);
   // The quest just set aside with "Not today", while its reasons are on offer.
   const [setAside, setSetAside] = useState<string | null>(null);
   // What the bottom sheet or card covers, so fly-to keeps pins in view.
@@ -183,8 +186,10 @@ export function QuestHome() {
   const act = async (action: QuestAction) => {
     if (!today?.quest) return;
     const questId = today.quest.id;
+    const placeName = today.quest.place.name;
     setBusy(true);
     setActionError(null);
+    setCheckIn(null);
     setSetAside(null);
     try {
       // Checking in sends where you are; the API only accepts it near the place. The
@@ -201,14 +206,26 @@ export function QuestHome() {
         const at = fix ?? (loc ? { lat: loc.lat, lng: loc.lng, accuracyM: loc.accuracyM } : null);
         if (at) body = { lat: at.lat, lng: at.lng, accuracy: at.accuracyM };
       }
-      await api(`/quests/${questId}/${action}`, { method: "POST", body: body && JSON.stringify(body) });
+      const res = await api<{ simulated?: boolean; distanceM?: number } | null>(`/quests/${questId}/${action}`, {
+        method: "POST",
+        body: body && JSON.stringify(body),
+      });
       if (action === "not-today") setSetAside(questId);
+      if (action === "complete") setCheckIn(checkedIn(placeName, res));
       reload();
     } catch (e) {
-      // A rejected check-in (too far, or a fix too rough to tell) is worth another go
-      // after a few steps or with precise location on.
-      const retry = action === "complete" && e instanceof ApiError && e.status === 422 ? () => act("complete") : null;
-      setActionError({ text: describeError(e), retry });
+      // A rejected check-in (too far, or a fix too rough to tell) shows in the sheet, by
+      // "I went", and is worth another go after a few steps or with precise location on.
+      if (action === "complete" && e instanceof ApiError && e.status === 422) {
+        setCheckIn({
+          tone: "rejected",
+          label: "Not checked in",
+          text: describeError(e),
+          action: { label: "Check again", onClick: () => act("complete") },
+        });
+      } else {
+        setActionError({ text: describeError(e), retry: null });
+      }
     } finally {
       setFixing(false);
       setBusy(false);
@@ -398,6 +415,8 @@ export function QuestHome() {
           busy={busy}
           topLimit={noticesBottom}
           onCoveredChange={onCoveredChange}
+          note={checkIn && checkIn.action ? { ...checkIn, action: { ...checkIn.action, pending: busy } } : checkIn}
+          onDismissNote={() => setCheckIn(null)}
         />
       ) : (
         <Panel
@@ -413,6 +432,21 @@ export function QuestHome() {
       )}
     </main>
   );
+}
+
+// What a successful check-in says. The shared demo account checks in from anywhere (its
+// visitors are mostly far from the demo area); the API marks that one simulated, and so
+// does this, plainly.
+export function checkedIn(place: string, res: { simulated?: boolean; distanceM?: number } | null): SheetNote {
+  if (res?.simulated) {
+    const away = res.distanceM !== undefined ? `You're ${formatDistance(res.distanceM)} from ${place}, so` : "You're not at the door, so";
+    return {
+      tone: "simulated",
+      label: "Simulated check-in · demo account",
+      text: `${away} the demo pretended you arrived. With your own account, you check in at the door.`,
+    };
+  }
+  return { tone: "done", label: "Checked in", text: `${place} is in your journal.` };
 }
 
 const DEMO_COPY: Record<NonNullable<Located["reason"]>, string> = {

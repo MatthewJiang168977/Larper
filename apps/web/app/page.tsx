@@ -19,6 +19,7 @@ export default function Home() {
             <p className="mx-auto max-w-sm text-lg text-ink-soft">
               One quest a day: the most niche spot near you that fits your taste.
             </p>
+            <p className="field-label">New York City, for now</p>
           </div>
           <ul className="space-y-1 border-l-2 border-rule pl-3 text-left font-mono text-sm text-ink-soft">
             <li>Hojicha soft serve in a mall basement.</li>

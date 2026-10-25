@@ -29,6 +29,13 @@ export function judgeCheckIn(distanceM: number, accuracyM?: number): Geofence {
   return { outcome: couldBeThere ? 'too_rough' : 'too_far', ...base };
 }
 
+/** "120 m", "2.8 km", "306 km": metres near the door, kilometres for the long misses. */
+export function formatDistance(m: number): string {
+  if (m < 1000) return `${Math.round(m)} m`;
+  if (m < 100_000) return `${(m / 1000).toFixed(1)} km`;
+  return `${Math.round(m / 1000)} km`;
+}
+
 /** The 422 body for a rejected check-in: a message for people, a code for the client. */
 export function rejection(g: Geofence) {
   if (g.outcome === 'too_rough') {
@@ -43,7 +50,7 @@ export function rejection(g: Geofence) {
   return {
     code: 'too_far' as const,
     distanceM: Math.round(g.distanceM),
-    message: `You're ${Math.round(g.distanceM)} m away. Check in when you're there.`,
+    message: `You're ${formatDistance(g.distanceM)} away. Check in when you're there.`,
   };
 }
 
@@ -57,6 +64,12 @@ export interface CheckInAttempt {
   geofence?: Geofence;
   /** The shared demo account (demo/demo-account.ts): recorded, but reported apart. */
   demo: boolean;
+  /**
+   * The demo account checked in away from the place: the geofence said no (outcome keeps
+   * what it said), but the quest completes anyway as a labelled simulated check-in, since
+   * demo visitors are mostly nowhere near the demo area. Only ever with `demo`.
+   */
+  simulated?: boolean;
 }
 
 // Each attempt is also stored (migration 0014, kept 90 days), since logs go with the
@@ -83,5 +96,6 @@ export function checkInLogLine(a: CheckInAttempt): string {
     distanceM: g ? Math.round(g.distanceM * 10) / 10 : null,
     accuracyM: g?.accuracyM != null ? Math.round(g.accuracyM * 10) / 10 : null,
     allowedM: g ? Math.round(g.allowedM * 10) / 10 : null,
+    ...(a.simulated ? { simulated: true } : {}),
   })}`;
 }

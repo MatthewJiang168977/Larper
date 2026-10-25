@@ -5,10 +5,23 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import { BlurFade } from "@/components/ui/blur-fade";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import type { DeckItem, PlaceView, QuestView, Reasons } from "@/lib/api";
+import { formatDistance } from "@/lib/format";
 import { fullHeight, offsetFor, resolveSnap, type Snap, snapForKey } from "./sheet-snap";
 
 // "not-today" sets an accepted quest aside without counting against the place.
 export type QuestAction = "accept" | "skip" | "not-today" | "complete";
+
+/**
+ * A check-in's result, shown at the top of the sheet's peek, next to the button that
+ * caused it: checked in, a simulated check-in (the demo account away from the place), or
+ * not checked in (too far, or a fix too rough to tell) with a way to check again.
+ */
+export interface SheetNote {
+  tone: "done" | "simulated" | "rejected";
+  label: string;
+  text: string;
+  action?: { label: string; onClick: () => void; pending?: boolean };
+}
 
 interface Props {
   quest: QuestView | null;
@@ -21,6 +34,8 @@ interface Props {
   topLimit: number;
   /** What the settled sheet covers, so fly-to keeps pins in the part you can see. */
   onCoveredChange: (c: Covered) => void;
+  note?: SheetNote | null;
+  onDismissNote?: () => void;
 }
 
 /**
@@ -203,6 +218,7 @@ function BottomSheet(props: Props) {
         >
           <span aria-hidden className="h-1 w-10 rounded-full bg-rule" />
         </button>
+        {props.note && <NoteBlock note={props.note} onDismiss={props.onDismissNote} />}
         {focused ? <Peek place={focused.place} label={label} {...props} isQuest={isQuest} /> : <Empty />}
       </div>
 
@@ -221,6 +237,36 @@ function BottomSheet(props: Props) {
         {announce}
       </p>
     </motion.section>
+  );
+}
+
+function NoteBlock({ note, onDismiss }: { note: SheetNote; onDismiss?: () => void }) {
+  const tone = note.tone === "rejected" ? "border-oxblood text-oxblood" : "border-rule text-ink";
+  const labelTone = note.tone === "done" ? "text-moss" : note.tone === "rejected" ? "text-oxblood" : "";
+  return (
+    <div
+      role={note.tone === "rejected" ? "alert" : "status"}
+      className={`mb-3 flex items-start gap-3 rounded border bg-paper px-3 py-2 text-sm ${tone}`}
+    >
+      <div className="min-w-0 flex-1">
+        <p className={`field-label ${labelTone}`}>{note.label}</p>
+        <p className="mt-0.5">{note.text}</p>
+      </div>
+      {note.action && (
+        <button
+          onClick={note.action.onClick}
+          disabled={note.action.pending}
+          className="hit-target shrink-0 self-center font-medium underline disabled:opacity-50"
+        >
+          {note.action.pending ? "Checking…" : note.action.label}
+        </button>
+      )}
+      {onDismiss && (
+        <button onClick={onDismiss} aria-label="Dismiss" className="hit-target shrink-0 px-1">
+          ×
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -403,9 +449,6 @@ function Tab({
   );
 }
 
-export function formatDistance(m: number) {
-  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
-}
 
 // The quest's mark in the lead list: the map pin's pennant, small.
 function FlagMark() {

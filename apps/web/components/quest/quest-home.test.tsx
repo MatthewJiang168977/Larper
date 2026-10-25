@@ -3,7 +3,7 @@ import { forwardRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Located } from "@/hooks/use-location";
 import { ApiError, type Me, type Today } from "@/lib/api";
-import { demoAccountLocation, QuestHome, SKIP_REASONS, SURVEY_MAX_MS, SURVEY_POLL_MS } from "./quest-home";
+import { checkedIn, demoAccountLocation, QuestHome, SKIP_REASONS, SURVEY_MAX_MS, SURVEY_POLL_MS } from "./quest-home";
 
 // --- the component's world, replaced -------------------------------------------
 
@@ -54,10 +54,26 @@ vi.mock("./quest-sheet", () => ({
       onAction: (a: string) => void;
       topLimit: number;
       onCoveredChange: (c: { bottom: number; right: number }) => void;
+      note?: { tone: string; label: string; text: string; action?: { label: string; onClick: () => void; pending?: boolean } } | null;
+      onDismissNote?: () => void;
     }
-  >(function QuestSheet({ quest, deck, onAction, topLimit }, ref) {
+  >(function QuestSheet({ quest, deck, onAction, topLimit, note, onDismissNote }, ref) {
     return (
       <section ref={ref} data-top-limit={topLimit}>
+        {note && (
+          <div role={note.tone === "rejected" ? "alert" : "status"} data-tone={note.tone}>
+            <p>{note.label}</p>
+            <p>{note.text}</p>
+            {note.action && (
+              <button onClick={note.action.onClick} disabled={note.action.pending}>
+                {note.action.label}
+              </button>
+            )}
+            <button aria-label="Dismiss" className="hit-target" onClick={onDismissNote}>
+              ×
+            </button>
+          </div>
+        )}
         <p>quest: {quest?.place.name ?? "none"}</p>
         <p>deck: {deck.length}</p>
         <button onClick={() => onAction("complete")}>I went</button>
@@ -417,21 +433,21 @@ describe("QuestHome: checking in", () => {
 
     preciseFix.mockResolvedValue({ lat: 40.7311, lng: -73.997, accuracyM: 6 });
     routes["/quests/q1/complete"] = ok({ id: "q1", status: "completed" });
-    fireEvent.click(screen.getByText("Try again"));
+    fireEvent.click(screen.getByText("Check again"));
     await settle();
     expect(preciseFix).toHaveBeenCalledTimes(2);
     expect(bodies.at(-1)?.body).toEqual({ lat: 40.7311, lng: -73.997, accuracy: 6 });
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("offers Try again for 'too far' too, but not for other failures", async () => {
+  it("offers Check again for 'too far' too, but not for other failures", async () => {
     routes["/quests/today"] = ok(withQuest);
     routes["/quests/q1/complete"] = fail(new ApiError("You're 300 m away. Check in when you're there.", 422, "http", "too_far"));
     const { unmount } = render(<QuestHome />);
     await settle();
     fireEvent.click(screen.getByText("I went"));
     await settle();
-    expect(screen.getByText("Try again")).toBeTruthy();
+    expect(screen.getByText("Check again")).toBeTruthy();
     unmount();
 
     routes["/quests/q1/complete"] = fail(new ApiError("Internal server error", 500));
@@ -440,7 +456,43 @@ describe("QuestHome: checking in", () => {
     fireEvent.click(screen.getByText("I went"));
     await settle();
     expect(screen.getByRole("alert").textContent).toContain("Something went wrong on our end.");
-    expect(screen.queryByText("Try again")).toBeNull();
+    expect(screen.queryByText("Check again")).toBeNull();
+  });
+
+  it("says plainly when it checked in", async () => {
+    routes["/quests/today"] = ok(withQuest);
+    routes["/quests/q1/complete"] = ok({ id: "q1", status: "completed" });
+    render(<QuestHome />);
+    await settle();
+    fireEvent.click(screen.getByText("I went"));
+    await settle();
+    const status = screen.getByRole("status", { name: "" });
+    expect(status.textContent).toContain("Checked in");
+    expect(status.textContent).toContain("Cafe Uno is in your journal.");
+  });
+
+  it("labels the demo account's check-in from afar as simulated", async () => {
+    location = demoSpot("denied");
+    routes["/quests/today"] = ok(withQuest);
+    routes["/quests/q1/complete"] = ok({ id: "q1", status: "completed", simulated: true, distanceM: 306412 });
+    render(<QuestHome />);
+    await settle();
+    fireEvent.click(screen.getByText("I went"));
+    await settle();
+    const note = document.querySelector('[data-tone="simulated"]')!;
+    expect(note.getAttribute("role")).toBe("status");
+    expect(note.textContent).toContain("Simulated check-in · demo account");
+    expect(note.textContent).toContain("You're 306 km from Cafe Uno, so the demo pretended you arrived.");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("checkedIn", () => {
+  it("words a real check-in, and a simulated one with or without the distance", () => {
+    expect(checkedIn("Cafe Uno", { })).toEqual({ tone: "done", label: "Checked in", text: "Cafe Uno is in your journal." });
+    expect(checkedIn("Cafe Uno", null).tone).toBe("done");
+    expect(checkedIn("Cafe Uno", { simulated: true, distanceM: 2840 }).text).toMatch(/^You're 2\.8 km from Cafe Uno, so the demo pretended you arrived\./);
+    expect(checkedIn("Cafe Uno", { simulated: true }).text).toMatch(/^You're not at the door, so/);
   });
 });
 
