@@ -43,7 +43,8 @@ const SPRING = { type: "spring", stiffness: 420, damping: 40 } as const;
 // The focused place's field notes, links and quest actions, as a bottom sheet with two
 // snaps: peek (name, distance, category and the main action) and full (everything,
 // scrollable, stopping below the notices). The same sheet on every screen; on a wide one
-// it's a card centred at the bottom (max-w-xl, 36rem), sized to its content.
+// it's a card centred at the bottom, 60% of the screen (at most 960 px), sized to its
+// content, and full lays out in two columns: the details, and the leads as a list.
 export function QuestSheet(props: Props) {
   return <BottomSheet {...props} />;
 }
@@ -170,7 +171,7 @@ function BottomSheet(props: Props) {
       }}
       style={{ y, height: fullH || undefined }}
       data-snap={snap}
-      className="absolute inset-x-0 bottom-0 z-10 mx-auto flex max-w-xl flex-col rounded-t-2xl border-x border-t border-paper-edge bg-paper shadow-[0_-6px_24px_rgba(43,41,37,0.12)]"
+      className="absolute inset-x-0 bottom-0 z-10 mx-auto flex max-w-xl flex-col rounded-t-2xl lg:w-[60vw] lg:max-w-[960px] border-x border-t border-paper-edge bg-paper shadow-[0_-6px_24px_rgba(43,41,37,0.12)]"
     >
       <div ref={peekRef} className="shrink-0 px-5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {/* The handle strip: drag it, tap it, or use the keyboard on it. */}
@@ -268,14 +269,16 @@ function Rest({
   isQuest,
 }: Props & { focused: QuestView | DeckItem; isQuest: boolean }) {
   const { place, reasons } = focused;
+  // Phones: the leads as one row that scrolls sideways, above the details. Wide screens:
+  // two columns, the details on the left and the leads as a vertical list on the right,
+  // so full stays short with nothing to scroll.
   return (
-    <div className="pt-1">
+    <div className="pt-1 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(15rem,19rem)] lg:gap-x-8">
       {deck.length > 0 && (
-        // Phones: one row that scrolls sideways. Wide screens: the chips wrap, full names
-        // and no scrollbar; 18 px between rows keeps the chips' 44 px hit areas apart.
+        // 12 px between list rows keeps their 44 px hit areas apart.
         <nav
           aria-label="Leads"
-          className="-mx-5 flex gap-2 overflow-x-auto px-5 py-2.5 [scrollbar-color:var(--rule)_transparent] [scrollbar-width:thin] lg:flex-wrap lg:gap-y-[18px] lg:overflow-visible"
+          className="-mx-5 flex gap-2 overflow-x-auto px-5 py-2.5 [scrollbar-color:var(--rule)_transparent] [scrollbar-width:thin] lg:col-start-2 lg:row-start-1 lg:mx-0 lg:flex-col lg:gap-3 lg:overflow-visible lg:px-0 lg:pt-2"
         >
           {quest && (
             <Tab active={isQuest} onClick={() => onSelect(quest.place.id)} seal>
@@ -290,23 +293,25 @@ function Rest({
         </nav>
       )}
 
-      <Why reasons={reasons} />
-      {place.tags.length > 0 && (
-        <p className="mt-3 font-mono text-xs text-ink-label">
-          <span className="sr-only">Tags: </span>
-          {place.tags.slice(0, 6).map(humanize).join(" · ")}
-        </p>
-      )}
-      <Links place={place} />
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        {isQuest && quest ? (
-          <SecondaryAction status={quest.status} onAction={onAction} busy={busy} />
-        ) : (
-          <p className="text-sm text-ink-soft">
-            A lead, not your quest. Skip today&apos;s quest and the best remaining lead takes its place.
+      <div className="lg:col-start-1 lg:row-start-1">
+        <Why reasons={reasons} />
+        {place.tags.length > 0 && (
+          <p className="mt-3 font-mono text-xs text-ink-label">
+            <span className="sr-only">Tags: </span>
+            {place.tags.slice(0, 6).map(humanize).join(" · ")}
           </p>
         )}
+        <Links place={place} />
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {isQuest && quest ? (
+            <SecondaryAction status={quest.status} onAction={onAction} busy={busy} />
+          ) : (
+            <p className="text-sm text-ink-soft">
+              A lead, not your quest. Skip today&apos;s quest and the best remaining lead takes its place.
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -351,12 +356,12 @@ function Tab({
       : "text-ink border-ink-faint";
   // On phones the text truncates in its own span: overflow on the button would clip its
   // hit area. The strip's vertical padding leaves room for that hit area inside its
-  // scroll box. On wide screens the row wraps, so the whole name shows.
+  // scroll box. On wide screens each lead is a full-width list row with its whole name.
   return (
     <button
       onClick={onClick}
       aria-pressed={active}
-      className={`hit-target shrink-0 max-w-[11rem] rounded-full border px-3 py-1 font-mono text-xs lg:max-w-full ${tone}`}
+      className={`hit-target shrink-0 max-w-[11rem] rounded-full border px-3 py-1 font-mono text-xs lg:w-full lg:max-w-full lg:rounded-lg lg:py-2 lg:text-left ${tone}`}
     >
       <span className="block truncate lg:overflow-visible lg:whitespace-normal">{children}</span>
     </button>

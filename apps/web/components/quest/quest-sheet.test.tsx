@@ -250,18 +250,32 @@ describe("QuestSheet on a wide screen", () => {
     expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 150, right: 0 });
   });
 
-  it("wraps the lead chips with whole names and no scrollbar (phones keep one scrolling row)", () => {
+  it("is 60% of the screen, at most 960 px", () => {
+    sheet("offered");
+    const classes = screen.getByRole("region", { name: "Quest details" }).className.split(" ");
+    expect(classes).toContain("lg:w-[60vw]");
+    expect(classes).toContain("lg:max-w-[960px]");
+  });
+
+  it("lays full out in two columns: details left, the leads as a vertical list right (phones keep one scrolling row)", () => {
     sheet("offered");
     const nav = screen.getByRole("navigation", { name: "Leads" });
+    const grid = nav.parentElement!;
+    expect(grid.className).toContain("lg:grid");
+    expect(grid.className).toContain("lg:grid-cols-[minmax(0,1fr)_minmax(15rem,19rem)]");
     expect(nav.className).toContain("overflow-x-auto"); // phones
-    expect(nav.className).toContain("lg:flex-wrap");
+    expect(nav.className).toContain("lg:col-start-2");
+    expect(nav.className).toContain("lg:flex-col");
     expect(nav.className).toContain("lg:overflow-visible");
+    const details = screen.getByRole("list", { name: "Why this place" }).parentElement!;
+    expect(details.className).toContain("lg:col-start-1");
+    expect(within(details).getByRole("link", { name: "Check hours" })).toBeTruthy();
+    expect(within(details).getByRole("button", { name: "Skip" })).toBeTruthy();
     const chip = screen.getByRole("button", { name: "1. A Very Long Lead Name That Truncates" });
     expect(chip.className).toContain("max-w-[11rem]"); // phones
-    expect(chip.className).toContain("lg:max-w-full");
+    expect(chip.className).toContain("lg:w-full");
     const text = chip.querySelector("span")!;
     expect(text.className).toContain("truncate"); // phones
     expect(text.className).toContain("lg:whitespace-normal");
-    expect(text.className).toContain("lg:overflow-visible");
   });
 });
