@@ -10,6 +10,11 @@ import type { QuestMapProps } from "./quest-map";
 const PITCH = 55;
 const BEARING = -20;
 const MIN_FRAME_ZOOM = 14.8;
+// Right- or Ctrl-drag tilts the 3D view; past this the map turns to sky and is hard to
+// read or recover from.
+export const MAX_PITCH = 60;
+// The compass's reset: north up, at the 3D view's usual tilt.
+export const RESET_CAMERA = { bearing: 0, pitch: 50 };
 
 // Keep pins clear of the sheet, but never give up more than 45% of the screen to it.
 // Open on a wide screen, the sheet covers the right instead (pins go left of it).
@@ -75,7 +80,8 @@ function pinElement(className: string, content: string | Node, title: string, on
   return { root, pin };
 }
 
-// In 2D the map stays flat and north-up: no gesture tilts or turns it.
+// In 2D the map stays flat and north-up: no gesture tilts or turns it (and maxPitch 0
+// holds it flat whatever else asks).
 function allowRotation(map: MLMap, on: boolean) {
   if (on) {
     map.dragRotate.enable();
@@ -134,7 +140,7 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
         zoom: 15.6,
         pitch: PITCH,
         bearing: BEARING,
-        maxPitch: 70,
+        maxPitch: MAX_PITCH,
         attributionControl: { compact: true },
       });
       mapRef.current = map;
@@ -290,8 +296,26 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
     const map = mapRef.current;
     if (!map) return;
     allowRotation(map, next === "3d");
+    if (next === "3d") map.setMaxPitch(MAX_PITCH);
     map.easeTo({ ...VIEW_CAMERA[next], duration: 700, essential: false });
+    // Flat for good once the ease lands (lowering maxPitch first would jump, not ease),
+    // unless 3D was picked again meanwhile.
+    if (next === "2d") map.once("moveend", () => viewRef.current === "2d" && map.setMaxPitch(0));
   };
+
+  // The compass, in 3D: its needle follows the bearing, and a click puts the map back
+  // north-up at the usual tilt, however it was turned or tilted.
+  const [bearing, setBearing] = useState(BEARING);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    const onRotate = () => setBearing(map.getBearing());
+    map.on("rotate", onRotate);
+    return () => {
+      map.off("rotate", onRotate);
+    };
+  }, [ready]);
+  const resetView = () => mapRef.current?.easeTo({ ...RESET_CAMERA, duration: 500, essential: false });
 
   // MapLibre's CSS forces `.maplibregl-map { position: relative }` onto the container,
   // which would cancel `absolute inset-0` and collapse it to zero height. So position
@@ -299,16 +323,34 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
   return (
     <div className="absolute inset-0">
       <div ref={containerRef} className="h-full w-full" aria-label="Map of nearby quests" role="region" />
+      {/* Top right, level with the header: the notices start below it and span the width. */}
       {ready && (
-        <button
-          type="button"
-          onClick={toggleView}
-          aria-label={VIEW_TOGGLE[view].label}
-          title={VIEW_TOGGLE[view].label}
-          className="absolute right-3 top-3 z-10 flex h-11 min-w-11 items-center justify-center rounded-full border border-paper-edge bg-paper/90 px-3 font-mono text-xs font-semibold tracking-wider text-ink shadow-sm backdrop-blur"
-        >
-          {VIEW_TOGGLE[view].text}
-        </button>
+        <div className="absolute right-3 top-3 z-10 flex gap-2">
+          {view === "3d" && (
+            <button
+              type="button"
+              onClick={resetView}
+              aria-label="Reset view: north up"
+              title="Reset view: north up"
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-paper-edge bg-paper/90 text-ink shadow-sm backdrop-blur"
+            >
+              {/* A needle pointing north on the map, so it turns against the bearing. */}
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6" style={{ transform: `rotate(${-bearing}deg)` }} data-testid="compass-needle">
+                <path d="M12 3 L16 12 L12 10.5 L8 12 Z" fill="var(--oxblood)" />
+                <path d="M12 21 L8 12 L12 13.5 L16 12 Z" fill="currentColor" opacity="0.35" />
+              </svg>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={toggleView}
+            aria-label={VIEW_TOGGLE[view].label}
+            title={VIEW_TOGGLE[view].label}
+            className="flex h-11 min-w-11 items-center justify-center rounded-full border border-paper-edge bg-paper/90 px-3 font-mono text-xs font-semibold tracking-wider text-ink shadow-sm backdrop-blur"
+          >
+            {VIEW_TOGGLE[view].text}
+          </button>
+        </div>
       )}
     </div>
   );

@@ -2,7 +2,7 @@ import { act, configure, fireEvent, render, screen, waitFor } from "@testing-lib
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeckItem, QuestView } from "@/lib/api";
 import { haloDiameterPx } from "./accuracy-halo";
-import MapLibreQuestMap, { inView, sheetPadding, VIEW_CAMERA } from "./maplibre-quest-map";
+import MapLibreQuestMap, { inView, MAX_PITCH, RESET_CAMERA, sheetPadding, VIEW_CAMERA } from "./maplibre-quest-map";
 import type { QuestMapProps } from "./quest-map";
 
 // The component loads maplibre-gl with a dynamic import(). The first one in a cold test
@@ -33,7 +33,21 @@ const fake = vi.hoisted(() => {
     project = vi.fn(() => this.projected);
     moving = false;
     isMoving = () => this.moving;
-    constructor(opts: { container: HTMLElement }) {
+    bearing = -20;
+    getBearing = () => this.bearing;
+    setMaxPitch = vi.fn();
+    onceListeners = new Map<string, (() => void)[]>();
+    once(event: string, fn: () => void) {
+      this.onceListeners.set(event, [...(this.onceListeners.get(event) ?? []), fn]);
+    }
+    fireOnce(event: string) {
+      const fns = this.onceListeners.get(event) ?? [];
+      this.onceListeners.delete(event);
+      fns.forEach((fn) => fn());
+    }
+    opts: { container: HTMLElement; maxPitch?: number };
+    constructor(opts: { container: HTMLElement; maxPitch?: number }) {
+      this.opts = opts;
       this.container = opts.container;
       state.maps.push(this);
     }
@@ -343,5 +357,56 @@ describe("padding helpers", () => {
     expect(inView({ x: 200, y: 600 }, 400, 800, pad)).toBe(false);
     expect(inView({ x: 200, y: 50 }, 400, 800, pad)).toBe(false);
     expect(inView({ x: 20, y: 300 }, 400, 800, pad)).toBe(false);
+  });
+});
+
+describe("compass and tilt", () => {
+  const compass = () => screen.queryByRole("button", { name: "Reset view: north up" });
+
+  it("caps the tilt, so the map never turns into sky", async () => {
+    render(<MapLibreQuestMap {...props()} />);
+    await toggleButton();
+    expect(map().opts.maxPitch).toBe(MAX_PITCH);
+    expect(MAX_PITCH).toBeLessThanOrEqual(60);
+  });
+
+  it("puts the map back north-up at the usual tilt from the compass, in 3D", async () => {
+    render(<MapLibreQuestMap {...props()} />);
+    await toggleButton();
+    fireEvent.click(compass()!);
+    expect(map().easeTo).toHaveBeenLastCalledWith(expect.objectContaining(RESET_CAMERA));
+    expect(RESET_CAMERA).toEqual({ bearing: 0, pitch: 50 });
+  });
+
+  it("turns the needle against the bearing as the map rotates", async () => {
+    render(<MapLibreQuestMap {...props()} />);
+    await toggleButton();
+    act(() => {
+      map().bearing = 35;
+      map().fire("rotate");
+    });
+    expect(screen.getByTestId("compass-needle").style.transform).toBe("rotate(-35deg)");
+  });
+
+  it("in 2D: no compass, no rotation, and flat for good once the ease lands", async () => {
+    render(<MapLibreQuestMap {...props()} />);
+    fireEvent.click(await toggleButton()); // to 2D
+    expect(compass()).toBeNull();
+    expect(map().dragRotate.disable).toHaveBeenCalled();
+    expect(map().setMaxPitch).not.toHaveBeenCalledWith(0); // not before the ease lands (it would jump)
+    act(() => map().fireOnce("moveend"));
+    expect(map().setMaxPitch).toHaveBeenLastCalledWith(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Switch to 3D view" }));
+    expect(map().setMaxPitch).toHaveBeenLastCalledWith(MAX_PITCH);
+    expect(compass()).toBeTruthy();
+  });
+
+  it("doesn't flatten a 3D view picked again before the 2D ease landed", async () => {
+    render(<MapLibreQuestMap {...props()} />);
+    fireEvent.click(await toggleButton()); // to 2D, ease under way
+    fireEvent.click(screen.getByRole("button", { name: "Switch to 3D view" }));
+    act(() => map().fireOnce("moveend")); // the 2D ease's end arrives late
+    expect(map().setMaxPitch).not.toHaveBeenCalledWith(0);
   });
 });
