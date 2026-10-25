@@ -4,18 +4,11 @@ import { animate, motion, useDragControls, useMotionValue, useReducedMotion, typ
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { NumberTicker } from "@/components/ui/number-ticker";
-import { DESKTOP_QUERY, useMediaQuery } from "@/hooks/use-media-query";
 import type { DeckItem, PlaceView, QuestView, Reasons } from "@/lib/api";
 import { fullHeight, offsetFor, resolveSnap, type Snap, snapForKey } from "./sheet-snap";
 
 // "not-today" sets an accepted quest aside without counting against the place.
 export type QuestAction = "accept" | "skip" | "not-today" | "complete";
-
-/** What the sheet covers of the map, so fly-to keeps pins in the part you can see. */
-export interface Covered {
-  bottom: number;
-  left: number;
-}
 
 interface Props {
   quest: QuestView | null;
@@ -26,22 +19,33 @@ interface Props {
   busy: boolean;
   /** Where the notices end, in px from the top: full stops below it. */
   topLimit: number;
+  /** What the settled sheet covers, so fly-to keeps pins in the part you can see. */
   onCoveredChange: (c: Covered) => void;
 }
 
+/**
+ * The map the sheet covers: its height at the bottom, or, open on a wide screen, the
+ * width from its left edge to the right of the screen (pins then go in the strip of map
+ * left of the centred card).
+ */
+export interface Covered {
+  bottom: number;
+  right: number;
+}
+
+/** On a screen with at least this much map either side of the open sheet, pins go beside it. */
+export const SIDE_GUTTER_PX = 240;
+
 const humanize = (s: string) => s.replaceAll("_", " ").replaceAll("-", " ");
 const WALK_M_PER_MIN = 80;
-// Desktop side panel width (24rem), shared with the notices' offset in quest-home.
-export const PANEL_W = 384;
 const SPRING = { type: "spring", stiffness: 420, damping: 40 } as const;
 
-// The focused place's field notes, links and quest actions. On a phone, a bottom sheet
-// with two snaps: peek (name, distance, category and the main action) and full
-// (everything, scrollable, stopping below the notices). On desktop, a side panel
-// showing everything, beside the map like Google Maps.
+// The focused place's field notes, links and quest actions, as a bottom sheet with two
+// snaps: peek (name, distance, category and the main action) and full (everything,
+// scrollable, stopping below the notices). The same sheet on every screen; on a wide one
+// it's a card centred at the bottom (max-w-xl, 36rem), sized to its content.
 export function QuestSheet(props: Props) {
-  const desktop = useMediaQuery(DESKTOP_QUERY);
-  return desktop ? <SidePanel {...props} /> : <BottomSheet {...props} />;
+  return <BottomSheet {...props} />;
 }
 
 function useFocused({ quest, deck, selectedId }: Pick<Props, "quest" | "deck" | "selectedId">) {
@@ -50,28 +54,6 @@ function useFocused({ quest, deck, selectedId }: Pick<Props, "quest" | "deck" | 
   const focused = isQuest ? quest : leadIndex >= 0 ? deck[leadIndex] : null;
   const label = isQuest ? `Today's quest · ${quest!.status}` : `Lead ${leadIndex + 1}`;
   return { focused, isQuest, label };
-}
-
-function SidePanel(props: Props) {
-  const { onCoveredChange } = props;
-  const { focused, isQuest, label } = useFocused(props);
-  useEffect(() => onCoveredChange({ bottom: 0, left: PANEL_W + 12 }), [onCoveredChange]);
-  return (
-    <aside
-      aria-label="Quest details"
-      style={{ width: PANEL_W }}
-      className="absolute bottom-3 left-3 top-16 z-10 overflow-y-auto rounded-2xl border border-paper-edge bg-paper px-5 py-4 shadow-[0_6px_24px_rgba(43,41,37,0.12)]"
-    >
-      {focused ? (
-        <>
-          <Peek place={focused.place} label={label} {...props} isQuest={isQuest} />
-          <Rest {...props} focused={focused} isQuest={isQuest} />
-        </>
-      ) : (
-        <Empty />
-      )}
-    </aside>
-  );
 }
 
 function BottomSheet(props: Props) {
@@ -94,6 +76,8 @@ function BottomSheet(props: Props) {
   const [peekH, setPeekH] = useState(0);
   const [restH, setRestH] = useState(0);
   const [viewH, setViewH] = useState(0);
+  const [viewW, setViewW] = useState(0);
+  const [sheetLeft, setSheetLeft] = useState(0);
   const [announce, setAnnounce] = useState("");
   // Full is as tall as its content, up to just below the notices (then it scrolls).
   const fullH = Math.min(fullHeight(viewH, topLimit, peekH), peekH + restH);
@@ -109,6 +93,8 @@ function BottomSheet(props: Props) {
       setPeekH(peek.offsetHeight);
       setRestH(content?.offsetHeight ?? 0);
       setViewH(host?.clientHeight || window.innerHeight);
+      setViewW(host?.clientWidth || window.innerWidth);
+      setSheetLeft(sectionRef.current?.offsetLeft ?? 0);
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -133,11 +119,15 @@ function BottomSheet(props: Props) {
     y.set(to);
   }, [snap, fullH, peekH, reduce, y]);
 
-  // The map only hears about settled heights. At full it keeps the last peek inset: the
-  // map is mostly hidden then, and dropping back to peek shouldn't jump.
+  // The map only hears about settled snaps. At peek: its height. Open on a wide screen:
+  // the card's left edge, so a chosen pin lands in the map beside it, not behind it. Open
+  // on a phone it keeps the peek inset: the map is mostly hidden then, and dropping back
+  // to peek shouldn't jump.
   useEffect(() => {
-    if (snap === "peek" && peekH > 0) onCoveredChange({ bottom: peekH, left: 0 });
-  }, [snap, peekH, onCoveredChange]);
+    if (peekH <= 0) return;
+    if (snap === "peek") onCoveredChange({ bottom: peekH, right: 0 });
+    else if (sheetLeft >= SIDE_GUTTER_PX) onCoveredChange({ bottom: 0, right: viewW - sheetLeft + 24 });
+  }, [snap, peekH, sheetLeft, viewW, onCoveredChange]);
 
   const go = useCallback(
     (next: Snap) => {
@@ -281,9 +271,11 @@ function Rest({
   return (
     <div className="pt-1">
       {deck.length > 0 && (
+        // Phones: one row that scrolls sideways. Wide screens: the chips wrap, full names
+        // and no scrollbar; 18 px between rows keeps the chips' 44 px hit areas apart.
         <nav
           aria-label="Leads"
-          className="-mx-5 flex gap-2 overflow-x-auto px-5 py-2.5 [scrollbar-color:var(--rule)_transparent] [scrollbar-width:thin]"
+          className="-mx-5 flex gap-2 overflow-x-auto px-5 py-2.5 [scrollbar-color:var(--rule)_transparent] [scrollbar-width:thin] lg:flex-wrap lg:gap-y-[18px] lg:overflow-visible"
         >
           {quest && (
             <Tab active={isQuest} onClick={() => onSelect(quest.place.id)} seal>
@@ -357,15 +349,16 @@ function Tab({
     : active
       ? "bg-ink text-paper border-ink"
       : "text-ink border-ink-faint";
-  // The text truncates in its own span: overflow on the button would clip its hit area.
-  // The strip's vertical padding leaves room for that hit area inside its scroll box.
+  // On phones the text truncates in its own span: overflow on the button would clip its
+  // hit area. The strip's vertical padding leaves room for that hit area inside its
+  // scroll box. On wide screens the row wraps, so the whole name shows.
   return (
     <button
       onClick={onClick}
       aria-pressed={active}
-      className={`hit-target shrink-0 max-w-[11rem] rounded-full border px-3 py-1 font-mono text-xs ${tone}`}
+      className={`hit-target shrink-0 max-w-[11rem] rounded-full border px-3 py-1 font-mono text-xs lg:max-w-full ${tone}`}
     >
-      <span className="block truncate">{children}</span>
+      <span className="block truncate lg:overflow-visible lg:whitespace-normal">{children}</span>
     </button>
   );
 }

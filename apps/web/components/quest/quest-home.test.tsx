@@ -53,9 +53,9 @@ vi.mock("./quest-sheet", () => ({
       deck: Today["deck"];
       onAction: (a: string) => void;
       topLimit: number;
-      onCoveredChange: (c: { bottom: number; left: number }) => void;
+      onCoveredChange: (c: { bottom: number; right: number }) => void;
     }
-  >(function QuestSheet({ quest, deck, onAction, topLimit, onCoveredChange }, ref) {
+  >(function QuestSheet({ quest, deck, onAction, topLimit }, ref) {
     return (
       <section ref={ref} data-top-limit={topLimit}>
         <p>quest: {quest?.place.name ?? "none"}</p>
@@ -63,7 +63,6 @@ vi.mock("./quest-sheet", () => ({
         <button onClick={() => onAction("complete")}>I went</button>
         <button onClick={() => onAction("not-today")}>Set aside</button>
         <button onClick={() => onAction("skip")}>Skip</button>
-        <button onClick={() => onCoveredChange({ bottom: 0, left: 396 })}>As side panel</button>
       </section>
     );
   }),
@@ -603,18 +602,12 @@ describe("QuestHome: the demo account goes to Midtown", () => {
 });
 
 describe("QuestHome: room for the quest sheet", () => {
-  it("tells the sheet where the notices end, and moves the notices beside a desktop side panel", async () => {
+  it("tells the sheet where the notices end", async () => {
     location = demoSpot("denied");
     routes["/quests/today"] = ok(withQuest);
     render(<QuestHome />);
     await settle();
-    const notice = screen.getByRole("region", { name: "Demo area" });
-    const stack = notice.parentElement!;
     // jsdom has no layout, so the measured bottom is 0 here: it's passed, as a number.
     expect(screen.getByText("quest: Cafe Uno").closest("section")!.dataset.topLimit).toMatch(/^\d+$/);
-    expect(stack.style.left).toBe("");
-
-    fireEvent.click(screen.getByText("As side panel"));
-    expect(stack.style.left).toBe("408px");
   });
 });

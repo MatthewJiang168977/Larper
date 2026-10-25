@@ -67,10 +67,10 @@ export function QuestHome() {
   const [fixing, setFixing] = useState(false);
   // The quest just set aside with "Not today", while its reasons are on offer.
   const [setAside, setSetAside] = useState<string | null>(null);
-  // What the bottom card or side panel covers, so fly-to keeps pins in view.
-  const [covered, setCovered] = useState<Covered>({ bottom: 280, left: 0 });
+  // What the bottom sheet or card covers, so fly-to keeps pins in view.
+  const [covered, setCovered] = useState<Covered>({ bottom: 280, right: 0 });
   const onCoveredChange = useCallback(
-    (c: Covered) => setCovered((p) => (p.bottom === c.bottom && p.left === c.left ? p : c)),
+    (c: Covered) => setCovered((p) => (p.bottom === c.bottom && p.right === c.right ? p : c)),
     [],
   );
   const [reloads, setReloads] = useState(0);
@@ -154,7 +154,7 @@ export function QuestHome() {
   useEffect(() => {
     const el = sheetRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => onCoveredChange({ bottom: el.offsetHeight, left: 0 }));
+    const ro = new ResizeObserver(() => onCoveredChange({ bottom: el.offsetHeight, right: 0 }));
     ro.observe(el);
     return () => ro.disconnect();
   }, [today, todayError, meError, onCoveredChange]);
@@ -257,7 +257,7 @@ export function QuestHome() {
         selectedId={selectedId}
         onSelect={setSelectedId}
         bottomInset={covered.bottom}
-        leftInset={covered.left}
+        rightInset={covered.right}
       />}
 
       <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start gap-2 p-3">
@@ -273,11 +273,9 @@ export function QuestHome() {
         </div>
       </header>
 
-      {/* Notices under the header, stacked so they never overlap. On desktop they sit
-          beside the quest panel, not over it. */}
+      {/* Notices under the header, stacked so they never overlap. */}
       <div
         ref={noticesRef}
-        style={covered.left ? { left: covered.left + 12 } : undefined}
         className="pointer-events-none absolute inset-x-3 top-16 z-20 flex flex-col items-center gap-2 [&>*]:pointer-events-auto"
       >
         {loc?.source === "demo" ? (

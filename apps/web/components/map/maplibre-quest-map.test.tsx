@@ -302,15 +302,18 @@ describe("sheet height changes", () => {
     expect(map().easeTo).not.toHaveBeenCalled();
   });
 
-  it("pans a pin the desktop panel now covers back into view", async () => {
+  it("pans a pin the open wide-screen sheet now covers to its left, keeping zoom, tilt and bearing", async () => {
     const { rerender } = render(<MapLibreQuestMap {...props()} />);
     await firstFlight();
     sized();
+    Object.defineProperty(map().getContainer(), "clientWidth", { configurable: true, value: 1280 });
     map().flyTo.mockClear();
-    map().projected = { x: 150, y: 300 }; // under a 396 px panel on the left
-    rerender(<MapLibreQuestMap {...props({ bottomInset: 0, leftInset: 396 })} />);
-    expect(map().easeTo).toHaveBeenCalledWith(expect.objectContaining({ padding: sheetPadding(0, 800, 396) }));
+    map().projected = { x: 640, y: 400 }; // behind a card spanning x 352..928
+    rerender(<MapLibreQuestMap {...props({ bottomInset: 0, rightInset: 952 })} />);
     expect(map().flyTo).not.toHaveBeenCalled();
+    const call = map().easeTo.mock.calls.at(-1)![0];
+    expect(call).toMatchObject({ padding: sheetPadding(0, 800, 952) });
+    expect(call).not.toHaveProperty("zoom");
   });
 
   it("uses the latest sheet height on the next fly-to", async () => {
@@ -329,8 +332,9 @@ describe("padding helpers", () => {
     expect(sheetPadding(600, 800).bottom).toBe(360);
   });
 
-  it("leaves room on the left for the desktop side panel", () => {
-    expect(sheetPadding(0, 800, 396)).toEqual({ top: 90, bottom: 30, left: 456, right: 60 });
+  it("leaves the right for an open sheet on a wide screen, never less than the usual margin", () => {
+    expect(sheetPadding(0, 800, 952)).toEqual({ top: 90, bottom: 30, left: 60, right: 952 });
+    expect(sheetPadding(0, 800, 10).right).toBe(60);
   });
 
   it("tells whether a point is in the visible part", () => {

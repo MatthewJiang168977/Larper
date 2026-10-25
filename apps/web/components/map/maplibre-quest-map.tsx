@@ -12,9 +12,9 @@ const BEARING = -20;
 const MIN_FRAME_ZOOM = 14.8;
 
 // Keep pins clear of the sheet, but never give up more than 45% of the screen to it.
-// On desktop the quest panel sits on the left instead.
-export function sheetPadding(bottomInset: number, containerHeight: number, leftInset = 0) {
-  return { top: 90, bottom: Math.min(bottomInset + 30, containerHeight * 0.45), left: 60 + leftInset, right: 60 };
+// Open on a wide screen, the sheet covers the right instead (pins go left of it).
+export function sheetPadding(bottomInset: number, containerHeight: number, rightInset = 0) {
+  return { top: 90, bottom: Math.min(bottomInset + 30, containerHeight * 0.45), left: 60, right: Math.max(60, rightInset) };
 }
 
 // Whether a point on screen sits in the visible part: inside the container minus the
@@ -90,7 +90,7 @@ function allowRotation(map: MLMap, on: boolean) {
   }
 }
 
-export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect, bottomInset, leftInset = 0 }: QuestMapProps) {
+export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect, bottomInset, rightInset = 0 }: QuestMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const markersRef = useRef<{ marker: Marker; pin: HTMLElement; placeId: string }[]>([]);
@@ -108,7 +108,7 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
   // The sheet's height is read the same way: it changes with the card's content, and a
   // change alone mustn't replay the fly-to (that reset zoom and tilt on every resize).
   const bottomInsetRef = useRef(bottomInset);
-  const leftInsetRef = useRef(leftInset);
+  const rightInsetRef = useRef(rightInset);
   const framedQuestRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -116,8 +116,8 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
     meRef.current = me;
     viewRef.current = view;
     bottomInsetRef.current = bottomInset;
-    leftInsetRef.current = leftInset;
-  }, [onSelect, me, view, bottomInset, leftInset]);
+    rightInsetRef.current = rightInset;
+  }, [onSelect, me, view, bottomInset, rightInset]);
 
   // Create the map once. maplibre-gl touches window, so it's imported client-side only.
   useEffect(() => {
@@ -227,7 +227,7 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
     const map = mapRef.current;
     const target = [quest?.place, ...deck.map((d) => d.place)].find((p) => p?.id === selectedId);
     if (!ready || !map || !target) return;
-    const padding = sheetPadding(bottomInsetRef.current, map.getContainer().clientHeight, leftInsetRef.current);
+    const padding = sheetPadding(bottomInsetRef.current, map.getContainer().clientHeight, rightInsetRef.current);
     const camera = { ...VIEW_CAMERA[viewRef.current], duration: 1600, essential: false }; // respects prefers-reduced-motion
 
     // First look at a new quest: frame it together with "you are here" so the walk
@@ -274,13 +274,13 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
     if (map.isMoving()) return; // true for camera animations as well as gestures
     const target = [quest?.place, ...deck.map((d) => d.place)].find((p) => p?.id === selectedId);
     const el = map.getContainer();
-    const padding = sheetPadding(bottomInset, el.clientHeight, leftInset);
+    const padding = sheetPadding(bottomInset, el.clientHeight, rightInset);
     if (target && !inView(map.project([target.lng, target.lat]), el.clientWidth, el.clientHeight, padding)) {
       map.easeTo({ center: [target.lng, target.lat], padding, duration: 450, essential: false });
     }
     // Only a height change runs this; selection changes go through the focus effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, bottomInset, leftInset]);
+  }, [ready, bottomInset, rightInset]);
 
   // 2D/3D in place of MapLibre's compass. Either way the bearing resets: north-up when
   // flat, the usual angle when tilted.
