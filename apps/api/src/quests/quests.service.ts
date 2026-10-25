@@ -164,8 +164,13 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
 
       await enqueueQuestEvent(tx, { userId, questId, placeId: rows[0].placeId, action: EVENT_ACTION[action] });
       await tx.query('COMMIT');
-      if (checkIn) checkIn.outcome = 'accepted';
-      return { id: questId, status: rows[0].status };
+      // A simulated demo check-in keeps the geofence's own outcome on record.
+      if (checkIn && !checkIn.simulated) checkIn.outcome = 'accepted';
+      return {
+        id: questId,
+        status: rows[0].status,
+        ...(checkIn?.simulated ? { simulated: true as const, distanceM: Math.round(checkIn.geofence!.distanceM) } : {}),
+      };
     } catch (err) {
       await tx.query('ROLLBACK');
       throw err;
@@ -273,6 +278,14 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     attempt.geofence = geofence;
     if (geofence.outcome !== 'accepted') {
       attempt.outcome = geofence.outcome;
+      // The shared demo account "arrives" anyway: its visitors are mostly far from the
+      // demo area, and a check-in that can never work is the demo's worst moment. The
+      // quest completes as a simulated check-in (the web app says so); the attempt keeps
+      // the geofence's outcome and the demo flag, so the check-in figures leave it out.
+      if (attempt.demo) {
+        attempt.simulated = true;
+        return;
+      }
       throw new UnprocessableEntityException(rejection(geofence));
     }
   }

@@ -150,6 +150,28 @@ describeDb('check-in (real database)', () => {
     expect(lines.filter((l) => l.startsWith('checkin '))).toHaveLength(0);
   });
 
+  describe('the demo account', () => {
+    it('completes a far check-in as a simulated one, keeping the geofence outcome on record', async () => {
+      const res = await quests.act(userId, questId, 'complete', { ...metersNorth(400), accuracyM: 15 }, true);
+      expect(res).toMatchObject({ id: questId, status: 'completed', simulated: true });
+      expect((res as { distanceM: number }).distanceM).toBeGreaterThan(380);
+      expect(await statusOf()).toBe('completed');
+      expect(logged()).toMatchObject({ outcome: 'too_far', simulated: true });
+      expect((await stored())[0]).toMatchObject({ outcome: 'too_far', demo: true });
+    });
+
+    it('checks in normally at the door (not simulated)', async () => {
+      const res = await quests.act(userId, questId, 'complete', { ...metersNorth(20), accuracyM: 10 }, true);
+      expect(res).toEqual({ id: questId, status: 'completed' });
+      expect(logged()).toMatchObject({ outcome: 'accepted' });
+      expect(logged()).not.toHaveProperty('simulated');
+    });
+
+    it('still needs a position', async () => {
+      await expect(quests.act(userId, questId, 'complete', undefined, true)).rejects.toThrow('needs your position');
+    });
+  });
+
   describe('stored attempts', () => {
     it('stores an accepted check-in with its geofence numbers, and no coordinates', async () => {
       await quests.act(userId, questId, 'complete', { ...metersNorth(30), accuracyM: 12 });

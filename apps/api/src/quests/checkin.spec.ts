@@ -1,4 +1,4 @@
-import { attemptParams, checkInLogLine, judgeCheckIn, rejection } from './checkin';
+import { attemptParams, checkInLogLine, formatDistance, judgeCheckIn, rejection } from './checkin';
 
 describe('judgeCheckIn', () => {
   it('accepts within 75 m plus the accuracy, capped at +50 m', () => {
@@ -98,5 +98,27 @@ describe('attemptParams', () => {
       null,
       false,
     ]);
+  });
+});
+
+describe('formatDistance', () => {
+  it('uses metres near the door and kilometres for long misses', () => {
+    expect(formatDistance(312.4)).toBe('312 m');
+    expect(formatDistance(2840)).toBe('2.8 km');
+    expect(formatDistance(306_412)).toBe('306 km');
+  });
+
+  it('writes a long miss in kilometres in the rejection', () => {
+    expect(rejection(judgeCheckIn(306_412, 10)).message).toBe("You're 306 km away. Check in when you're there.");
+  });
+});
+
+describe('simulated demo check-ins in the log line', () => {
+  it('marks a simulated check-in, and only that', () => {
+    const g = judgeCheckIn(2840, 12);
+    const sim = JSON.parse(checkInLogLine({ questId: '7', userId: '3', outcome: 'too_far', geofence: g, demo: true, simulated: true }).slice(8));
+    expect(sim).toMatchObject({ outcome: 'too_far', simulated: true });
+    const real = JSON.parse(checkInLogLine({ questId: '7', userId: '3', outcome: 'too_far', geofence: g, demo: false }).slice(8));
+    expect(real).not.toHaveProperty('simulated');
   });
 });

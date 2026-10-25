@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { DeckItem, QuestView } from "@/lib/api";
-import { formatDistance, hoursSearchUrl, QuestSheet } from "./quest-sheet";
+import { formatDistance } from "@/lib/format";
+import { hoursSearchUrl, QuestSheet } from "./quest-sheet";
 
 const reasons = { liked: ["ramen"], rarest: { tag: "hand_pulled_noodles", nearby: 2 }, indie: true };
 const place = (id: string, name: string) => ({
@@ -303,5 +304,49 @@ describe("QuestSheet on a wide screen", () => {
     expect(formatDistance(66)).toBe("66 m");
     expect(formatDistance(999.6)).toBe("1000 m");
     expect(formatDistance(1234)).toBe("1.2 km");
+    expect(formatDistance(306_412)).toBe("306 km");
+  });
+});
+
+describe("QuestSheet: the check-in note", () => {
+  const withNote = (note: Parameters<typeof QuestSheet>[0]["note"], onDismissNote = vi.fn()) =>
+    render(
+      <QuestSheet
+        quest={quest("accepted")}
+        deck={deck}
+        selectedId="p1"
+        onSelect={vi.fn()}
+        onAction={vi.fn()}
+        busy={false}
+        topLimit={120}
+        onCoveredChange={vi.fn()}
+        note={note}
+        onDismissNote={onDismissNote}
+      />,
+    );
+
+  it("shows a rejection beside I went, as an alert, with Check again", () => {
+    const again = vi.fn();
+    withNote({ tone: "rejected", label: "Not checked in", text: "You're 2.8 km away.", action: { label: "Check again", onClick: again } });
+    const peekPart = handle().parentElement!;
+    const alert = within(peekPart).getByRole("alert");
+    expect(alert.textContent).toContain("You're 2.8 km away.");
+    fireEvent.click(within(alert).getByRole("button", { name: "Check again" }));
+    expect(again).toHaveBeenCalled();
+    expect(within(peekPart).getByRole("button", { name: "I went" })).toBeTruthy(); // same place as the action
+  });
+
+  it("labels a simulated demo check-in plainly, as a status", () => {
+    withNote({ tone: "simulated", label: "Simulated check-in · demo account", text: "The demo pretended you arrived." });
+    const status = within(handle().parentElement!).getByRole("status");
+    expect(status.textContent).toContain("Simulated check-in · demo account");
+  });
+
+  it("is dismissible and shows 'Checking…' while a check is under way", () => {
+    const dismiss = vi.fn();
+    withNote({ tone: "rejected", label: "Not checked in", text: "x", action: { label: "Check again", onClick: vi.fn(), pending: true } }, dismiss);
+    expect(screen.getByRole("button", { name: "Checking…" })).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(dismiss).toHaveBeenCalled();
   });
 });
