@@ -1,4 +1,20 @@
-# Places reported as mislocated that no address rule catches (no postcode in Overture).
-# The loader flags them (places.location_suspect), so they never reach a deck.
-# "<overture id> <note>", one per line.
+# Hand-reviewed places the address rule (location.go) gets wrong, either way.
+#
+#   <overture id> <note>         mislocated, but no address rule catches it (no postcode):
+#                                flagged (places.location_suspect), never in a deck
+#   allow <overture id> <note>   really here, though its postcode says otherwise: never
+#                                flagged by the postcode rule, stays in decks
+#
+# From the review of all 80,001 NYC places on 2026-10-24 (the rule flagged 116; these 8
+# are real NYC places whose Overture postcode is garbage).
+
 58475f4b-e8ba-4aae-b246-1efa5e33f6b5 VerKeerderkill Falls (Sams Point Preserve, Catskills) pinned in Manhattan; seen in a Union Square deck 2026-10-24
+
+allow b8d17c91-6a77-4bd4-a490-d3a2c9b47bd6 Arthur Avenue, the Bronx (postcode 14058)
+allow 3141985e-3f78-48a5-941a-b606d3732bf5 Hudson River Park Playground (postcode 13456)
+allow 3ab4ad19-baeb-42bd-980b-7c1a0a73ac4b Pier 51 at Hudson River Park (postcode 13440)
+allow a008806c-72fd-41e2-a6c1-8a45fda2e5e4 Mercer-Houston Dog Run, SoHo (postcode 12018)
+allow 424a1ee6-1eaa-4ff4-a81a-0f4ce7a4f469 Orchard Beach, Pelham Bay Park (postcode 00754)
+allow cc1addc9-214f-4150-b8eb-95a943a82ffc Kiss Art Gallery, 123 5th Ave (postcode 12004)
+allow 0fad8712-2726-430f-a258-9ec8298487db Liberty State Park picnic pavilion, Jersey City (postcode 11803)
+allow eb5d43a8-0ea0-4d8d-bf1d-faba1b1b5168 Yankee Stadium Harlem River parking lot (postcode 07719)

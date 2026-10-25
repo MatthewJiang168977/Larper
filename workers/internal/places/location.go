@@ -17,9 +17,10 @@ import (
 // Coordinates can't show this, so the loader reads the address and flags a place whose
 // postcode contradicts the region. A flagged place keeps its row (users' quests point at
 // it) but never reaches a deck or the area stats (places.location_suspect, migration
-// 0015). Measured on the 80,001 NYC places: ~110 flagged, ~92% of them really elsewhere
-// (Thai and Korean shops, Florida and upstate businesses, Catskill parks); the rest are
-// real NYC places with a garbage postcode, an accepted loss.
+// 0015). Measured on the 80,001 NYC places and reviewed by hand: the rule flags 116,
+// all really elsewhere (Thai and Korean shops, Florida and upstate businesses, Catskill
+// parks) except 8 real NYC places with a garbage postcode, which reported_places.txt
+// allows; 108 stay flagged.
 
 // LocationCheck holds what a region's addresses look like. The zero value checks only
 // the reported list: a deployment without postcode prefixes (local development, or a
@@ -40,21 +41,26 @@ var (
 //go:embed reported_places.txt
 var reportedFile string
 
-// reported: Overture ids of places reported as mislocated that no address rule catches
-// (no postcode at all), with why. One per line: "<overture id> <note>"; # comments.
-var reported = parseReported(reportedFile)
+// The hand-reviewed overrides in reported_places.txt: places reported as mislocated
+// that no address rule catches (no postcode at all), and places really here whose
+// postcode says otherwise ("allow"). Each maps an Overture id to its note.
+var reported, allowed = parseOverrides(reportedFile)
 
-func parseReported(s string) map[string]string {
-	m := map[string]string{}
+func parseOverrides(s string) (reported, allowed map[string]string) {
+	reported, allowed = map[string]string{}, map[string]string{}
 	for _, line := range strings.Split(s, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
+		into := reported
+		if rest, ok := strings.CutPrefix(line, "allow "); ok {
+			into, line = allowed, strings.TrimSpace(rest)
+		}
 		id, note, _ := strings.Cut(line, " ")
-		m[id] = strings.TrimSpace(note)
+		into[id] = strings.TrimSpace(note)
 	}
-	return m
+	return reported, allowed
 }
 
 // zipOf returns the US ZIP in a postcode, "" if it holds none, and whether the value
@@ -89,7 +95,7 @@ func (c LocationCheck) Suspect(overtureID, postcode, street string) string {
 	if note, ok := reported[overtureID]; ok {
 		return "reported: " + note
 	}
-	if len(c.PostcodePrefixes) == 0 {
+	if _, ok := allowed[overtureID]; ok || len(c.PostcodePrefixes) == 0 {
 		return ""
 	}
 	zip, isPostcode := zipOf(postcode)
