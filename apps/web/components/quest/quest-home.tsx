@@ -9,6 +9,7 @@ import { ApiError, describeError, useApi, type Me, type SkipReason, type Today }
 import { DEMO_MIDTOWN, DEMO_SPOT } from "@/lib/demo-spot";
 import { getPreciseFix } from "@/lib/precise-fix";
 import { formatDistance } from "@/lib/format";
+import { DemoNotice } from "./demo-notice";
 import { type Covered, QuestSheet, type QuestAction, type SheetNote } from "./quest-sheet";
 
 export const SURVEY_POLL_MS = 4000;
@@ -324,7 +325,7 @@ export function QuestHome() {
         className="pointer-events-none absolute inset-x-3 z-20 flex flex-col items-center gap-2 overflow-y-auto overscroll-contain [&>*]:pointer-events-auto [&>*]:shrink-0"
       >
         {loc?.source === "demo" ? (
-          <DemoNotice loc={loc} onRetry={retryLocation} retrying={locating} />
+          <DemoNotice loc={loc} demo={!!me?.demo} onRetry={retryLocation} retrying={locating} />
         ) : (
           loc?.note && <p className="field-label self-start rounded bg-paper/90 px-2 py-1">{loc.note}</p>
         )}
@@ -475,36 +476,6 @@ export function checkedIn(place: string, res: { simulated?: boolean; distanceM?:
     };
   }
   return { tone: "done", label: "Checked in", text: `${place} is in your journal.` };
-}
-
-const DEMO_COPY: Record<NonNullable<Located["reason"]>, string> = {
-  waiting: "We couldn't find you yet.",
-  denied: "Location is off for this site. Allow it in your browser's settings, then try again.",
-  unavailable: "Your device couldn't get a location fix.",
-  "no-gps": "This device has no location.",
-  outside: "You're outside New York City, which is all this demo covers.",
-};
-
-// Shown whenever the map isn't where the user is, so a demo deck is never mistaken for
-// their own neighbourhood.
-function DemoNotice({ loc, onRetry, retrying }: { loc: Located; onRetry: () => void; retrying: boolean }) {
-  return (
-    <div
-      role="region"
-      aria-label="Demo area"
-      className="flex w-full items-center gap-3 rounded border border-rule bg-paper/95 px-3 py-2 text-sm"
-    >
-      <p className="flex-1">
-        <span className="font-medium">Demo area: {loc.spot ?? "Washington Square"}.</span>{" "}
-        {DEMO_COPY[loc.reason ?? "unavailable"]}
-      </p>
-      {loc.reason !== "no-gps" && loc.reason !== "outside" && (
-        <button onClick={onRetry} disabled={retrying} className="font-medium text-oxblood underline disabled:opacity-50">
-          {retrying ? "Looking…" : "Try location again"}
-        </button>
-      )}
-    </div>
-  );
 }
 
 function BottomLabel({ children }: { children: React.ReactNode }) {
