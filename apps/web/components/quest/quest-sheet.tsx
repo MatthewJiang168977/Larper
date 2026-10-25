@@ -54,12 +54,16 @@ export const SIDE_GUTTER_PX = 240;
 const humanize = (s: string) => s.replaceAll("_", " ").replaceAll("-", " ");
 const WALK_M_PER_MIN = 80;
 const SPRING = { type: "spring", stiffness: 420, damping: 40 } as const;
+/** Peek's share of the screen, at most. */
+export const PEEK_MAX = 0.5;
 
 // The focused place's field notes, links and quest actions, as a bottom sheet with two
 // snaps: peek (name, distance, category and the main action) and full (everything,
 // scrollable, stopping below the notices). The same sheet on every screen; on a wide one
 // it's a card centred at the bottom, 60% of the screen (at most 960 px), sized to its
 // content, and full lays out in two columns: the details, and the leads as a list.
+// Peek never takes more than half the screen (large text, zoom, a short landscape
+// phone): past that it scrolls inside, and full then scrolls as one, peek and all.
 export function QuestSheet(props: Props) {
   return <BottomSheet {...props} />;
 }
@@ -79,6 +83,8 @@ function BottomSheet(props: Props) {
   const restId = useId();
   const sectionRef = useRef<HTMLElement>(null);
   const peekRef = useRef<HTMLDivElement>(null);
+  const peekContentRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLButtonElement>(null);
   const restRef = useRef<HTMLDivElement>(null);
   const restContentRef = useRef<HTMLDivElement>(null);
@@ -89,24 +95,36 @@ function BottomSheet(props: Props) {
   const dragControls = useDragControls();
   const y = useMotionValue(0);
   const [snap, setSnap] = useState<Snap>("peek");
-  const [peekH, setPeekH] = useState(0);
+  const [handleH, setHandleH] = useState(0);
+  // Peek's content at its natural height (the part under the handle).
+  const [peekContentH, setPeekContentH] = useState(0);
   const [restH, setRestH] = useState(0);
   const [viewH, setViewH] = useState(0);
   const [viewW, setViewW] = useState(0);
   const [sheetLeft, setSheetLeft] = useState(0);
   const [announce, setAnnounce] = useState("");
+  // Peek as shown: the handle and its content, up to PEEK_MAX of the screen. Past that,
+  // peek's content scrolls; open, the whole sheet scrolls as one (a peek that fills the
+  // sheet would leave the rest no room).
+  const peekCap = Math.round(viewH * PEEK_MAX);
+  const overflows = viewH > 0 && handleH + peekContentH > peekCap;
+  const peekH = overflows ? Math.max(handleH, peekCap) : handleH + peekContentH;
+  const capPeek = overflows && snap === "peek";
+  const asOne = overflows && snap === "full";
   // Full is as tall as its content, up to just below the notices (then it scrolls).
-  const fullH = Math.min(fullHeight(viewH, topLimit, peekH), peekH + restH);
+  const fullH = Math.min(fullHeight(viewH, topLimit, peekH), handleH + peekContentH + restH);
   const range = Math.max(0, fullH - peekH);
 
   // Measure peek (the visible part when collapsed) and the screen it sits on.
   useLayoutEffect(() => {
-    const peek = peekRef.current;
+    const handle = handleRef.current?.parentElement;
+    const peek = peekContentRef.current;
     const host = sectionRef.current?.offsetParent as HTMLElement | null;
-    if (!peek) return;
+    if (!handle || !peek) return;
     const content = restContentRef.current;
     const measure = () => {
-      setPeekH(peek.offsetHeight);
+      setHandleH(handle.offsetHeight);
+      setPeekContentH(peek.offsetHeight);
       setRestH(content?.offsetHeight ?? 0);
       setViewH(host?.clientHeight || window.innerHeight);
       setViewW(host?.clientWidth || window.innerWidth);
@@ -114,6 +132,7 @@ function BottomSheet(props: Props) {
     };
     measure();
     const ro = new ResizeObserver(measure);
+    ro.observe(handle);
     ro.observe(peek);
     if (content) ro.observe(content);
     if (host) ro.observe(host);
@@ -149,8 +168,12 @@ function BottomSheet(props: Props) {
     (next: Snap) => {
       setSnap(next);
       setAnnounce(next === "full" ? "Quest details expanded" : "Quest details collapsed");
+      if (next !== "peek") return;
       // Collapsing hides the rest: don't leave focus on something you can't see.
-      if (next === "peek" && restRef.current?.contains(document.activeElement)) handleRef.current?.focus();
+      if (restRef.current?.contains(document.activeElement)) handleRef.current?.focus();
+      // And shows peek from its top again (it may have scrolled, on its own or as one).
+      if (bodyRef.current) bodyRef.current.scrollTop = 0;
+      if (peekRef.current) peekRef.current.scrollTop = 0;
     },
     [],
   );
@@ -188,8 +211,9 @@ function BottomSheet(props: Props) {
       data-snap={snap}
       className="absolute inset-x-0 bottom-0 z-10 mx-auto flex max-w-xl flex-col rounded-t-2xl lg:w-[60vw] lg:max-w-[960px] border-x border-t border-paper-edge bg-paper shadow-[0_-6px_24px_rgba(43,41,37,0.12)]"
     >
-      <div ref={peekRef} className="shrink-0 px-5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        {/* The handle strip: drag it, tap it, or use the keyboard on it. */}
+      {/* The handle strip: drag it, tap it, or use the keyboard on it. Outside the
+          scrolling part, so it's always there to close the sheet. */}
+      <div className="shrink-0 px-5">
         <button
           ref={handleRef}
           type="button"
@@ -218,18 +242,36 @@ function BottomSheet(props: Props) {
         >
           <span aria-hidden className="h-1 w-10 rounded-full bg-rule" />
         </button>
-        {props.note && <NoteBlock note={props.note} onDismiss={props.onDismissNote} />}
-        {focused ? <Peek place={focused.place} label={label} {...props} isQuest={isQuest} /> : <Empty />}
       </div>
 
+      {/* Peek over the rest. Usually only the rest scrolls; when peek overflows, peek
+          scrolls on its own at peek, and open, this whole part scrolls as one. */}
       <div
-        ref={restRef}
-        id={restId}
-        inert={snap === "peek"}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5"
+        ref={bodyRef}
+        data-testid="sheet-body"
+        className={`flex min-h-0 flex-1 flex-col ${asOne ? "overflow-y-auto overscroll-contain" : ""}`}
       >
-        <div ref={restContentRef} className="pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-          {focused && <Rest {...props} focused={focused} isQuest={isQuest} />}
+        <div
+          ref={peekRef}
+          data-testid="sheet-peek"
+          style={capPeek ? { maxHeight: peekH - handleH } : undefined}
+          className={`shrink-0 px-5 ${capPeek ? "overflow-y-auto overscroll-contain" : ""}`}
+        >
+          <div ref={peekContentRef} className="pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            {props.note && <NoteBlock note={props.note} onDismiss={props.onDismissNote} />}
+            {focused ? <Peek place={focused.place} label={label} {...props} isQuest={isQuest} /> : <Empty />}
+          </div>
+        </div>
+
+        <div
+          ref={restRef}
+          id={restId}
+          inert={snap === "peek"}
+          className={asOne ? "shrink-0 px-5" : "min-h-0 flex-1 overflow-y-auto overscroll-contain px-5"}
+        >
+          <div ref={restContentRef} className="pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+            {focused && <Rest {...props} focused={focused} isQuest={isQuest} />}
+          </div>
         </div>
       </div>
 
@@ -288,12 +330,13 @@ function Peek({
     <BlurFade key={place.id} duration={0.25} offset={4}>
       <p className="field-label">{label}</p>
       {/* The name gets the full width (two lines at most: names run long); the action
-          sits beside the distance underneath. */}
+          sits beside the distance underneath, or below it when there isn't room (large
+          text, zoom). */}
       <h2 className="mt-1 line-clamp-2 text-2xl font-semibold leading-tight [font-variation-settings:'opsz'_96]">
         {place.name}
       </h2>
-      <div className="mt-1 flex items-center gap-3">
-        <p className="min-w-0 flex-1 text-ink-soft">
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <p className="min-w-[8rem] flex-1 text-ink-soft">
           {humanize(place.category)} · <NumberTicker value={place.distanceM} className="text-ink-soft" /> m, about{" "}
           {walkMin} min on foot
         </p>

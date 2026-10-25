@@ -3,6 +3,7 @@
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Map as MLMap, Marker } from "maplibre-gl";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { haloDiameterPx } from "./accuracy-halo";
 import { journalStyle } from "./journal-style";
 import type { QuestMapProps } from "./quest-map";
@@ -96,7 +97,7 @@ function allowRotation(map: MLMap, on: boolean) {
   }
 }
 
-export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect, bottomInset, rightInset = 0 }: QuestMapProps) {
+export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect, bottomInset, rightInset = 0, controlsHost }: QuestMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const markersRef = useRef<{ marker: Marker; pin: HTMLElement; placeId: string }[]>([]);
@@ -317,41 +318,44 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
   }, [ready]);
   const resetView = () => mapRef.current?.easeTo({ ...RESET_CAMERA, duration: 500, essential: false });
 
+  const controls = ready && (
+    <div className={controlsHost ? "flex gap-2" : "absolute right-3 top-3 z-10 flex gap-2"}>
+      {view === "3d" && (
+        <button
+          type="button"
+          onClick={resetView}
+          aria-label="Reset view: north up"
+          title="Reset view: north up"
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-paper-edge bg-paper/90 text-ink shadow-sm backdrop-blur"
+        >
+          {/* A needle pointing north on the map, so it turns against the bearing. */}
+          <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6" style={{ transform: `rotate(${-bearing}deg)` }} data-testid="compass-needle">
+            <path d="M12 3 L16 12 L12 10.5 L8 12 Z" fill="var(--oxblood)" />
+            <path d="M12 21 L8 12 L12 13.5 L16 12 Z" fill="currentColor" opacity="0.35" />
+          </svg>
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={toggleView}
+        aria-label={VIEW_TOGGLE[view].label}
+        title={VIEW_TOGGLE[view].label}
+        className="flex h-11 min-w-11 items-center justify-center rounded-full border border-paper-edge bg-paper/90 px-3 font-mono text-xs font-semibold tracking-wider text-ink shadow-sm backdrop-blur"
+      >
+        {VIEW_TOGGLE[view].text}
+      </button>
+    </div>
+  );
+
   // MapLibre's CSS forces `.maplibregl-map { position: relative }` onto the container,
   // which would cancel `absolute inset-0` and collapse it to zero height. So position
   // a wrapper and give the map a plain full-size child.
   return (
     <div className="absolute inset-0">
       <div ref={containerRef} className="h-full w-full" aria-label="Map of nearby quests" role="region" />
-      {/* Top right, level with the header: the notices start below it and span the width. */}
-      {ready && (
-        <div className="absolute right-3 top-3 z-10 flex gap-2">
-          {view === "3d" && (
-            <button
-              type="button"
-              onClick={resetView}
-              aria-label="Reset view: north up"
-              title="Reset view: north up"
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-paper-edge bg-paper/90 text-ink shadow-sm backdrop-blur"
-            >
-              {/* A needle pointing north on the map, so it turns against the bearing. */}
-              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6" style={{ transform: `rotate(${-bearing}deg)` }} data-testid="compass-needle">
-                <path d="M12 3 L16 12 L12 10.5 L8 12 Z" fill="var(--oxblood)" />
-                <path d="M12 21 L8 12 L12 13.5 L16 12 Z" fill="currentColor" opacity="0.35" />
-              </svg>
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={toggleView}
-            aria-label={VIEW_TOGGLE[view].label}
-            title={VIEW_TOGGLE[view].label}
-            className="flex h-11 min-w-11 items-center justify-center rounded-full border border-paper-edge bg-paper/90 px-3 font-mono text-xs font-semibold tracking-wider text-ink shadow-sm backdrop-blur"
-          >
-            {VIEW_TOGGLE[view].text}
-          </button>
-        </div>
-      )}
+      {/* In the page's top bar when it gives a place for them (they wrap below its pill
+          when both don't fit); otherwise top right, level with the header. */}
+      {controls && (controlsHost ? createPortal(controls, controlsHost) : controls)}
     </div>
   );
 }

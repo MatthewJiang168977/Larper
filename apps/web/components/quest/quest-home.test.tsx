@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { forwardRef } from "react";
+import { forwardRef, useEffect } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Located } from "@/hooks/use-location";
 import { ApiError, type Me, type Today } from "@/lib/api";
@@ -43,6 +43,9 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 const preciseFix = vi.fn<() => Promise<{ lat: number; lng: number; accuracyM: number } | null>>();
 vi.mock("@/lib/precise-fix", () => ({ getPreciseFix: () => preciseFix() }));
 
+// The peek height the stand-in sheet reports.
+const SHEET_PEEK = 333;
+
 // The sheet has its own tests (quest-sheet.test.tsx); here it only has to show what it
 // got and act, and report what it covers the way the real one does.
 vi.mock("./quest-sheet", () => ({
@@ -57,7 +60,8 @@ vi.mock("./quest-sheet", () => ({
       note?: { tone: string; label: string; text: string; action?: { label: string; onClick: () => void; pending?: boolean } } | null;
       onDismissNote?: () => void;
     }
-  >(function QuestSheet({ quest, deck, onAction, topLimit, note, onDismissNote }, ref) {
+  >(function QuestSheet({ quest, deck, onAction, topLimit, onCoveredChange, note, onDismissNote }, ref) {
+    useEffect(() => onCoveredChange({ bottom: SHEET_PEEK, right: 0 }), [onCoveredChange]);
     return (
       <section ref={ref} data-top-limit={topLimit}>
         {note && (
@@ -661,5 +665,29 @@ describe("QuestHome: room for the quest sheet", () => {
     await settle();
     // jsdom has no layout, so the measured bottom is 0 here: it's passed, as a number.
     expect(screen.getByText("quest: Cafe Uno").closest("section")!.dataset.topLimit).toMatch(/^\d+$/);
+  });
+
+  it("keeps the notices above the sheet: they stop at its peek and scroll, never covering the place", async () => {
+    location = demoSpot("denied");
+    routes["/quests/today"] = ok(withQuest);
+    render(<QuestHome />);
+    await settle();
+    const notices = screen.getByTestId("notices");
+    // jsdom: the header measures 0 px, so the notices start 8 px down.
+    expect(notices.style.top).toBe("8px");
+    expect(notices.style.maxHeight).toBe(`calc(100% - ${8 + SHEET_PEEK + 8}px)`);
+    expect(notices.className).toContain("overflow-y-auto");
+  });
+
+  it("gives the map's buttons a place in the top bar, which wraps them below the pill when both don't fit", async () => {
+    routes["/quests/today"] = ok(withQuest);
+    render(<QuestHome />);
+    await settle();
+    const slot = screen.getByTestId("map-controls");
+    const header = slot.parentElement!;
+    expect(header.tagName).toBe("HEADER");
+    expect(header.className.split(" ")).toEqual(expect.arrayContaining(["flex-wrap", "justify-between"]));
+    expect(slot.className.split(" ")).toContain("ml-auto"); // right-aligned on its own line too
+    expect(header.contains(screen.getByRole("link", { name: "Journal" }))).toBe(true);
   });
 });
