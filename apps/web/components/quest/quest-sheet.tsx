@@ -7,6 +7,7 @@ import { NumberTicker } from "@/components/ui/number-ticker";
 import type { DeckItem, PlaceView, QuestView, Reasons } from "@/lib/api";
 import { formatDistance } from "@/lib/format";
 import { fullHeight, offsetFor, resolveSnap, type Snap, snapForKey } from "./sheet-snap";
+import { humanize, whyLines } from "./why-lines";
 
 // "not-today" sets an accepted quest aside without counting against the place.
 export type QuestAction = "accept" | "skip" | "not-today" | "complete";
@@ -51,7 +52,6 @@ export interface Covered {
 /** On a screen with at least this much map either side of the open sheet, pins go beside it. */
 export const SIDE_GUTTER_PX = 240;
 
-const humanize = (s: string) => s.replaceAll("_", " ").replaceAll("-", " ");
 const WALK_M_PER_MIN = 80;
 const SPRING = { type: "spring", stiffness: 420, damping: 40 } as const;
 
@@ -357,7 +357,7 @@ function Rest({
       )}
 
       <div className="lg:col-start-1 lg:row-start-1">
-        <Why reasons={reasons} />
+        <Why place={place} reasons={reasons} />
         {place.tags.length > 0 && (
           <p className="mt-3 font-mono text-xs text-ink-label">
             <span className="sr-only">Tags: </span>
@@ -381,21 +381,18 @@ function Rest({
   );
 }
 
-function Why({ reasons }: { reasons: Reasons }) {
+// Nothing that holds up: no list at all, rather than an empty ruled box.
+function Why({ place, reasons }: { place: PlaceView; reasons: Reasons }) {
+  const lines = whyLines(place, reasons);
+  if (lines.length === 0) return null;
   return (
     <ul
       aria-label="Why this place"
       className="mt-2 space-y-1 border-l-2 border-rule pl-3 font-mono text-[0.8rem] text-ink"
     >
-      {reasons.liked.length > 0 && <li>You marked {reasons.liked.slice(0, 3).map(humanize).join(" + ")}.</li>}
-      {reasons.rarest && (
-        <li>
-          {reasons.rarest.nearby <= 1
-            ? `The only ${humanize(reasons.rarest.tag)} spot around here.`
-            : `1 of ${reasons.rarest.nearby} ${humanize(reasons.rarest.tag)} spots around here.`}
-        </li>
-      )}
-      {reasons.indie && <li>Independent. No other locations.</li>}
+      {lines.map((line) => (
+        <li key={line}>{line}</li>
+      ))}
     </ul>
   );
 }

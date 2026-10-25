@@ -4,7 +4,7 @@ import type { DeckItem, QuestView } from "@/lib/api";
 import { formatDistance } from "@/lib/format";
 import { hoursSearchUrl, QuestSheet } from "./quest-sheet";
 
-const reasons = { liked: ["ramen"], rarest: { tag: "hand_pulled_noodles", nearby: 2 }, indie: true };
+const reasons = { liked: ["noodles", "ramen"], rarest: { tag: "hand_pulled_noodles", nearby: 2 }, indie: true };
 const place = (id: string, name: string) => ({
   id,
   name,
@@ -173,9 +173,29 @@ describe("QuestSheet on a phone: full", () => {
   it("explains why this place and lists its tags", () => {
     sheet("offered");
     const why = within(rest()).getByRole("list", { name: "Why this place" });
-    expect(why.textContent).toContain("You marked ramen.");
+    // ramen is dropped: the category (ramen restaurant) already says it.
+    expect(why.textContent).toContain("You marked noodles.");
     expect(why.textContent).toContain("1 of 2 hand pulled noodles spots around here.");
     expect(why.textContent).toContain("Independent.");
+    expect(rest().textContent).toContain("ramen · noodles");
+  });
+
+  it("leaves out the why list when nothing holds up", () => {
+    const weak = { liked: ["ramen"], rarest: { tag: "noodles", nearby: 19 }, indie: false };
+    render(
+      <QuestSheet
+        quest={{ ...quest("offered"), reasons: weak }}
+        deck={[]}
+        selectedId="p1"
+        onSelect={vi.fn()}
+        onAction={vi.fn()}
+        busy={false}
+        topLimit={120}
+        onCoveredChange={vi.fn()}
+      />,
+    );
+    expand();
+    expect(within(rest()).queryByRole("list", { name: "Why this place" })).toBeNull();
     expect(rest().textContent).toContain("ramen · noodles");
   });
 
