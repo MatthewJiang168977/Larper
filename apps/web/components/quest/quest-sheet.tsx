@@ -251,7 +251,13 @@ function Peek({
           {humanize(place.category)} · <NumberTicker value={place.distanceM} className="text-ink-soft" /> m, about{" "}
           {walkMin} min on foot
         </p>
-        {isQuest && quest && <PrimaryAction status={quest.status} onAction={onAction} busy={busy} />}
+        {isQuest && quest && (
+          <div className="flex shrink-0 gap-2">
+            <PrimaryAction status={quest.status} onAction={onAction} busy={busy} />
+            {/* Wide screens: Skip / Not today beside it. Phones keep it in full. */}
+            <SecondaryAction status={quest.status} onAction={onAction} busy={busy} className="hidden lg:inline-flex" />
+          </div>
+        )}
       </div>
     </BlurFade>
   );
@@ -270,25 +276,36 @@ function Rest({
 }: Props & { focused: QuestView | DeckItem; isQuest: boolean }) {
   const { place, reasons } = focused;
   // Phones: the leads as one row that scrolls sideways, above the details. Wide screens:
-  // two columns, the details on the left and the leads as a vertical list on the right,
-  // so full stays short with nothing to scroll.
+  // two columns (about 55/45), the details on the left and the leads as a compact list
+  // on the right, so full stays short with nothing to scroll.
   return (
-    <div className="pt-1 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(15rem,19rem)] lg:gap-x-8">
+    <div className="pt-1 lg:grid lg:grid-cols-[minmax(0,11fr)_minmax(0,9fr)] lg:gap-x-6">
       {deck.length > 0 && (
-        // 12 px between list rows keeps their 44 px hit areas apart.
+        // Wide screens: each row is ~44 px tall (two lines), so the rows' hit areas
+        // don't overlap with only 2 px between them.
         <nav
           aria-label="Leads"
-          className="-mx-5 flex gap-2 overflow-x-auto px-5 py-2.5 [scrollbar-color:var(--rule)_transparent] [scrollbar-width:thin] lg:col-start-2 lg:row-start-1 lg:mx-0 lg:flex-col lg:gap-3 lg:overflow-visible lg:px-0 lg:pt-2"
+          className="-mx-5 flex gap-2 overflow-x-auto px-5 py-2.5 [scrollbar-color:var(--rule)_transparent] [scrollbar-width:thin] lg:col-start-2 lg:row-start-1 lg:mx-0 lg:flex-col lg:gap-0.5 lg:overflow-visible lg:px-0 lg:pt-1"
         >
           {quest && (
-            <Tab active={isQuest} onClick={() => onSelect(quest.place.id)} seal>
-              Quest
-            </Tab>
+            <Tab
+              active={isQuest}
+              onClick={() => onSelect(quest.place.id)}
+              seal
+              label="Quest"
+              marker={<FlagMark />}
+              place={quest.place}
+            />
           )}
           {deck.map((d, i) => (
-            <Tab key={d.place.id} active={selectedId === d.place.id} onClick={() => onSelect(d.place.id)}>
-              {i + 1}. {d.place.name}
-            </Tab>
+            <Tab
+              key={d.place.id}
+              active={selectedId === d.place.id}
+              onClick={() => onSelect(d.place.id)}
+              label={`${i + 1}. ${d.place.name}`}
+              marker={i + 1}
+              place={d.place}
+            />
           ))}
         </nav>
       )}
@@ -303,8 +320,9 @@ function Rest({
         )}
         <Links place={place} />
 
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className={`mt-4 flex flex-wrap gap-2 ${isQuest ? "lg:hidden" : ""}`}>
           {isQuest && quest ? (
+            // Wide screens show it in peek, beside the main action.
             <SecondaryAction status={quest.status} onAction={onAction} busy={busy} />
           ) : (
             <p className="text-sm text-ink-soft">
@@ -340,12 +358,18 @@ function Tab({
   active,
   onClick,
   seal,
-  children,
+  label,
+  marker,
+  place,
 }: {
   active: boolean;
   onClick: () => void;
   seal?: boolean;
-  children: React.ReactNode;
+  /** The pill's text on phones, and the row's accessible name everywhere. */
+  label: string;
+  /** The row's number (or the quest's flag) on wide screens. */
+  marker: React.ReactNode;
+  place: PlaceView;
 }) {
   const tone = seal
     ? active
@@ -353,18 +377,43 @@ function Tab({
       : "text-oxblood border-oxblood"
     : active
       ? "bg-ink text-paper border-ink"
-      : "text-ink border-ink-faint";
-  // On phones the text truncates in its own span: overflow on the button would clip its
-  // hit area. The strip's vertical padding leaves room for that hit area inside its
-  // scroll box. On wide screens each lead is a full-width list row with its whole name.
+      : "text-ink border-ink-faint lg:hover:bg-rule/40";
+  // Phones: a pill whose text truncates in its own span (overflow on the button would
+  // clip its hit area; the strip's vertical padding leaves room for that hit area inside
+  // its scroll box). Wide screens: a compact row with no border, the name (wrapping) over
+  // its category and distance; the selected one stays filled.
   return (
     <button
       onClick={onClick}
       aria-pressed={active}
-      className={`hit-target shrink-0 max-w-[11rem] rounded-full border px-3 py-1 font-mono text-xs lg:w-full lg:max-w-full lg:rounded-lg lg:py-2 lg:text-left ${tone}`}
+      aria-label={label}
+      className={`hit-target shrink-0 max-w-[11rem] rounded-full border px-3 py-1 font-mono text-xs lg:flex lg:w-full lg:max-w-full lg:items-start lg:gap-2 lg:rounded-md lg:border-0 lg:px-2 lg:py-1 lg:text-left lg:font-sans ${tone}`}
     >
-      <span className="block truncate lg:overflow-visible lg:whitespace-normal">{children}</span>
+      <span className="block truncate lg:hidden">{label}</span>
+      <span aria-hidden className="hidden w-5 shrink-0 pt-0.5 text-right font-mono text-xs lg:block">
+        {marker}
+      </span>
+      <span aria-hidden className="hidden min-w-0 flex-1 lg:block">
+        <span className="block text-sm font-medium leading-snug">{place.name}</span>
+        <span className="block truncate text-xs leading-snug opacity-75">
+          {humanize(place.category)} · {formatDistance(place.distanceM)}
+        </span>
+      </span>
     </button>
+  );
+}
+
+export function formatDistance(m: number) {
+  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
+}
+
+// The quest's mark in the lead list: the map pin's pennant, small.
+function FlagMark() {
+  return (
+    <svg viewBox="0 0 24 24" className="ml-auto h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 21V3" />
+      <path d="M6 4h11l-3 4.5 3 4.5H6" />
+    </svg>
   );
 }
 
@@ -433,17 +482,27 @@ function PrimaryAction({ status, onAction, busy }: { status: QuestView["status"]
   return null;
 }
 
-function SecondaryAction({ status, onAction, busy }: { status: QuestView["status"]; onAction: (a: QuestAction) => void; busy: boolean }) {
+function SecondaryAction({
+  status,
+  onAction,
+  busy,
+  className = "",
+}: {
+  status: QuestView["status"];
+  onAction: (a: QuestAction) => void;
+  busy: boolean;
+  className?: string;
+}) {
   if (status === "offered") {
     return (
-      <button className={SECONDARY} disabled={busy} onClick={() => onAction("skip")}>
+      <button className={`${SECONDARY} ${className}`} disabled={busy} onClick={() => onAction("skip")}>
         Skip
       </button>
     );
   }
   if (status === "accepted") {
     return (
-      <button className={SECONDARY} disabled={busy} onClick={() => onAction("not-today")}>
+      <button className={`${SECONDARY} ${className}`} disabled={busy} onClick={() => onAction("not-today")}>
         Not today
       </button>
     );

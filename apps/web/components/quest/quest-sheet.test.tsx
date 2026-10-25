@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { DeckItem, QuestView } from "@/lib/api";
-import { hoursSearchUrl, QuestSheet } from "./quest-sheet";
+import { formatDistance, hoursSearchUrl, QuestSheet } from "./quest-sheet";
 
 const reasons = { liked: ["ramen"], rarest: { tag: "hand_pulled_noodles", nearby: 2 }, indie: true };
 const place = (id: string, name: string) => ({
@@ -47,10 +47,10 @@ const expand = () => fireEvent.click(handle());
 describe("QuestSheet on a phone: peek", () => {
   it("shows the place, how far, its category and the main action", () => {
     sheet("offered");
-    expect(screen.getByRole("heading", { name: "Cafe Uno" })).toBeTruthy();
-    expect(screen.getByText(/ramen restaurant ·/)).toBeTruthy();
-    expect(screen.getByText(/about 1 min on foot/)).toBeTruthy();
     const peekPart = handle().parentElement!;
+    expect(within(peekPart).getByRole("heading", { name: "Cafe Uno" })).toBeTruthy();
+    expect(within(peekPart).getByText(/ramen restaurant ·/)).toBeTruthy();
+    expect(within(peekPart).getByText(/about 1 min on foot/)).toBeTruthy();
     expect(within(peekPart).getByRole("button", { name: "Accept quest" })).toBeTruthy();
   });
 
@@ -64,7 +64,9 @@ describe("QuestSheet on a phone: peek", () => {
     expect(rest().hasAttribute("inert")).toBe(true);
     const peekPart = handle().parentElement!;
     expect(within(peekPart).queryByRole("navigation", { name: "Leads" })).toBeNull();
-    expect(within(peekPart).queryByRole("button", { name: "Skip" })).toBeNull();
+    // Peek's Skip is for wide screens only: display:none on phones (jsdom applies no CSS).
+    const peekSkip = within(peekPart).getByRole("button", { name: "Skip" });
+    expect(peekSkip.className.split(" ")).toEqual(expect.arrayContaining(["hidden", "lg:inline-flex"]));
     expect(within(peekPart).queryByRole("link", { name: "Check hours" })).toBeNull();
     expect(within(rest()).getByRole("navigation", { name: "Leads" })).toBeTruthy();
   });
@@ -257,25 +259,49 @@ describe("QuestSheet on a wide screen", () => {
     expect(classes).toContain("lg:max-w-[960px]");
   });
 
-  it("lays full out in two columns: details left, the leads as a vertical list right (phones keep one scrolling row)", () => {
+  it("lays full out in two columns, about 55/45 with a 24 px gap: details left, leads right (phones keep one scrolling row)", () => {
     sheet("offered");
     const nav = screen.getByRole("navigation", { name: "Leads" });
     const grid = nav.parentElement!;
-    expect(grid.className).toContain("lg:grid");
-    expect(grid.className).toContain("lg:grid-cols-[minmax(0,1fr)_minmax(15rem,19rem)]");
+    expect(grid.className).toContain("lg:grid-cols-[minmax(0,11fr)_minmax(0,9fr)]");
+    expect(grid.className).toContain("lg:gap-x-6");
     expect(nav.className).toContain("overflow-x-auto"); // phones
     expect(nav.className).toContain("lg:col-start-2");
     expect(nav.className).toContain("lg:flex-col");
-    expect(nav.className).toContain("lg:overflow-visible");
+    expect(nav.className).toContain("lg:gap-0.5");
     const details = screen.getByRole("list", { name: "Why this place" }).parentElement!;
     expect(details.className).toContain("lg:col-start-1");
     expect(within(details).getByRole("link", { name: "Check hours" })).toBeTruthy();
-    expect(within(details).getByRole("button", { name: "Skip" })).toBeTruthy();
-    const chip = screen.getByRole("button", { name: "1. A Very Long Lead Name That Truncates" });
-    expect(chip.className).toContain("max-w-[11rem]"); // phones
-    expect(chip.className).toContain("lg:w-full");
-    const text = chip.querySelector("span")!;
-    expect(text.className).toContain("truncate"); // phones
-    expect(text.className).toContain("lg:whitespace-normal");
+  });
+
+  it("shows each lead as a compact borderless row: name over category and distance; the selected one stays filled", () => {
+    sheet("offered", { selectedId: "p2" });
+    const row = screen.getByRole("button", { name: "1. A Very Long Lead Name That Truncates" });
+    const classes = row.className.split(" ");
+    expect(classes).toEqual(expect.arrayContaining(["rounded-full", "border", "max-w-[11rem]"])); // phones: the pill
+    expect(classes).toEqual(expect.arrayContaining(["lg:border-0", "lg:flex", "lg:w-full", "lg:py-1"]));
+    expect(row.getAttribute("aria-pressed")).toBe("true");
+    expect(classes).toContain("bg-ink"); // the highlight, on every screen
+    expect(row.textContent).toContain("A Very Long Lead Name That Truncates");
+    expect(row.textContent).toContain("ramen restaurant · 100 m");
+    const quest = screen.getByRole("button", { name: "Quest" });
+    expect(quest.textContent).toContain("Cafe Uno"); // the list shows the quest's name too
+    expect(quest.querySelector("svg")).toBeTruthy(); // its flag
+  });
+
+  it("puts Skip beside Accept in peek on wide screens, and keeps it in full on phones", () => {
+    sheet("offered");
+    const peekPart = handle().parentElement!;
+    const peekSkip = within(peekPart).getByRole("button", { name: "Skip" });
+    expect(peekSkip.parentElement).toBe(within(peekPart).getByRole("button", { name: "Accept quest" }).parentElement);
+    expect(peekSkip.className).toContain("lg:inline-flex");
+    const fullSkip = within(rest()).getByRole("button", { name: "Skip" });
+    expect(fullSkip.parentElement!.className).toContain("lg:hidden");
+  });
+
+  it("formats distances", () => {
+    expect(formatDistance(66)).toBe("66 m");
+    expect(formatDistance(999.6)).toBe("1000 m");
+    expect(formatDistance(1234)).toBe("1.2 km");
   });
 });
