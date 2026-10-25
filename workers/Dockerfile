@@ -25,7 +25,9 @@ RUN useradd --create-home --uid 10001 app
 USER app
 # Bake the extensions into the image so jobs never download them at runtime.
 RUN duckdb -c "INSTALL httpfs; INSTALL spatial;"
-COPY --from=build /out/ingest-worker /usr/local/bin/
+# load-places too: with -bbox it extracts with this image's DuckDB, so a whole metro can
+# be (re)loaded on the cluster (scripts/oci-reload-places.sh).
+COPY --from=build /out/ingest-worker /out/load-places /usr/local/bin/
 ENTRYPOINT ["/usr/local/bin/ingest-worker"]
 
 # Static binaries need no OS: distroless has no shell or package manager to exploit.
