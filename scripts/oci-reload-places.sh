@@ -61,6 +61,8 @@ source "$ENV_FILE"
 vm() { ssh -i "$SSH_KEY" -o ServerAliveInterval=30 -o ConnectTimeout=15 "ubuntu@$PUBLIC_IP" "$@"; }
 log() { echo "==> $*"; }
 K="sudo k3s kubectl -n larper"
+# load-places's timing lines (log/slog's default text format: "<date> <time> INFO extracted ...").
+TIMING_LINES=' INFO (extracted|done) '
 DRY_RUN=${DRY_RUN:-0}
 # apply MANIFEST-on-stdin: to the cluster, or printed with DRY_RUN=1.
 apply() {
@@ -141,5 +143,5 @@ while kill -0 $waiter 2>/dev/null; do
 done
 wait $waiter
 log "completed in $((SECONDS - t0)) s (wall time on the VM, including the image start)"
-vm "$K logs job/$job" | tr -d '\r' | grep -E '"msg":"(extracted|done)"' || true
+vm "$K logs job/$job" | tr -d '\r' | grep -E "$TIMING_LINES" || true
 vm "$K get job/$job -o jsonpath='{.status.startTime} -> {.status.completionTime}{\"\n\"}'"

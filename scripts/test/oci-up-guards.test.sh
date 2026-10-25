@@ -309,6 +309,15 @@ check "reload, dirty tree + --allow-dirty: gets past the guard" test "$RC" -eq 0
 run_reload good "" "PREFIXES=" "DRY_RUN=1"
 check "reload, empty PREFIXES (reported list only): accepted" test "$RC" -eq 0
 
+# 13. The reload prints load-places's timing lines: its filter matches them as the Job
+#     logged them on 2026-10-25 (a JSON filter once matched nothing), and nothing else.
+timing=$(sed -n "s/^TIMING_LINES='\(.*\)'$/\1/p" "$RELOAD")
+job_log=$'2026/10/25 03:43:19 INFO extracted bbox=-74.26,40.49,-73.70,40.92 release=2026-09-23.1 bytes=38614634 elapsed=12.217s\n2026/10/25 03:43:20 WARN something else\n2026/10/25 03:43:32 INFO done read=566086 kept=80001 areas=123 taxonomy=1 load=13.531s elapsed=25.749s'
+timing_kept=$(grep -E "$timing" <<<"$job_log" || true)
+check "reload: the timing filter is defined" test -n "$timing"
+check "reload: the timing filter keeps the extract and load lines, and only those" \
+  bash -c '[[ $(wc -l <<<"$1") == 2 ]] && grep -q "elapsed=12.217s" <<<"$1" && grep -q "load=13.531s" <<<"$1"' _ "$timing_kept"
+
 echo
 if ((fails)); then echo "$fails failed"; exit 1; fi
 echo "all passed"
