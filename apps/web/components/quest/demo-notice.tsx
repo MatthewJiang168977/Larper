@@ -45,7 +45,7 @@ interface Props {
 }
 
 // Shown whenever the map isn't where the user is, so a demo deck is never mistaken for
-// their own neighbourhood. One line ("DEMO · MIDTOWN · Use my location"); the reason is
+// their own neighborhood. One line ("DEMO · MIDTOWN · Use my location"); the reason is
 // a tap away, and it can be put away for the visit.
 export function DemoNotice({ loc, demo, onRetry, retrying }: Props) {
   const [hidden, setHidden] = useState(readDismissed);
@@ -94,7 +94,7 @@ export function DemoNotice({ loc, demo, onRetry, retrying }: Props) {
       <div id={detailsId} hidden={!open} className="max-w-sm rounded border border-rule bg-paper/95 px-3 py-2 text-sm shadow-sm">
         <p>
           <span className="font-medium">
-            {demo ? `You're exploring ${spot}, the demo's home base.` : `You're exploring ${spot}, not your own neighbourhood.`}
+            {demo ? `You're exploring ${spot}, the demo's home base.` : `You're exploring ${spot}, not your own neighborhood.`}
           </span>{" "}
           {DEMO_REASONS[reason]}
         </p>

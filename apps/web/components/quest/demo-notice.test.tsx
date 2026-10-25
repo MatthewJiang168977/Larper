@@ -92,7 +92,7 @@ describe("DemoNotice: the details", () => {
     renderNotice(washSq("unavailable"), { demo: false });
     fireEvent.click(toggle());
     expect(details(screen.getByRole("region", { name: "Map area" })).textContent).toContain(
-      "You're exploring Washington Square, not your own neighbourhood. Your device couldn't get a location fix.",
+      "You're exploring Washington Square, not your own neighborhood. Your device couldn't get a location fix.",
     );
   });
 });
