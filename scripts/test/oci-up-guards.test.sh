@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Tests that scripts/oci-up.sh fails closed, against fake CLIs (no Oracle account, no VM):
+# Tests that scripts/oci-up.sh (and scripts/oci-reload-places.sh, at the end) fail
+# closed, against fake CLIs (no Oracle account, no VM):
 # - a check mode (--resize-check) never reaches a deploy step, whatever the OCI CLI
 #   answers: bad values, Windows CRLF, failures;
 # - --resize refuses before rebooting anything when a check fails;
@@ -244,6 +245,69 @@ FAKE_TF=fail
 run_up good "" --close
 FAKE_TF=good
 check "--close with terraform failing: still gets to the security list" reached_remote
+
+# 12. scripts/oci-reload-places.sh fails closed the same way: a clean tree only, every
+#     value checked first, and its first remote steps are reads, so a failed check or a
+#     failed read stops it before the backup or the Job. Its fake ssh answers the two
+#     reads (FAKE_SSH: good | dirty-image | fail) and records anything that writes.
+RELOAD=scripts/oci-reload-places.sh
+run_reload() { # FAKE_SSH mode, FAKE_GIT_STATUS, then VAR=value... and -- reload arguments...
+  local mode=$1 status=$2; shift 2
+  local vars=()
+  while [[ $# -gt 0 && $1 != -- ]]; do vars+=("$1"); shift; done
+  [[ ${1:-} == -- ]] && shift
+  sandbox
+  cat >"$BOX/bin/ssh" <<'EOF'
+#!/usr/bin/env bash
+cmd=${*: -1}
+echo "ssh $cmd" >>"$FAKE_DIR/ssh-calls"
+[[ $FAKE_SSH == fail ]] && { echo "ssh: connect to host: Connection refused" >&2; exit 255; }
+case $cmd in
+  *"apply -f -"* | *" wait "* | *" logs "*) echo "WRITE $cmd" >>"$FAKE_DIR/deploy-calls"; exit 1 ;;
+  *"get deploy ingest-worker"*OVERTURE_RELEASE*) echo "2026-09-23.1" ;;
+  *"get deploy ingest-worker"*) [[ $FAKE_SSH == dirty-image ]] && echo "larper.local/larper-ingest:abc1234-dirty" || echo "larper.local/larper-ingest:abc1234" ;;
+  *) echo "WRITE? $cmd" >>"$FAKE_DIR/deploy-calls"; exit 1 ;;
+esac
+EOF
+  chmod +x "$BOX/bin/ssh"
+  : >"$BOX/ssh-calls"
+  env -i PATH="$BOX/bin:/usr/bin:/bin" HOME="$BOX/home" FAKE_DIR="$BOX" FAKE_SSH="$mode" \
+    FAKE_GIT_STATUS="$status" OCI_ENV_FILE="$BOX/instance.env" SSH_KEY="$BOX/no-key" "${vars[@]}" \
+    timeout 60 "$BASH_BIN" "$RELOAD" "$@" >"$BOX/out" 2>&1
+  RC=$?; [[ -n ${DEBUG:-} ]] && { echo "--- rc=$RC"; cat "$BOX/out"; }
+}
+no_ssh() { [[ ! -s $BOX/ssh-calls ]]; }
+only_reads() { no_deploy && ! grep -qv 'get deploy ingest-worker' "$BOX/ssh-calls"; }
+
+run_reload good " M scripts/oci-reload-places.sh"
+check "reload, dirty tree: exits non-zero" test "$RC" -ne 0
+check "reload, dirty tree: says why" said "dirty working tree"
+check "reload, dirty tree: nothing remote" no_ssh
+for bad in "1.2.3,40.49,-73.70,40.92" "-73.70,40.49,-74.26,40.92" "-74.26,40.92,-73.70,40.49" "0,0,200,1" "a,b,c,d" "-74.26,40.49,-73.70"; do
+  run_reload good "" "BBOX=$bad"
+  check "reload, BBOX '$bad': exits 2, nothing remote" bash -c "[[ $RC == 2 ]] && [[ ! -s '$BOX/ssh-calls' ]]"
+done
+for bad in "nycc" "10a" "100;rm -rf /" "100,,101"; do
+  run_reload good "" "PREFIXES=$bad"
+  check "reload, PREFIXES '$bad': exits 2, nothing remote" bash -c "[[ $RC == 2 ]] && [[ ! -s '$BOX/ssh-calls' ]]"
+done
+run_reload good "" -- --no-such-flag
+check "reload, unknown argument: exits 2, nothing remote" bash -c "[[ $RC == 2 ]] && [[ ! -s '$BOX/ssh-calls' ]]"
+run_reload fail ""
+check "reload, the first read fails: exits non-zero" test "$RC" -ne 0
+check "reload, the first read fails: no backup, no Job" no_deploy
+run_reload dirty-image ""
+check "reload, a -dirty image is deployed: exits non-zero" test "$RC" -ne 0
+check "reload, a -dirty image is deployed: says so" said "unexpected ingest image"
+check "reload, a -dirty image is deployed: only reads, no backup, no Job" only_reads
+run_reload good "" "DRY_RUN=1"
+check "reload, dry run: exits 0" test "$RC" -eq 0
+check "reload, dry run: prints a Backup and a Job" bash -c "grep -q 'kind: Backup' '$BOX/out' && grep -q 'kind: Job' '$BOX/out'"
+check "reload, dry run: only reads, nothing applied" only_reads
+run_reload good " M scripts/oci-reload-places.sh" "DRY_RUN=1" -- --allow-dirty
+check "reload, dirty tree + --allow-dirty: gets past the guard" test "$RC" -eq 0
+run_reload good "" "PREFIXES=" "DRY_RUN=1"
+check "reload, empty PREFIXES (reported list only): accepted" test "$RC" -eq 0
 
 echo
 if ((fails)); then echo "$fails failed"; exit 1; fi
