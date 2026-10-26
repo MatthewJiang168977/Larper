@@ -40,6 +40,10 @@ interface Props {
   onDismissNote?: () => void;
   /** The shared demo account: its next quest comes on the next visit, not tomorrow. */
   demo?: boolean;
+  /** Slam the Done stamp down: once, right after a check-in (never for a quest already done). */
+  stampSlam?: boolean;
+  /** Called as the slam starts, so a later re-render can't play it again. */
+  onStampSlammed?: () => void;
 }
 
 /**
@@ -97,6 +101,11 @@ function BottomSheet(props: Props) {
   const pressDragged = useRef(false);
   const dragControls = useDragControls();
   const y = useMotionValue(0);
+  // The stamp's impact: a 2 px shake, side to side (y belongs to the drag).
+  const x = useMotionValue(0);
+  const shake = useCallback(() => {
+    if (!reduce) animate(x, [0, -2, 2, -1, 0], { duration: 0.1, ease: "linear" });
+  }, [reduce, x]);
   const [snap, setSnap] = useState<Snap>("peek");
   const [handleH, setHandleH] = useState(0);
   // Peek's content at its natural height (the part under the handle).
@@ -210,7 +219,7 @@ function BottomSheet(props: Props) {
           handleRef.current?.focus();
         }
       }}
-      style={{ y, height: fullH || undefined }}
+      style={{ x, y, height: fullH || undefined }}
       data-snap={snap}
       className="absolute inset-x-0 bottom-0 z-10 mx-auto flex max-w-xl flex-col rounded-t-2xl lg:w-[60vw] lg:max-w-[960px] border-x border-t border-paper-edge bg-paper shadow-[0_-6px_24px_rgba(43,41,37,0.12)]"
     >
@@ -262,7 +271,7 @@ function BottomSheet(props: Props) {
         >
           <div ref={peekContentRef} className="pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             {props.note && <NoteBlock note={props.note} onDismiss={props.onDismissNote} />}
-            {focused ? <Peek place={focused.place} label={label} {...props} isQuest={isQuest} /> : <Empty />}
+            {focused ? <Peek place={focused.place} label={label} {...props} isQuest={isQuest} onImpact={shake} /> : <Empty />}
           </div>
         </div>
 
@@ -329,7 +338,10 @@ function Peek({
   onAction,
   busy,
   demo,
-}: Props & { place: PlaceView; label: string; isQuest: boolean }) {
+  stampSlam,
+  onStampSlammed,
+  onImpact,
+}: Props & { place: PlaceView; label: string; isQuest: boolean; onImpact: () => void }) {
   const done = isQuest && quest?.status === "completed";
   const walkMin = Math.max(1, Math.round(place.distanceM / WALK_M_PER_MIN));
   return (
@@ -349,7 +361,7 @@ function Peek({
         {isQuest && quest && (
           <div className="flex shrink-0 gap-2">
             <PrimaryAction status={quest.status} onAction={onAction} busy={busy} />
-            {done && <DoneStamp />}
+            {done && <DoneStamp slam={stampSlam} onSlammed={onStampSlammed} onImpact={onImpact} />}
             {/* Wide screens: Skip / Not today beside it. Phones keep it in full. */}
             <SecondaryAction status={quest.status} onAction={onAction} busy={busy} className="hidden lg:inline-flex" />
           </div>
@@ -360,12 +372,59 @@ function Peek({
   );
 }
 
-// The journal's "Done" stamp, where the action was.
-function DoneStamp() {
+// The slam: from 130% and 8° further round, down past its size and back, in 300 ms; the
+// ink sharpens as it lands. The impact (the sheet's shake, a 30 ms buzz) comes as the
+// stamp bottoms out.
+const STAMP_REST = -3; // degrees, as the journal's stamps sit
+const SLAM_S = 0.3;
+const SLAM_TIMES = [0, 0.75, 1];
+const IMPACT_MS = SLAM_S * SLAM_TIMES[1] * 1000;
+
+// The journal's "Done" stamp, where the action was. With `slam`, it lands with a thud,
+// once: the parent hears onSlammed as it starts, so a re-render never plays it again.
+// With reduced motion, it's just there (and still buzzes: that's touch, not motion).
+function DoneStamp({ slam, onSlammed, onImpact }: { slam?: boolean; onSlammed?: () => void; onImpact: () => void }) {
+  const reduce = useReducedMotion();
+  // Whether this mount plays the slam: decided once, whatever the props do next.
+  const [play] = useState(() => !!slam && !reduce);
+  useEffect(() => {
+    if (!slam) return;
+    onSlammed?.();
+    const t = setTimeout(() => {
+      if (!reduce) onImpact();
+      try {
+        navigator.vibrate?.(30);
+      } catch {
+        // Not allowed here (no user gesture, an iframe): the stamp is enough.
+      }
+    }, reduce ? 0 : IMPACT_MS);
+    return () => clearTimeout(t);
+    // Once per mount: a slam that's started isn't restarted by new props.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const className = "inline-block shrink-0 rounded border-2 border-moss px-2 py-0.5 font-mono text-xs uppercase text-moss";
+  if (!play) {
+    return (
+      <span className={className} style={{ rotate: `${STAMP_REST}deg` }}>
+        Done
+      </span>
+    );
+  }
   return (
-    <span className="shrink-0 -rotate-3 rounded border-2 border-moss px-2 py-0.5 font-mono text-xs uppercase text-moss">
+    <motion.span
+      className={className}
+      data-slam=""
+      initial={{ scale: 1.3, rotate: STAMP_REST - 8, opacity: 0, filter: "blur(1.5px)" }}
+      animate={{
+        scale: [1.3, 0.94, 1],
+        rotate: [STAMP_REST - 8, STAMP_REST + 0.5, STAMP_REST],
+        opacity: [0, 1, 1],
+        filter: ["blur(1.5px)", "blur(0px)", "blur(0px)"],
+      }}
+      transition={{ duration: SLAM_S, times: SLAM_TIMES, ease: ["easeIn", "easeOut"] }}
+    >
       Done
-    </span>
+    </motion.span>
   );
 }
 
