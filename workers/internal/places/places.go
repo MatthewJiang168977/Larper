@@ -33,6 +33,8 @@ type overtureRow struct {
 	Phone      *string  `parquet:"phone"`
 	Postcode   *string  `parquet:"postcode"`
 	Street     *string  `parquet:"street"`
+	// For the closure rules (closed.go).
+	BasicCategory *string `parquet:"basic_category"`
 }
 
 type Options struct {
@@ -120,7 +122,7 @@ func tagFile(path string, tax *taxonomy.Taxonomy, minConf float64, loc LocationC
 				taxonomy.ChainKey(*p.Name, str(p.Brand)),
 				res.Tags, taxonomy.VectorLiteral(res.Vec), float32(*p.Confidence),
 				orNull(p.Website), orNull(p.Instagram), orNull(p.Phone),
-				orNull(ptr(loc.Suspect(p.OvertureID, str(p.Postcode), str(p.Street)))),
+				orNull(ptr(suspect(loc, p))),
 			})
 		}
 		if err == io.EOF {
@@ -130,6 +132,19 @@ func tagFile(path string, tax *taxonomy.Taxonomy, minConf float64, loc LocationC
 			return nil, read, err
 		}
 	}
+}
+
+// suspect is why a place never reaches a deck, or "": the reported list, then the
+// address rule (location.go), then the closure rules (closed.go). An allowed place in
+// reported_places.txt passes both rules.
+func suspect(loc LocationCheck, p overtureRow) string {
+	if s := loc.Suspect(p.OvertureID, str(p.Postcode), str(p.Street)); s != "" {
+		return s
+	}
+	if _, ok := allowed[p.OvertureID]; ok {
+		return ""
+	}
+	return closedSuspect(str(p.Name), str(p.Website), str(p.BasicCategory))
 }
 
 // syncTags publishes the slot -> tag mapping so the API can build taste vectors
