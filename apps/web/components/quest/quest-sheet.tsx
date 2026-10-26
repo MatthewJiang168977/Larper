@@ -382,7 +382,7 @@ const IMPACT_MS = SLAM_S * SLAM_TIMES[1] * 1000;
 
 // The journal's "Done" stamp, where the action was. With `slam`, it lands with a thud,
 // once: the parent hears onSlammed as it starts, so a re-render never plays it again.
-// With reduced motion, it's just there (and still buzzes: that's touch, not motion).
+// With reduced motion, it's just there: no slam, no shake, no buzz.
 function DoneStamp({ slam, onSlammed, onImpact }: { slam?: boolean; onSlammed?: () => void; onImpact: () => void }) {
   const reduce = useReducedMotion();
   // Whether this mount plays the slam: decided once, whatever the props do next.
@@ -390,14 +390,15 @@ function DoneStamp({ slam, onSlammed, onImpact }: { slam?: boolean; onSlammed?: 
   useEffect(() => {
     if (!slam) return;
     onSlammed?.();
+    if (reduce) return;
     const t = setTimeout(() => {
-      if (!reduce) onImpact();
+      onImpact();
       try {
         navigator.vibrate?.(30);
       } catch {
         // Not allowed here (no user gesture, an iframe): the stamp is enough.
       }
-    }, reduce ? 0 : IMPACT_MS);
+    }, IMPACT_MS);
     return () => clearTimeout(t);
     // Once per mount: a slam that's started isn't restarted by new props.
     // eslint-disable-next-line react-hooks/exhaustive-deps
