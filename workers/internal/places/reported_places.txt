@@ -1,9 +1,10 @@
-# Hand-reviewed places the address rule (location.go) gets wrong, either way.
+# Hand-reviewed places the address rule (location.go) or the closure rules (closed.go)
+# get wrong, either way.
 #
-#   <overture id> <note>         mislocated, but no address rule catches it (no postcode):
-#                                flagged (places.location_suspect), never in a deck
-#   allow <overture id> <note>   really here, though its postcode says otherwise: never
-#                                flagged by the postcode rule, stays in decks
+#   <overture id> <note>         mislocated or gone, but no rule catches it: flagged
+#                                (places.location_suspect), never in a deck
+#   allow <overture id> <note>   really here and open, though a rule says otherwise:
+#                                never flagged by the rules, stays in decks
 #
 # From the review of all 80,001 NYC places on 2026-10-24 (the rule flagged 116; these 8
 # are real NYC places whose Overture postcode is garbage).
@@ -18,3 +19,29 @@ allow 424a1ee6-1eaa-4ff4-a81a-0f4ce7a4f469 Orchard Beach, Pelham Bay Park (postc
 allow cc1addc9-214f-4150-b8eb-95a943a82ffc Kiss Art Gallery, 123 5th Ave (postcode 12004)
 allow 0fad8712-2726-430f-a258-9ec8298487db Liberty State Park picnic pavilion, Jersey City (postcode 11803)
 allow eb5d43a8-0ea0-4d8d-bf1d-faba1b1b5168 Yankee Stadium Harlem River parking lot (postcode 07719)
+
+# Closed, though Overture says open (closed.go's rules don't catch these). Seen in demo
+# decks on 2026-10-25.
+d3af7b13-8477-4c8f-afa9-face950d64c6 Blue Smoke And Jazz Standard, Flatiron: both closed in 2020 (a business registry's record still says open)
+ee080d86-ad95-4027-b0c8-23993a2da462 Former Tower Records Space, NoHo: the name says it's gone
+
+# Real and open, though they're Wikipedia entries in a business category (closed.go).
+# From the review of all 59 such NYC places on 2026-10-25; the other 44 stay flagged:
+# gone (the Roxy, Capitol, Morosco, Garrick, Limelight, Twilo, Mudd Club, Luchow's,
+# Academy of Music), not what their category says (subway stations as eateries, streets
+# as restaurants), duplicates in other languages, or too unclear to send anyone to.
+allow 283936b9-b195-414e-9795-d5c6bd3faa4e Winter Garden Atrium, Brookfield Place
+allow 7ae26441-666f-43da-a1d3-ec422e82ff01 Battery Weed, Fort Wadsworth
+allow 57e8d4ee-427e-44d1-8478-cfd8597564eb Fort Schuyler (Maritime Industry Museum)
+allow d25dd847-f99e-4a42-9a68-f27000697d21 Belcher-Ogden Mansion, Elizabeth (house museum)
+allow c455102e-497d-4e7e-b155-4c06ffa78829 City Hall (public tours)
+allow dc2c7686-160e-4e4f-bbfe-1041614b9481 Felix M. Warburg House (the Jewish Museum)
+allow ffa72dd7-496d-4aab-857a-ecf9a6083b15 Fletcher-Sinclair Mansion (Ukrainian Institute of America)
+allow 340e61a7-f02c-47fc-aff4-e951238d1a6c John M. Mossman Lock Collection (General Society of Mechanics)
+allow b457fab0-286c-46f5-b416-6a087227163e National Track and Field Hall of Fame (the Armory)
+allow 87634b27-69a8-4a57-b516-7c8ebb51f85d Bay Plaza Shopping Center, the Bronx
+allow 1ffe0c86-0157-4ea5-bba6-cfbee9a49175 Wayne Towne Center, Wayne NJ
+allow e1c9b25b-28eb-42e5-8139-37dfc6bd206c Alamo (the Astor Place cube)
+allow cc13f3a1-9565-4e33-9de4-7a7e3d0d9100 Al Hirschfeld Theatre
+allow ee4f1887-463f-4c8a-b423-95e92999b092 Minskoff Theatre
+allow 7a1ca5f6-cd8e-410c-804e-e9237742ced3 The Hayes Theater (the old "Helen Hayes Theatre" record stays flagged)

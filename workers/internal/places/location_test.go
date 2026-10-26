@@ -104,8 +104,9 @@ func TestLocationSuspectAllowsReviewedPlaces(t *testing.T) {
 			t.Errorf("postcode %s alone should be flagged; only the allowed id is kept", pc)
 		}
 	}
-	if len(allowed) != len(cases) {
-		t.Errorf("allowed has %d ids, want %d", len(allowed), len(cases))
+	// Plus the closure review's (closed_test.go).
+	if len(allowed) != len(cases)+len(allowedOpen) {
+		t.Errorf("allowed has %d ids, want %d", len(allowed), len(cases)+len(allowedOpen))
 	}
 }
 
