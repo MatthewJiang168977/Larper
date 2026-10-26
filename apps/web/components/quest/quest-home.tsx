@@ -78,6 +78,11 @@ export function QuestHome() {
   );
   const [reloads, setReloads] = useState(0);
   const sheetRef = useRef<HTMLDivElement>(null);
+  // The top bar: the notices start below it, however many lines it wraps to. The map's
+  // buttons go in its second slot.
+  const headerRef = useRef<HTMLElement>(null);
+  const [noticesTop, setNoticesTop] = useState(64);
+  const [controlsHost, setControlsHost] = useState<HTMLDivElement | null>(null);
   // Where the notices end: the quest sheet's full height stops below them.
   const noticesRef = useRef<HTMLDivElement>(null);
   const [noticesBottom, setNoticesBottom] = useState(64);
@@ -161,6 +166,16 @@ export function QuestHome() {
     ro.observe(el);
     return () => ro.disconnect();
   }, [today, todayError, meError, onCoveredChange]);
+
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const measure = () => setNoticesTop(el.offsetTop + el.offsetHeight + 8);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     const el = noticesRef.current;
@@ -275,10 +290,18 @@ export function QuestHome() {
         onSelect={setSelectedId}
         bottomInset={covered.bottom}
         rightInset={covered.right}
+        controlsHost={controlsHost}
       />}
 
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start gap-2 p-3">
-        <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-paper-edge bg-paper/90 py-1 pl-4 pr-1 shadow-sm backdrop-blur">
+      {/* The pill and the map's buttons side by side, or the buttons on a second line
+          (right-aligned) when both don't fit: large text, zoom, a narrow screen. */}
+      <header
+        ref={headerRef}
+        className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-wrap items-start justify-between gap-2 px-3 pt-3"
+      >
+        {/* Wraps too, at the narrowest (200% zoom on a phone): rounded-3xl looks the same as
+            rounded-full on one line and stays a card on two. */}
+        <div className="pointer-events-auto flex max-w-full flex-wrap items-center gap-x-3 rounded-3xl border border-paper-edge bg-paper/90 py-1 pl-4 pr-1 shadow-sm backdrop-blur">
           <span className="text-lg font-semibold tracking-tight">Larper</span>
           <Link
             href="/journal"
@@ -288,12 +311,17 @@ export function QuestHome() {
           </Link>
           <UserButton appearance={USER_BUTTON_APPEARANCE} />
         </div>
+        <div ref={setControlsHost} data-testid="map-controls" className="pointer-events-auto ml-auto" />
       </header>
 
-      {/* Notices under the header, stacked so they never overlap. */}
+      {/* Notices under the header, stacked so they never overlap. They stop above the
+          sheet (or whatever card covers the bottom) and scroll if they don't fit, so they
+          never cover the place or its action. */}
       <div
         ref={noticesRef}
-        className="pointer-events-none absolute inset-x-3 top-16 z-20 flex flex-col items-center gap-2 [&>*]:pointer-events-auto"
+        data-testid="notices"
+        style={{ top: noticesTop, maxHeight: `calc(100% - ${noticesTop + covered.bottom + 8}px)` }}
+        className="pointer-events-none absolute inset-x-3 z-20 flex flex-col items-center gap-2 overflow-y-auto overscroll-contain [&>*]:pointer-events-auto [&>*]:shrink-0"
       >
         {loc?.source === "demo" ? (
           <DemoNotice loc={loc} onRetry={retryLocation} retrying={locating} />

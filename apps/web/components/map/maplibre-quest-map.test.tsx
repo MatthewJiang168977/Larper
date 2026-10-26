@@ -253,6 +253,23 @@ describe("2D/3D toggle", () => {
     expect(button.getAttribute("aria-label")).toBe("Switch to flat 2D view");
   });
 
+  it("goes in the page's top bar when given a place there, so it can wrap below the pill", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    render(<MapLibreQuestMap {...props({ controlsHost: host })} />);
+    const button = await toggleButton();
+    expect(host.contains(button)).toBe(true);
+    expect(button.parentElement!.className.split(" ")).not.toContain("absolute"); // the bar lays it out
+    host.remove();
+  });
+
+  it("sits top right on its own without one", async () => {
+    render(<MapLibreQuestMap {...props()} />);
+    expect((await toggleButton()).parentElement!.className.split(" ")).toEqual(
+      expect.arrayContaining(["absolute", "right-3", "top-3"]),
+    );
+  });
+
   it("keeps the chosen view when flying to another pin", async () => {
     const { rerender } = render(<MapLibreQuestMap {...props()} />);
     fireEvent.click(await toggleButton());

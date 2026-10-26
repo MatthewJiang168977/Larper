@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { DeckItem, QuestView } from "@/lib/api";
 import { formatDistance } from "@/lib/format";
 import { hoursSearchUrl, QuestSheet } from "./quest-sheet";
+import { fullHeight } from "./sheet-snap";
 
 const reasons = { liked: ["ramen"], rarest: { tag: "hand_pulled_noodles", nearby: 2 }, indie: true };
 const place = (id: string, name: string) => ({
@@ -44,31 +45,30 @@ const sheet = (status: QuestView["status"], over: { onAction?: () => void; onCov
 const handle = () => screen.getByRole("button", { name: /^Show (more|less)/ });
 const rest = () => document.getElementById(handle().getAttribute("aria-controls")!)!;
 const expand = () => fireEvent.click(handle());
+const peekPart = () => screen.getByTestId("sheet-peek");
 
 describe("QuestSheet on a phone: peek", () => {
   it("shows the place, how far, its category and the main action", () => {
     sheet("offered");
-    const peekPart = handle().parentElement!;
-    expect(within(peekPart).getByRole("heading", { name: "Cafe Uno" })).toBeTruthy();
-    expect(within(peekPart).getByText(/ramen restaurant ·/)).toBeTruthy();
-    expect(within(peekPart).getByText(/about 1 min on foot/)).toBeTruthy();
-    expect(within(peekPart).getByRole("button", { name: "Accept quest" })).toBeTruthy();
+    expect(within(peekPart()).getByRole("heading", { name: "Cafe Uno" })).toBeTruthy();
+    expect(within(peekPart()).getByText(/ramen restaurant ·/)).toBeTruthy();
+    expect(within(peekPart()).getByText(/about 1 min on foot/)).toBeTruthy();
+    expect(within(peekPart()).getByRole("button", { name: "Accept quest" })).toBeTruthy();
   });
 
   it("puts I went in peek once the quest is accepted", () => {
     sheet("accepted");
-    expect(within(handle().parentElement!).getByRole("button", { name: "I went" })).toBeTruthy();
+    expect(within(peekPart()).getByRole("button", { name: "I went" })).toBeTruthy();
   });
 
   it("keeps everything else out of reach until expanded: no chips, links or Skip in peek", () => {
     sheet("offered");
     expect(rest().hasAttribute("inert")).toBe(true);
-    const peekPart = handle().parentElement!;
-    expect(within(peekPart).queryByRole("navigation", { name: "Leads" })).toBeNull();
+    expect(within(peekPart()).queryByRole("navigation", { name: "Leads" })).toBeNull();
     // Peek's Skip is for wide screens only: display:none on phones (jsdom applies no CSS).
-    const peekSkip = within(peekPart).getByRole("button", { name: "Skip" });
+    const peekSkip = within(peekPart()).getByRole("button", { name: "Skip" });
     expect(peekSkip.className.split(" ")).toEqual(expect.arrayContaining(["hidden", "lg:inline-flex"]));
-    expect(within(peekPart).queryByRole("link", { name: "Check hours" })).toBeNull();
+    expect(within(peekPart()).queryByRole("link", { name: "Check hours" })).toBeNull();
     expect(within(rest()).getByRole("navigation", { name: "Leads" })).toBeTruthy();
   });
 
@@ -76,7 +76,8 @@ describe("QuestSheet on a phone: peek", () => {
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(150);
     const onCoveredChange = vi.fn();
     sheet("offered", { onCoveredChange });
-    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 150, right: 0 });
+    // The handle strip and peek's content, 150 each in this stub.
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 300, right: 0 });
   });
 });
 
@@ -205,7 +206,7 @@ describe("QuestSheet on a phone: full", () => {
   it("shows a lead's note instead of quest actions, and no main action in its peek", () => {
     sheet("offered", { selectedId: "p2" });
     expect(screen.getByText("Lead 1")).toBeTruthy();
-    expect(within(handle().parentElement!).queryByRole("button", { name: "Accept quest" })).toBeNull();
+    expect(within(peekPart()).queryByRole("button", { name: "Accept quest" })).toBeNull();
     expect(rest().textContent).toContain("A lead, not your quest.");
   });
 
@@ -234,12 +235,12 @@ describe("QuestSheet on a wide screen", () => {
     vi.stubGlobal("innerWidth", 1280); // jsdom: no positioned parent, so the window's width
     const onCoveredChange = vi.fn();
     sheet("offered", { onCoveredChange });
-    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 150, right: 0 }); // peek
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 300, right: 0 }); // peek
     expect(onCoveredChange).toHaveBeenCalledTimes(1);
     expand();
     expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 0, right: 1280 - 352 + 24 });
     expand();
-    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 150, right: 0 });
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 300, right: 0 });
     vi.unstubAllGlobals();
   });
 
@@ -250,7 +251,7 @@ describe("QuestSheet on a wide screen", () => {
     sheet("offered", { onCoveredChange });
     expand();
     expect(onCoveredChange).toHaveBeenCalledTimes(1);
-    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 150, right: 0 });
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 300, right: 0 });
   });
 
   it("is 60% of the screen, at most 960 px", () => {
@@ -292,9 +293,8 @@ describe("QuestSheet on a wide screen", () => {
 
   it("puts Skip beside Accept in peek on wide screens, and keeps it in full on phones", () => {
     sheet("offered");
-    const peekPart = handle().parentElement!;
-    const peekSkip = within(peekPart).getByRole("button", { name: "Skip" });
-    expect(peekSkip.parentElement).toBe(within(peekPart).getByRole("button", { name: "Accept quest" }).parentElement);
+    const peekSkip = within(peekPart()).getByRole("button", { name: "Skip" });
+    expect(peekSkip.parentElement).toBe(within(peekPart()).getByRole("button", { name: "Accept quest" }).parentElement);
     expect(peekSkip.className).toContain("lg:inline-flex");
     const fullSkip = within(rest()).getByRole("button", { name: "Skip" });
     expect(fullSkip.parentElement!.className).toContain("lg:hidden");
@@ -328,17 +328,16 @@ describe("QuestSheet: the check-in note", () => {
   it("shows a rejection beside I went, as an alert, with Check again", () => {
     const again = vi.fn();
     withNote({ tone: "rejected", label: "Not checked in", text: "You're 2.8 km away.", action: { label: "Check again", onClick: again } });
-    const peekPart = handle().parentElement!;
-    const alert = within(peekPart).getByRole("alert");
+    const alert = within(peekPart()).getByRole("alert");
     expect(alert.textContent).toContain("You're 2.8 km away.");
     fireEvent.click(within(alert).getByRole("button", { name: "Check again" }));
     expect(again).toHaveBeenCalled();
-    expect(within(peekPart).getByRole("button", { name: "I went" })).toBeTruthy(); // same place as the action
+    expect(within(peekPart()).getByRole("button", { name: "I went" })).toBeTruthy(); // same place as the action
   });
 
   it("labels a simulated demo check-in plainly, as a status", () => {
     withNote({ tone: "simulated", label: "Simulated check-in · demo account", text: "The demo pretended you arrived." });
-    const status = within(handle().parentElement!).getByRole("status");
+    const status = within(peekPart()).getByRole("status");
     expect(status.textContent).toContain("Simulated check-in · demo account");
   });
 
@@ -348,5 +347,83 @@ describe("QuestSheet: the check-in note", () => {
     expect(screen.getByRole("button", { name: "Checking…" })).toHaveProperty("disabled", true);
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(dismiss).toHaveBeenCalled();
+  });
+});
+
+// jsdom has no layout: these give the handle strip, peek's content and the rest's content
+// the heights a browser would, on a 390 x 844 phone (no positioned parent: the window).
+function stubHeights({ handle: h, peek, rest: r }: { handle: number; peek: number; rest: number }) {
+  vi.stubGlobal("innerHeight", 844);
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+    if (this.querySelector(":scope > button[aria-controls]")) return h;
+    if (this.parentElement?.dataset.testid === "sheet-peek") return peek;
+    if (this.parentElement?.previousElementSibling?.getAttribute("data-testid") === "sheet-peek") return r;
+    return 0;
+  });
+}
+
+describe("QuestSheet at 200% text or zoom", () => {
+  const section = () => screen.getByRole("region", { name: "Quest details" });
+  const body = () => screen.getByTestId("sheet-body");
+
+  it("leaves peek alone when it fits in half the screen", () => {
+    stubHeights({ handle: 44, peek: 140, rest: 400 });
+    const onCoveredChange = vi.fn();
+    sheet("offered", { onCoveredChange });
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 184, right: 0 });
+    expect(peekPart().style.maxHeight).toBe("");
+    expect(body().className).not.toContain("overflow-y-auto");
+    expect(rest().className).toContain("overflow-y-auto"); // only the rest scrolls
+    vi.unstubAllGlobals();
+  });
+
+  it("caps peek at half the screen, scrolling inside, so it never covers the screen", () => {
+    stubHeights({ handle: 88, peek: 700, rest: 900 });
+    const onCoveredChange = vi.fn();
+    sheet("offered", { onCoveredChange });
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 422, right: 0 });
+    expect(peekPart().style.maxHeight).toBe(`${422 - 88}px`);
+    expect(peekPart().className).toContain("overflow-y-auto");
+    // The name and the main action are in that scrolling part, not cut off below it.
+    expect(within(peekPart()).getByRole("heading", { name: "Cafe Uno" })).toBeTruthy();
+    expect(within(peekPart()).getByRole("button", { name: "Accept quest" })).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
+
+  it("open, scrolls as one, so the leads, links and Skip have room (they had 0 px)", () => {
+    stubHeights({ handle: 88, peek: 700, rest: 900 });
+    sheet("offered", { selectedId: "p1" });
+    expand();
+    // As tall as the screen allows below the notices, the whole of it one scroll box.
+    expect(section().style.height).toBe(`${fullHeight(844, 120, 422)}px`);
+    expect(body().className).toContain("overflow-y-auto");
+    expect(peekPart().style.maxHeight).toBe("");
+    // The rest isn't squeezed into what peek leaves over: it keeps its own height.
+    expect(rest().className).toContain("shrink-0");
+    expect(rest().className).not.toContain("flex-1");
+    expect(within(rest()).getByRole("navigation", { name: "Leads" })).toBeTruthy();
+    expect(within(rest()).getByRole("link", { name: "Check hours" })).toBeTruthy();
+    expect(within(rest()).getByRole("button", { name: "Skip" })).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps the handle outside the scrolling part, and shows peek from the top again on close", () => {
+    stubHeights({ handle: 88, peek: 700, rest: 900 });
+    sheet("offered");
+    expect(body().contains(handle())).toBe(false);
+    expand();
+    const scrolled = vi.spyOn(Element.prototype, "scrollTop", "set"); // jsdom doesn't scroll
+    expand();
+    expect(scrolled.mock.contexts).toContain(body());
+    expect(scrolled).toHaveBeenCalledWith(0);
+    expect(peekPart().style.maxHeight).toBe(`${422 - 88}px`);
+    vi.unstubAllGlobals();
+  });
+
+  it("puts the main action under the distance when there isn't room beside it", () => {
+    sheet("offered");
+    const row = within(peekPart()).getByRole("button", { name: "Accept quest" }).parentElement!.parentElement!;
+    expect(row.className.split(" ")).toContain("flex-wrap");
+    expect(within(row).getByText(/about 1 min on foot/).className).toContain("min-w-[8rem]");
   });
 });
