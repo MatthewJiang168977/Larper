@@ -64,8 +64,9 @@ vi.mock("./quest-sheet", () => ({
       onCoveredChange: (c: { bottom: number; right: number }) => void;
       note?: { tone: string; label: string; text: string; action?: { label: string; onClick: () => void; pending?: boolean } } | null;
       onDismissNote?: () => void;
+      demo?: boolean;
     }
-  >(function QuestSheet({ quest, deck, onAction, topLimit, onCoveredChange, note, onDismissNote }, ref) {
+  >(function QuestSheet({ quest, deck, onAction, topLimit, onCoveredChange, note, onDismissNote, demo }, ref) {
     useEffect(() => onCoveredChange({ bottom: SHEET_PEEK, right: 0 }), [onCoveredChange]);
     return (
       <section ref={ref} data-top-limit={topLimit}>
@@ -85,6 +86,8 @@ vi.mock("./quest-sheet", () => ({
         )}
         <p>quest: {quest?.place.name ?? "none"}</p>
         <p>deck: {deck.length}</p>
+        <p>status: {quest?.status ?? "none"}</p>
+        <p>demo: {String(!!demo)}</p>
         <button onClick={() => onAction("complete")}>I went</button>
         <button onClick={() => onAction("not-today")}>Set aside</button>
         <button onClick={() => onAction("skip")}>Skip</button>
@@ -526,6 +529,61 @@ describe("QuestHome: checking in", () => {
     expect(note.textContent).toContain("Simulated check-in · demo account");
     expect(note.textContent).toContain("You're 306 km from Cafe Uno, so the demo pretended you arrived.");
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("QuestHome: one quest a day", () => {
+  const next: Today = {
+    quest: { id: "q2", status: "offered", score: 1, reasons, createdAt: "", place: place("Academy of Music") },
+    deck: [{ score: 0.5, reasons, place: place("Bar Dos") }],
+    cache: "miss",
+    surveying: null,
+  };
+
+  it("stays on the quest just checked in, with no leads, even if the refresh offers a new one", async () => {
+    routes["/quests/today"] = ok(withQuest);
+    routes["/quests/q1/complete"] = () => {
+      routes["/quests/today"] = ok(next); // what the API offers the demo account straight away
+      return Promise.resolve({ id: "q1", status: "completed" });
+    };
+    render(<QuestHome />);
+    await settle();
+    fireEvent.click(screen.getByText("I went"));
+    await settle();
+    expect(todayCalls()).toBe(2); // it did refresh
+    expect(screen.getByText("quest: Cafe Uno")).toBeTruthy();
+    expect(screen.getByText("status: completed")).toBeTruthy();
+    expect(screen.getByText("deck: 0")).toBeTruthy();
+    expect(screen.queryByText("quest: Academy of Music")).toBeNull();
+  });
+
+  it("shows a quest the API says is done for today", async () => {
+    routes["/quests/today"] = ok({ ...withQuest, quest: { ...withQuest.quest!, status: "completed" }, deck: [] });
+    render(<QuestHome />);
+    await settle();
+    expect(screen.getByText("quest: Cafe Uno")).toBeTruthy();
+    expect(screen.getByText("status: completed")).toBeTruthy();
+  });
+
+  it("shows it even while a new area is still being surveyed", async () => {
+    routes["/quests/today"] = ok({
+      ...withQuest,
+      quest: { ...withQuest.quest!, status: "completed" },
+      deck: [],
+      surveying: { pending: ["dr72h"], failed: [] },
+    });
+    render(<QuestHome />);
+    await settle();
+    expect(screen.getByText("status: completed")).toBeTruthy();
+    expect(screen.queryByText("Uncharted territory")).toBeNull();
+  });
+
+  it("tells the sheet when it's the demo account", async () => {
+    routes["/me"] = ok({ ...ME, demo: true });
+    routes["/quests/today"] = ok(withQuest);
+    render(<QuestHome />);
+    await settle();
+    expect(screen.getByText("demo: true")).toBeTruthy();
   });
 });
 

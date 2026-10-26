@@ -28,6 +28,7 @@ const DECK_TTL_S = 600;
 const AREA_TTL_S = 3600;
 const OFFER_STALE_AFTER = '20 hours';
 const OFFER_STALE_METERS = 5000;
+const DAY_TIME_ZONE = 'America/New_York'; // when "today" ends (doneToday)
 const PRUNE_ATTEMPTS_EVERY_MS = 6 * 3600_000; // retention is 90 days; this only bounds the overshoot
 
 const EVENT_ACTION: Record<QuestAction, EventAction> = {
@@ -94,7 +95,7 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     private readonly areas: AreasService,
   ) {}
 
-  async today(userId: string, lat: number, lng: number, radiusM: number) {
+  async today(userId: string, lat: number, lng: number, radiusM: number, demo = false) {
     const center = cellOf(lat, lng);
     await this.expireStaleOffer(userId, lat, lng);
 
@@ -116,15 +117,22 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
       DECK_SIZE,
     );
 
+    // One quest a day: once checked in, today's page stays on that quest, with no leads,
+    // until the day turns over. Not for the demo account: visitors share it, and the
+    // first check-in would end the day for everyone after them.
     let quest = await this.active(userId, lat, lng);
+    if (!quest && !demo) quest = await this.doneToday(userId, lat, lng);
     if (!quest && deck.length && surveyed) quest = await this.offer(userId, deck[0], lat, lng);
+    const done = quest?.status === 'completed';
 
     return {
       quest,
-      deck: deck
-        .filter((p) => p.id !== quest?.place.id)
-        .slice(0, DECK_SIZE - 1)
-        .map((p) => ({ score: p.score, reasons: p.reasons, place: toPlaceView(p, lat, lng) })),
+      deck: done
+        ? []
+        : deck
+            .filter((p) => p.id !== quest?.place.id)
+            .slice(0, DECK_SIZE - 1)
+            .map((p) => ({ score: p.score, reasons: p.reasons, place: toPlaceView(p, lat, lng) })),
       cache: hit ? 'hit' : 'miss',
       surveying: survey.pending.length || survey.failed.length || survey.outside.length ? survey : null,
     };
@@ -445,6 +453,18 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     const { rows } = await this.pg.query<QuestRow>(
       `${QUEST_SELECT} WHERE q.user_id = $1 AND q.status IN ('offered', 'accepted')`,
       [userId],
+    );
+    return rows.length ? toQuestView(rows[0], lat, lng) : null;
+  }
+
+  // The quest checked in today, if any. "Today" is New York's calendar day (NYC is the
+  // only area so far), so the next quest arrives at local midnight.
+  private async doneToday(userId: string, lat: number, lng: number): Promise<QuestView | null> {
+    const { rows } = await this.pg.query<QuestRow>(
+      `${QUEST_SELECT} WHERE q.user_id = $1 AND q.status = 'completed'
+         AND q.updated_at >= date_trunc('day', now() AT TIME ZONE $2) AT TIME ZONE $2
+       ORDER BY q.updated_at DESC LIMIT 1`,
+      [userId, DAY_TIME_ZONE],
     );
     return rows.length ? toQuestView(rows[0], lat, lng) : null;
   }

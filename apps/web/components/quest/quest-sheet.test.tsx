@@ -361,12 +361,62 @@ describe("QuestSheet: the check-in note", () => {
     expect(status.textContent).toContain("Simulated check-in · demo account");
   });
 
+  it("colours the label: moss when you arrived, simulated or not; oxblood when not checked in", () => {
+    const label = (tone: "done" | "simulated" | "rejected") => {
+      const { unmount } = withNote({ tone, label: `L-${tone}`, text: "x" });
+      const cls = screen.getByText(`L-${tone}`).className;
+      unmount();
+      return cls;
+    };
+    expect(label("done")).toContain("text-moss");
+    expect(label("simulated")).toContain("text-moss");
+    expect(label("rejected")).toContain("text-oxblood");
+  });
+
   it("is dismissible and shows 'Checking…' while a check is under way", () => {
     const dismiss = vi.fn();
     withNote({ tone: "rejected", label: "Not checked in", text: "x", action: { label: "Check again", onClick: vi.fn(), pending: true } }, dismiss);
     expect(screen.getByRole("button", { name: "Checking…" })).toHaveProperty("disabled", true);
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(dismiss).toHaveBeenCalled();
+  });
+});
+
+describe("QuestSheet: done for today", () => {
+  const done = (demo?: boolean) =>
+    render(
+      <QuestSheet
+        quest={quest("completed")}
+        deck={[]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onAction={vi.fn()}
+        busy={false}
+        topLimit={120}
+        onCoveredChange={vi.fn()}
+        demo={demo}
+      />,
+    );
+
+  it("stamps the quest Done in peek, offers no action, and says the next one comes tomorrow", () => {
+    done();
+    const peek = peekPart();
+    expect(within(peek).getByText("Today's quest · done")).toBeTruthy();
+    expect(within(peek).getByText("Done")).toBeTruthy();
+    expect(within(peek).queryByRole("button", { name: /I went|Accept quest|Skip|Not today/ })).toBeNull();
+    expect(peek.textContent).toContain("Done for today. Your next quest comes tomorrow.");
+    expect(within(peek).getByRole("link", { name: "Open your journal" }).getAttribute("href")).toBe("/journal");
+  });
+
+  it("doesn't promise the demo account a quest tomorrow", () => {
+    done(true);
+    expect(peekPart().textContent).toContain("That's the demo's quest done. With your own account, the next one comes tomorrow.");
+    expect(peekPart().textContent).not.toContain("Done for today.");
+  });
+
+  it("shows no leads", () => {
+    done();
+    expect(screen.queryByRole("navigation", { name: "Leads" })).toBeNull();
   });
 });
 

@@ -2,6 +2,7 @@
 
 import { animate, motion, useDragControls, useMotionValue, useReducedMotion, type PanInfo } from "motion/react";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import type { DeckItem, PlaceView, QuestView, Reasons } from "@/lib/api";
@@ -37,6 +38,8 @@ interface Props {
   onCoveredChange: (c: Covered) => void;
   note?: SheetNote | null;
   onDismissNote?: () => void;
+  /** The shared demo account: its next quest comes on the next visit, not tomorrow. */
+  demo?: boolean;
 }
 
 /**
@@ -72,7 +75,7 @@ function useFocused({ quest, deck, selectedId }: Pick<Props, "quest" | "deck" | 
   const leadIndex = deck.findIndex((d) => d.place.id === selectedId);
   const isQuest = !!quest && (selectedId === null || selectedId === quest.place.id);
   const focused = isQuest ? quest : leadIndex >= 0 ? deck[leadIndex] : null;
-  const label = isQuest ? `Today's quest · ${quest!.status}` : `Lead ${leadIndex + 1}`;
+  const label = isQuest ? `Today's quest · ${quest!.status === "completed" ? "done" : quest!.status}` : `Lead ${leadIndex + 1}`;
   return { focused, isQuest, label };
 }
 
@@ -284,7 +287,8 @@ function BottomSheet(props: Props) {
 
 function NoteBlock({ note, onDismiss }: { note: SheetNote; onDismiss?: () => void }) {
   const tone = note.tone === "rejected" ? "border-oxblood text-oxblood" : "border-rule text-ink";
-  const labelTone = note.tone === "done" ? "text-moss" : note.tone === "rejected" ? "text-oxblood" : "";
+  // A simulated check-in still arrived (labelled as such), so it gets the done colour too.
+  const labelTone = note.tone === "rejected" ? "text-oxblood" : "text-moss";
   return (
     <div
       role={note.tone === "rejected" ? "alert" : "status"}
@@ -324,7 +328,9 @@ function Peek({
   quest,
   onAction,
   busy,
+  demo,
 }: Props & { place: PlaceView; label: string; isQuest: boolean }) {
+  const done = isQuest && quest?.status === "completed";
   const walkMin = Math.max(1, Math.round(place.distanceM / WALK_M_PER_MIN));
   return (
     <BlurFade key={place.id} duration={0.25} offset={4}>
@@ -343,12 +349,37 @@ function Peek({
         {isQuest && quest && (
           <div className="flex shrink-0 gap-2">
             <PrimaryAction status={quest.status} onAction={onAction} busy={busy} />
+            {done && <DoneStamp />}
             {/* Wide screens: Skip / Not today beside it. Phones keep it in full. */}
             <SecondaryAction status={quest.status} onAction={onAction} busy={busy} className="hidden lg:inline-flex" />
           </div>
         )}
       </div>
+      {done && <DoneForToday demo={demo} />}
     </BlurFade>
+  );
+}
+
+// The journal's "Done" stamp, where the action was.
+function DoneStamp() {
+  return (
+    <span className="shrink-0 -rotate-3 rounded border-2 border-moss px-2 py-0.5 font-mono text-xs uppercase text-moss">
+      Done
+    </span>
+  );
+}
+
+// One quest a day: after a check-in the sheet stays on it, and says when the next one comes.
+function DoneForToday({ demo }: { demo?: boolean }) {
+  return (
+    <p className="mt-3 text-sm text-ink-soft">
+      {demo
+        ? "That's the demo's quest done. With your own account, the next one comes tomorrow."
+        : "Done for today. Your next quest comes tomorrow."}{" "}
+      <Link href="/journal" className="hit-target font-medium text-ink underline">
+        Open your journal
+      </Link>
+    </p>
   );
 }
 
