@@ -306,19 +306,32 @@ describe("QuestHome: never stuck on 'Surveying…'", () => {
   });
 });
 
-describe("QuestHome: the demo area is labelled as such", () => {
-  it("says it's a demo area and offers to retry when the location fallback kicks in", async () => {
+describe("QuestHome: the map's stand-in area is labelled as such", () => {
+  // The chip itself has its own tests (demo-notice.test.tsx); here, that QuestHome shows
+  // it at the right times, with the right account's wording.
+  beforeEach(() => sessionStorage.clear());
+
+  it("says which area is showing and offers your location when the fallback kicks in", async () => {
     location = demoSpot("waiting");
     routes["/quests/today"] = ok(withQuest);
     render(<QuestHome />);
     await settle();
-    const notice = screen.getByRole("region", { name: "Demo area" });
-    expect(notice.textContent).toContain("Demo area: Washington Square.");
+    const notice = screen.getByRole("region", { name: "Map area" });
+    expect(notice.textContent).toContain("Washington Square");
     expect(notice.textContent).toContain("We couldn't find you yet.");
-    expect(screen.getByText("quest: Cafe Uno")).toBeTruthy(); // the demo deck still works
+    expect(screen.getByText("quest: Cafe Uno")).toBeTruthy(); // the stand-in deck still works
 
-    fireEvent.click(screen.getByText("Try location again"));
+    fireEvent.click(screen.getByText("Use my location"));
     expect(retryLocation).toHaveBeenCalledTimes(1);
+  });
+
+  it("never says 'demo' to a regular account", async () => {
+    location = demoSpot("denied");
+    routes["/quests/today"] = ok(withQuest);
+    render(<QuestHome />);
+    await settle();
+    expect(screen.queryByRole("region", { name: "Demo area" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Map area" }).textContent).not.toMatch(/demo/i);
   });
 
   it("tells a user who denied location how to turn it back on", async () => {
@@ -326,8 +339,8 @@ describe("QuestHome: the demo area is labelled as such", () => {
     routes["/quests/today"] = ok(withQuest);
     render(<QuestHome />);
     await settle();
-    expect(screen.getByRole("region", { name: "Demo area" }).textContent).toContain("Allow it in your browser's settings");
-    expect(screen.getByText("Try location again")).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Map area" }).textContent).toContain("Allow it in your browser's settings");
+    expect(screen.getByText("Use my location")).toBeTruthy();
   });
 
   it("shows the retry as in progress, and none at all without GPS", async () => {
@@ -343,14 +356,15 @@ describe("QuestHome: the demo area is labelled as such", () => {
     retrying = false;
     render(<QuestHome />);
     await settle();
-    expect(screen.getByRole("region", { name: "Demo area" })).toBeTruthy();
-    expect(screen.queryByText("Try location again")).toBeNull();
+    expect(screen.getByRole("region", { name: "Map area" })).toBeTruthy();
+    expect(screen.queryByText("Use my location")).toBeNull();
   });
 
-  it("shows no demo notice for a real fix", async () => {
+  it("shows no notice for a real fix", async () => {
     routes["/quests/today"] = ok(withQuest);
     render(<QuestHome />);
     await settle();
+    expect(screen.queryByRole("region", { name: "Map area" })).toBeNull();
     expect(screen.queryByRole("region", { name: "Demo area" })).toBeNull();
   });
 
@@ -615,9 +629,10 @@ describe("QuestHome: the demo account goes to Midtown", () => {
     ]);
     expect(screen.getByText("quest: Cafe Uno")).toBeTruthy();
     const notice = screen.getByRole("region", { name: "Demo area" });
-    expect(notice.textContent).toContain("Demo area: Midtown.");
+    expect(notice.textContent).toContain("Demo · Midtown");
+    expect(notice.textContent).toContain("You're exploring Midtown");
     expect(notice.textContent).toContain("outside New York City");
-    expect(screen.queryByText("Try location again")).toBeNull();
+    expect(screen.queryByText("Use my location")).toBeNull();
     expect(screen.queryByText("Outside the demo area")).toBeNull();
   });
 
@@ -628,8 +643,8 @@ describe("QuestHome: the demo account goes to Midtown", () => {
     render(<QuestHome />);
     await settle();
     expect(calls).toContain(`/quests/today?${MIDTOWN}`);
-    expect(screen.getByRole("region", { name: "Demo area" }).textContent).toContain("Demo area: Midtown.");
-    expect(screen.getByText("Try location again")).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Demo area" }).textContent).toContain("Demo · Midtown");
+    expect(screen.getByText("Use my location")).toBeTruthy();
   });
 
   it("keeps a ?at= override as is, outside or not", () => {
