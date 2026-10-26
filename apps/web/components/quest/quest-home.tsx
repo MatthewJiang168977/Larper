@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { avatarInitialsAppearance } from "@/components/auth/clerk-appearance";
 import { useLocation, type Located } from "@/hooks/use-location";
-import { ApiError, describeError, useApi, type Me, type SkipReason, type Today } from "@/lib/api";
+import { ApiError, describeError, useApi, type DeckItem, type Me, type QuestView, type SkipReason, type Today } from "@/lib/api";
 import { DEMO_MIDTOWN, DEMO_SPOT } from "@/lib/demo-spot";
 import { getPreciseFix } from "@/lib/precise-fix";
 import { formatDistance } from "@/lib/format";
@@ -76,6 +76,10 @@ export function QuestHome() {
   const [surveyStart, setSurveyStart] = useState<number | null>(null);
   const [surveyOverdue, setSurveyOverdue] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The quest just checked in. The sheet stays on it for the rest of the visit (one quest
+  // a day), whatever the next refresh offers: the API keeps a real account on it until
+  // midnight anyway, but offers the shared demo account a new one straight away.
+  const [finished, setFinished] = useState<QuestView | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<{ text: string; retry: (() => void) | null } | null>(null);
   const [fixing, setFixing] = useState(false);
@@ -213,8 +217,9 @@ export function QuestHome() {
 
   const act = async (action: QuestAction) => {
     if (!today?.quest) return;
-    const questId = today.quest.id;
-    const placeName = today.quest.place.name;
+    const quest = today.quest;
+    const questId = quest.id;
+    const placeName = quest.place.name;
     setBusy(true);
     setActionError(null);
     setCheckIn(null);
@@ -239,7 +244,10 @@ export function QuestHome() {
         body: body && JSON.stringify(body),
       });
       if (action === "not-today") setSetAside(questId);
-      if (action === "complete") setCheckIn(checkedIn(placeName, res));
+      if (action === "complete") {
+        setCheckIn(checkedIn(placeName, res));
+        setFinished({ ...quest, status: "completed" });
+      }
       reload();
     } catch (e) {
       // A rejected check-in (too far, or a fix too rough to tell) shows in the sheet, by
@@ -286,6 +294,11 @@ export function QuestHome() {
     );
   }
 
+  // What the map and the sheet show: the finished quest alone, or today's quest and leads.
+  const quest = finished ?? today?.quest ?? null;
+  const deck: DeckItem[] = finished ? [] : (today?.deck ?? []);
+  const selected = finished ? null : selectedId;
+
   // A failed refresh while a deck is already on screen: keep the deck, say so above it.
   const banner = actionError
     ? { text: actionError.text, retry: actionError.retry, label: "Try again", pending: busy }
@@ -297,9 +310,9 @@ export function QuestHome() {
     <main className="relative h-dvh w-full overflow-hidden">
       {loc && <QuestMap
         me={loc}
-        quest={today?.quest ?? null}
-        deck={today?.deck ?? []}
-        selectedId={selectedId}
+        quest={quest}
+        deck={deck}
+        selectedId={selected}
         onSelect={setSelectedId}
         bottomInset={covered.bottom}
         rightInset={covered.right}
@@ -423,7 +436,7 @@ export function QuestHome() {
         />
       ) : !today ? (
         <BottomLabel>Loading your quest…</BottomLabel>
-      ) : surveying && !today.deck.length ? (
+      ) : surveying && !today.deck.length && quest?.status !== "completed" ? (
         surveyOverdue ? (
           <Panel
             ref={sheetRef}
@@ -438,7 +451,7 @@ export function QuestHome() {
             body="Nobody's mapped this area yet. Surveying it now; your quest appears here in a minute or so."
           />
         )
-      ) : !today.quest && !today.deck.length && (today.surveying?.outside?.length ?? 0) > 0 && !surveying ? (
+      ) : !quest && !deck.length && (today.surveying?.outside?.length ?? 0) > 0 && !surveying ? (
         // Nothing loaded here, and the API won't load it: the public demo covers one city.
         <Panel
           ref={sheetRef}
@@ -446,11 +459,11 @@ export function QuestHome() {
           body="This demo covers New York City. Try it from Washington Square instead."
           action={{ text: "Go to the demo area", onClick: () => window.location.assign(demoAreaUrl()) }}
         />
-      ) : today.quest || today.deck.length ? (
+      ) : quest || deck.length ? (
         <QuestSheet
-          quest={today.quest}
-          deck={today.deck}
-          selectedId={selectedId}
+          quest={quest}
+          deck={deck}
+          selectedId={selected}
           onSelect={setSelectedId}
           onAction={act}
           busy={busy}
@@ -458,6 +471,7 @@ export function QuestHome() {
           onCoveredChange={onCoveredChange}
           note={checkIn && checkIn.action ? { ...checkIn, action: { ...checkIn.action, pending: busy } } : checkIn}
           onDismissNote={() => setCheckIn(null)}
+          demo={me?.demo}
         />
       ) : (
         <Panel

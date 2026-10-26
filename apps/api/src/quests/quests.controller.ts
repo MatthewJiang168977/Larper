@@ -44,7 +44,7 @@ export class QuestsController {
     if (!Number.isFinite(radius)) throw new BadRequestException('radius must be a number');
     // Rounded to 100 m so the cache key space stays small.
     const radiusM = Math.round(Math.min(MAX_RADIUS_M, Math.max(MIN_RADIUS_M, radius)) / 100) * 100;
-    return this.quests.today(user.id, lat, lng, radiusM);
+    return this.quests.today(user.id, lat, lng, radiusM, isDemoUser(user.clerkId));
   }
 
   @Get()
