@@ -65,8 +65,10 @@ vi.mock("./quest-sheet", () => ({
       note?: { tone: string; label: string; text: string; action?: { label: string; onClick: () => void; pending?: boolean } } | null;
       onDismissNote?: () => void;
       demo?: boolean;
+      stampSlam?: boolean;
+      onStampSlammed?: () => void;
     }
-  >(function QuestSheet({ quest, deck, onAction, topLimit, onCoveredChange, note, onDismissNote, demo }, ref) {
+  >(function QuestSheet({ quest, deck, onAction, topLimit, onCoveredChange, note, onDismissNote, demo, stampSlam, onStampSlammed }, ref) {
     useEffect(() => onCoveredChange({ bottom: SHEET_PEEK, right: 0 }), [onCoveredChange]);
     return (
       <section ref={ref} data-top-limit={topLimit}>
@@ -88,6 +90,8 @@ vi.mock("./quest-sheet", () => ({
         <p>deck: {deck.length}</p>
         <p>status: {quest?.status ?? "none"}</p>
         <p>demo: {String(!!demo)}</p>
+        <p>slam: {String(!!stampSlam)}</p>
+        <button onClick={onStampSlammed}>Slammed</button>
         <button onClick={() => onAction("complete")}>I went</button>
         <button onClick={() => onAction("not-today")}>Set aside</button>
         <button onClick={() => onAction("skip")}>Skip</button>
@@ -557,12 +561,26 @@ describe("QuestHome: one quest a day", () => {
     expect(screen.queryByText("quest: Academy of Music")).toBeNull();
   });
 
+  it("asks the sheet to slam the stamp once after a check-in, never on load", async () => {
+    routes["/quests/today"] = ok(withQuest);
+    routes["/quests/q1/complete"] = ok({ id: "q1", status: "completed" });
+    render(<QuestHome />);
+    await settle();
+    expect(screen.getByText("slam: false")).toBeTruthy();
+    fireEvent.click(screen.getByText("I went"));
+    await settle();
+    expect(screen.getByText("slam: true")).toBeTruthy();
+    fireEvent.click(screen.getByText("Slammed")); // the sheet started it
+    expect(screen.getByText("slam: false")).toBeTruthy();
+  });
+
   it("shows a quest the API says is done for today", async () => {
     routes["/quests/today"] = ok({ ...withQuest, quest: { ...withQuest.quest!, status: "completed" }, deck: [] });
     render(<QuestHome />);
     await settle();
     expect(screen.getByText("quest: Cafe Uno")).toBeTruthy();
     expect(screen.getByText("status: completed")).toBeTruthy();
+    expect(screen.getByText("slam: false")).toBeTruthy(); // already done: no slam
   });
 
   it("shows it even while a new area is still being surveyed", async () => {

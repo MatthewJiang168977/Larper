@@ -80,6 +80,9 @@ export function QuestHome() {
   // a day), whatever the next refresh offers: the API keeps a real account on it until
   // midnight anyway, but offers the shared demo account a new one straight away.
   const [finished, setFinished] = useState<QuestView | null>(null);
+  // Set by a successful check-in, cleared as the stamp starts: it slams down once, and
+  // never for a quest that loads already done.
+  const [stampSlam, setStampSlam] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<{ text: string; retry: (() => void) | null } | null>(null);
   const [fixing, setFixing] = useState(false);
@@ -247,6 +250,7 @@ export function QuestHome() {
       if (action === "complete") {
         setCheckIn(checkedIn(placeName, res));
         setFinished({ ...quest, status: "completed" });
+        setStampSlam(true);
       }
       reload();
     } catch (e) {
@@ -472,6 +476,8 @@ export function QuestHome() {
           note={checkIn && checkIn.action ? { ...checkIn, action: { ...checkIn.action, pending: busy } } : checkIn}
           onDismissNote={() => setCheckIn(null)}
           demo={me?.demo}
+          stampSlam={stampSlam}
+          onStampSlammed={() => setStampSlam(false)}
         />
       ) : (
         <Panel
