@@ -44,13 +44,17 @@ body {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .17 0 0 0 0 .16 0 0 0 0 .14 0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-/* Small-caps mono labels used for field-note metadata ("1 of 7 nearby"). */
-.field-label {
-  font-family: var(--font-jetbrains), ui-monospace, monospace;
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-label);
+/* Small-caps mono labels used for field-note metadata ("1 of 7 nearby"). In the
+   components layer so a utility on the same element wins (text-moss, text-oxblood);
+   unlayered, this beat every Tailwind utility whatever its specificity. */
+@layer components {
+  .field-label {
+    font-family: var(--font-jetbrains), ui-monospace, monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-label);
+  }
 }
 
 /* Keyboard focus, on everything you can tab to. */
