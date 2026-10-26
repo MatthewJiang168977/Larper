@@ -7,8 +7,13 @@ import { checkedIn, demoAccountLocation, QuestHome, SKIP_REASONS, SURVEY_MAX_MS,
 
 // --- the component's world, replaced -------------------------------------------
 
-const userButton = vi.fn<(props: { appearance?: unknown }) => null>(() => null);
-vi.mock("@clerk/nextjs", () => ({ UserButton: (p: { appearance?: unknown }) => userButton(p) }));
+type UserButtonProps = { appearance?: unknown; userProfileProps?: { appearance?: unknown } };
+const userButton = vi.fn<(props: UserButtonProps) => null>(() => null);
+let clerkUser: { hasImage: boolean; firstName: string | null; lastName: string | null } | null = null;
+vi.mock("@clerk/nextjs", () => ({
+  UserButton: (p: UserButtonProps) => userButton(p),
+  useUser: () => ({ user: clerkUser }),
+}));
 vi.mock("next/dynamic", () => ({ default: () => () => null })); // the WebGL map
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
@@ -126,6 +131,7 @@ const advance = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
 
 beforeEach(() => {
   location = HERE;
+  clerkUser = null;
   retrying = false;
   retryLocation.mockClear();
   preciseFix.mockReset();
@@ -387,12 +393,30 @@ describe("QuestHome: touch targets", () => {
     routes["/quests/q1/complete"] = fail(new ApiError("You're 110 m away", 422));
     render(<QuestHome />);
     await settle();
-    expect(userButton).toHaveBeenLastCalledWith({ appearance: { elements: { userButtonTrigger: "hit-target" } } });
+    expect(userButton).toHaveBeenLastCalledWith({
+      appearance: { elements: { userButtonTrigger: "hit-target" } },
+      userProfileProps: { appearance: undefined },
+    });
     expect(screen.getByRole("link", { name: "Journal" }).classList).toContain("hit-target");
 
     fireEvent.click(screen.getByText("I went"));
     await settle();
     expect(screen.getByLabelText("Dismiss").classList).toContain("hit-target");
+  });
+
+  it("keeps the hit area when the avatar draws ink initials for a user with no photo", async () => {
+    clerkUser = { hasImage: false, firstName: "Ada", lastName: "Byron" };
+    render(<QuestHome />);
+    await settle();
+    const { appearance, userProfileProps } = userButton.mock.lastCall![0] as {
+      appearance: { elements: Record<string, unknown> };
+      userProfileProps: { appearance: { elements: Record<string, unknown> } };
+    };
+    expect(appearance.elements.userButtonTrigger).toBe("hit-target");
+    expect(appearance.elements.avatarImage).toEqual({ display: "none" });
+    expect(appearance.elements.avatarBox).toMatchObject({ "&::after": { content: '"AB"' } });
+    // The profile modal ("Manage account") draws the same avatar.
+    expect(userProfileProps.appearance.elements.avatarImage).toEqual({ display: "none" });
   });
 });
 

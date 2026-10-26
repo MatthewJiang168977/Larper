@@ -1,9 +1,10 @@
 "use client";
 
-import { UserButton } from "@clerk/nextjs";
+import { UserButton, useUser } from "@clerk/nextjs";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { avatarInitialsAppearance } from "@/components/auth/clerk-appearance";
 import { useLocation, type Located } from "@/hooks/use-location";
 import { ApiError, describeError, useApi, type Me, type SkipReason, type Today } from "@/lib/api";
 import { DEMO_MIDTOWN, DEMO_SPOT } from "@/lib/demo-spot";
@@ -33,6 +34,12 @@ export function demoAccountLocation(loc: Located | null, outside: boolean): Loca
 // Clerk's avatar is a 28 px button; this gives it the same 44 px hit area as everything else.
 export const USER_BUTTON_APPEARANCE = { elements: { userButtonTrigger: "hit-target" } };
 
+// Plus ink initials in place of Clerk's generated avatar, for a user with no photo.
+export function userButtonAppearance(user: Parameters<typeof avatarInitialsAppearance>[0]) {
+  const initials = avatarInitialsAppearance(user);
+  return initials ? { elements: { ...USER_BUTTON_APPEARANCE.elements, ...initials.elements } } : USER_BUTTON_APPEARANCE;
+}
+
 // After "Not today", one optional tap says why. Only "Not my thing" counts against the
 // place's kind of spot (the usual skip penalty); the rest are just recorded.
 export const SKIP_REASONS: { reason: SkipReason; label: string }[] = [
@@ -47,6 +54,11 @@ const QuestMap = dynamic(() => import("@/components/map/maplibre-quest-map"), { 
 
 export function QuestHome() {
   const api = useApi();
+  const { user } = useUser();
+  const userButton = useMemo(
+    () => ({ appearance: userButtonAppearance(user), userProfileProps: { appearance: avatarInitialsAppearance(user) } }),
+    [user],
+  );
   const { loc: located, retry: retryLocation, retrying: locating } = useLocation();
   const [me, setMe] = useState<Me | null>(null);
   // The demo account's GPS position turned out to be outside the demo region.
@@ -310,7 +322,7 @@ export function QuestHome() {
           >
             Journal
           </Link>
-          <UserButton appearance={USER_BUTTON_APPEARANCE} />
+          <UserButton {...userButton} />
         </div>
         <div ref={setControlsHost} data-testid="map-controls" className="pointer-events-auto ml-auto" />
       </header>
