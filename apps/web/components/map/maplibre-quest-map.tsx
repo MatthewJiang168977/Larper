@@ -4,18 +4,17 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { Map as MLMap, Marker } from "maplibre-gl";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { homeBearingAt } from "@/lib/regions";
 import { haloDiameterPx } from "./accuracy-halo";
 import { journalStyle } from "./journal-style";
 import type { QuestMapProps } from "./quest-map";
 
 const PITCH = 55;
-const BEARING = -20;
 const MIN_FRAME_ZOOM = 14.8;
 // Right- or Ctrl-drag tilts the 3D view; past this the map turns to sky and is hard to
 // read or recover from.
 export const MAX_PITCH = 60;
-// The compass's reset: north up, at the 3D view's usual tilt.
-export const RESET_CAMERA = { bearing: 0, pitch: 50 };
+
 
 // Keep pins clear of the sheet, but never give up more than 45% of the screen to it.
 // Open on a wide screen, the sheet covers the right instead (pins go left of it).
@@ -30,11 +29,13 @@ export function inView(pt: { x: number; y: number }, w: number, h: number, pad: 
 }
 
 export type MapView = "3d" | "2d";
-// The camera every move keeps, per view: tilted toward the city, or flat and north-up.
-export const VIEW_CAMERA: Record<MapView, { pitch: number; bearing: number }> = {
-  "3d": { pitch: 50, bearing: BEARING },
-  "2d": { pitch: 0, bearing: 0 },
-};
+// The tilt every move keeps, per view: toward the city, or flat.
+export const VIEW_PITCH: Record<MapView, number> = { "3d": 50, "2d": 0 };
+// The camera every move keeps: the view's tilt, facing the region's home bearing (the
+// street grid straight on screen; lib/regions.ts).
+export const viewCamera = (view: MapView, homeBearing: number) => ({ pitch: VIEW_PITCH[view], bearing: homeBearing });
+// The compass's reset: true north up, at the view's tilt.
+export const resetCamera = (view: MapView) => ({ bearing: 0, pitch: VIEW_PITCH[view] });
 // The toggle names what it will do, not what's showing.
 export const VIEW_TOGGLE: Record<MapView, { text: string; label: string }> = {
   "3d": { text: "2D", label: "Switch to flat 2D view" },
@@ -81,8 +82,8 @@ function pinElement(className: string, content: string | Node, title: string, on
   return { root, pin };
 }
 
-// In 2D the map stays flat and north-up: no gesture tilts or turns it (and maxPitch 0
-// holds it flat whatever else asks).
+// In 2D the map stays flat and keeps its bearing: no gesture tilts or turns it (and
+// maxPitch 0 holds it flat whatever else asks). Only the compass turns it, north-up.
 function allowRotation(map: MLMap, on: boolean) {
   if (on) {
     map.dragRotate.enable();
@@ -140,7 +141,7 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
         center: [me.lng, me.lat],
         zoom: 15.6,
         pitch: PITCH,
-        bearing: BEARING,
+        bearing: homeBearingAt(me.lat, me.lng),
         maxPitch: MAX_PITCH,
         attributionControl: { compact: true },
       });
@@ -235,7 +236,8 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
     const target = [quest?.place, ...deck.map((d) => d.place)].find((p) => p?.id === selectedId);
     if (!ready || !map || !target) return;
     const padding = sheetPadding(bottomInsetRef.current, map.getContainer().clientHeight, rightInsetRef.current);
-    const camera = { ...VIEW_CAMERA[viewRef.current], duration: 1600, essential: false }; // respects prefers-reduced-motion
+    const home = homeBearingAt(meRef.current.lat, meRef.current.lng);
+    const camera = { ...viewCamera(viewRef.current, home), duration: 1600, essential: false }; // respects prefers-reduced-motion
 
     // First look at a new quest: frame it together with "you are here" so the walk
     // reads at a glance. Later taps fly straight to the chosen pin.
@@ -289,8 +291,8 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, bottomInset, rightInset]);
 
-  // 2D/3D in place of MapLibre's compass. Either way the bearing resets: north-up when
-  // flat, the usual angle when tilted.
+  // 2D/3D beside our own compass (MapLibre's isn't used). Either way the camera goes
+  // back to the home bearing, at the new view's tilt.
   const toggleView = () => {
     const next: MapView = view === "3d" ? "2d" : "3d";
     setView(next);
@@ -298,15 +300,16 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
     if (!map) return;
     allowRotation(map, next === "3d");
     if (next === "3d") map.setMaxPitch(MAX_PITCH);
-    map.easeTo({ ...VIEW_CAMERA[next], duration: 700, essential: false });
+    map.easeTo({ ...viewCamera(next, homeBearingAt(meRef.current.lat, meRef.current.lng)), duration: 700, essential: false });
     // Flat for good once the ease lands (lowering maxPitch first would jump, not ease),
     // unless 3D was picked again meanwhile.
     if (next === "2d") map.once("moveend", () => viewRef.current === "2d" && map.setMaxPitch(0));
   };
 
-  // The compass, in 3D: its needle follows the bearing, and a click puts the map back
-  // north-up at the usual tilt, however it was turned or tilted.
-  const [bearing, setBearing] = useState(BEARING);
+  // The compass: its needle always points to true north (it turns against the bearing),
+  // and a click puts the map north-up at the view's tilt, however it was turned or
+  // tilted. In both views: 2D rests at the home bearing too, and gestures can't turn it.
+  const [bearing, setBearing] = useState(() => homeBearingAt(me.lat, me.lng));
   useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
@@ -316,25 +319,23 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
       map.off("rotate", onRotate);
     };
   }, [ready]);
-  const resetView = () => mapRef.current?.easeTo({ ...RESET_CAMERA, duration: 500, essential: false });
+  const resetView = () => mapRef.current?.easeTo({ ...resetCamera(view), duration: 500, essential: false });
 
   const controls = ready && (
     <div className={controlsHost ? "flex gap-2" : "absolute right-3 top-3 z-10 flex gap-2"}>
-      {view === "3d" && (
-        <button
-          type="button"
-          onClick={resetView}
-          aria-label="Reset view: north up"
-          title="Reset view: north up"
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-paper-edge bg-paper/90 text-ink shadow-sm backdrop-blur"
-        >
-          {/* A needle pointing north on the map, so it turns against the bearing. */}
-          <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6" style={{ transform: `rotate(${-bearing}deg)` }} data-testid="compass-needle">
-            <path d="M12 3 L16 12 L12 10.5 L8 12 Z" fill="var(--oxblood)" />
-            <path d="M12 21 L8 12 L12 13.5 L16 12 Z" fill="currentColor" opacity="0.35" />
-          </svg>
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={resetView}
+        aria-label="Reset view: north up"
+        title="Reset view: north up"
+        className="flex h-11 w-11 items-center justify-center rounded-full border border-paper-edge bg-paper/90 text-ink shadow-sm backdrop-blur"
+      >
+        {/* A needle pointing north on the map, so it turns against the bearing. */}
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6" style={{ transform: `rotate(${-bearing}deg)` }} data-testid="compass-needle">
+          <path d="M12 3 L16 12 L12 10.5 L8 12 Z" fill="var(--oxblood)" />
+          <path d="M12 21 L8 12 L12 13.5 L16 12 Z" fill="currentColor" opacity="0.35" />
+        </svg>
+      </button>
       <button
         type="button"
         onClick={toggleView}
