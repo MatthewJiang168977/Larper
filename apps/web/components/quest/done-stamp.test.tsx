@@ -4,7 +4,7 @@ import type { QuestView } from "@/lib/api";
 import { QuestSheet } from "./quest-sheet";
 
 // The check-in stamp: it slams down once after "I went", never for a quest that loads
-// already done, and under reduced motion it's simply there.
+// already done, and under reduced motion it's simply there (no buzz either).
 let reduce = false;
 vi.mock("motion/react", async (importOriginal) => ({
   ...(await importOriginal<typeof import("motion/react")>()),
@@ -79,14 +79,15 @@ describe("QuestSheet: the Done stamp", () => {
     expect(vibrate).not.toHaveBeenCalled();
   });
 
-  it("with reduced motion, shows the stamp still, and only buzzes", async () => {
+  it("with reduced motion, shows the stamp still: no slam, no buzz", async () => {
     reduce = true;
     const slammed = vi.fn();
     sheet({ stampSlam: true, onStampSlammed: slammed });
     expect(stamp().hasAttribute("data-slam")).toBe(false);
-    expect(slammed).toHaveBeenCalledTimes(1);
-    await act(() => vi.advanceTimersByTimeAsync(0));
-    expect(vibrate).toHaveBeenCalledWith(30);
+    expect(stamp().style.rotate).toBe("-3deg");
+    expect(slammed).toHaveBeenCalledTimes(1); // still used up: it won't play later either
+    await act(() => vi.advanceTimersByTimeAsync(300));
+    expect(vibrate).not.toHaveBeenCalled();
   });
 
   it("survives a browser without vibration, or one that refuses", async () => {
