@@ -1,0 +1,19 @@
+# Dependabot opens PRs; it never deploys. Merging a Postgres base bump changes the
+# image tag (scripts/pg-tag.sh), so the next oci-up.sh deploy restarts Postgres once.
+version: 2
+updates:
+  # infra/postgres/Dockerfile pins ghcr.io/cloudnative-pg/postgresql:17-standard-bookworm
+  # by digest: a PR when that tag moves (Debian/Postgres minor/pgvector patches).
+  - package-ecosystem: docker
+    directory: /infra/postgres
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "postgres image"
+    labels: [dependencies, postgres]
+    ignore:
+      # 17 -> 18 is a major upgrade (pg_upgrade or a restore), not a digest bump.
+      - dependency-name: "*cloudnative-pg/postgresql"
+        update-types: ["version-update:semver-major"]

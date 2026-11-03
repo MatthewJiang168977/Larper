@@ -13,8 +13,10 @@
 #
 # Every file in the directory counts, committed or not, so a local edit gets its own tag
 # and a dirty tree needs no -dirty suffix. git hash-object hashes the same on every OS.
-# The base image (17-standard-bookworm) and the PostGIS package aren't pinned: to pick
-# up newer ones, change the Dockerfile (a comment will do), which changes the tag.
+# The base image is pinned by digest, and Dependabot (.github/dependabot.yml) opens a PR
+# when it moves: merging that changes the tag, so the next deploy restarts Postgres
+# once on the patched image. The PostGIS package isn't pinned; it's whatever PGDG has
+# when the image is built, which is only when the tag changes.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 major=$(sed -n 's/^FROM .*postgresql:\([0-9][0-9]*\).*/\1/p' infra/postgres/Dockerfile)
