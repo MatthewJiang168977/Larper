@@ -57,6 +57,16 @@ export class ProfileController {
     const vec = seedTasteVector(liked, passed, this.tags.slotOf, TAG_DIMS);
     if (!vec) throw new BadRequestException('like at least one card');
 
+    // The home page asks for today's quest alongside /me, before it knows the account
+    // isn't onboarded, so a new account can hold an offer ranked with no taste at all.
+    // The first taste profile drops it: the first quest fits the vibes just picked. (A
+    // re-seed keeps an open offer, as before.)
+    await this.pg.query(
+      `UPDATE quests SET status = 'expired', updated_at = now()
+       WHERE user_id = $1 AND status = 'offered'
+         AND NOT EXISTS (SELECT 1 FROM taste_profiles WHERE user_id = $1)`,
+      [user.id],
+    );
     await this.pg.query(
       `INSERT INTO taste_profiles (user_id, vec, source) VALUES ($1, $2::vector, 'onboarding')
        ON CONFLICT (user_id) DO UPDATE SET vec = EXCLUDED.vec, source = EXCLUDED.source, updated_at = now()`,

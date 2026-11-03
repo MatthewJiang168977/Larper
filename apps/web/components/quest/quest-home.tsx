@@ -60,6 +60,10 @@ export const SKIP_REASONS: { reason: SkipReason; label: string }[] = [
 
 // WebGL map: client only, and loaded after the shell so first paint isn't blocked on it.
 const QuestMap = dynamic(() => import("@/components/map/maplibre-quest-map"), { ssr: false });
+// The map's start-up (the MapLibre module, then WebGL) holds the main thread for a good
+// while, so it waits for the first answer to be on screen: the sheet, or the card in its
+// place. Without one by this long, it starts anyway rather than leave the page blank.
+export const MAP_WAIT_MS = 3000;
 
 export function QuestHome() {
   const api = useApi();
@@ -123,58 +127,92 @@ export function QuestHome() {
   const noticesRef = useRef<HTMLDivElement>(null);
   const [noticesBottom, setNoticesBottom] = useState(64);
 
+  // The first /me answer, for a /quests/today request that started before it came in.
+  const [meReady] = useState(() => {
+    let resolve!: (m: Me) => void;
+    const promise = new Promise<Me>((r) => (resolve = r));
+    return { promise, resolve };
+  });
   useEffect(() => {
     api<Me>("/me").then(
       (m) => {
         setMe(m);
         setMeError(null);
+        meReady.resolve(m);
       },
       setMeError,
     );
-  }, [api, meTries]);
+  }, [api, meTries, meReady]);
 
   // Refetch on a new location, after an action, a retry or a survey poll. `stale` drops
   // a slow response for an old location that lands after a newer one.
   // Keyed on the coordinates, not the object: a new note (e.g. a location retry that
   // ends on the same demo spot) is not a new place.
+  // The first request doesn't wait for /me: both start at once, and the answer is read
+  // once /me is in (a failed /me's retry included). An account that isn't onboarded
+  // never sees it (onboarding comes first, as before). Only the demo spot waits for /me:
+  // which spot it is depends on the account (demoAccountLocation).
   const lat = loc?.lat;
   const lng = loc?.lng;
-  const request = lat !== undefined && me?.onboarded ? `${lat},${lng}#${reloads}` : null;
+  const canAsk = me ? me.onboarded : located?.source !== "demo";
+  const request = lat !== undefined && canAsk ? `${lat},${lng}#${reloads}` : null;
   const loading = request !== null && answered !== request;
   useEffect(() => {
-    if (lat === undefined || !me?.onboarded) return;
-    const key = `${lat},${lng}#${reloads}`;
+    if (request === null) return;
+    const key = request;
     let stale = false;
-    api<Today>(`/quests/today?lat=${lat}&lng=${lng}`).then(
-      (t) => {
-        if (stale) return;
-        // The demo account outside the demo region, with nothing loaded here: Midtown
-        // instead (demoAccountLocation), and this empty answer is never shown.
-        const empty = !t.quest && !t.deck.length && !(t.surveying?.pending.length ?? 0);
-        if (me?.demo && loc?.source === "gps" && empty && (t.surveying?.outside?.length ?? 0) > 0) {
-          setOutside(true);
-          return;
-        }
-        setToday(t);
-        setSelectedId(t.quest?.place.id ?? t.deck[0]?.place.id ?? null);
-        setTodayError(null);
-        const pending = (t.surveying?.pending.length ?? 0) > 0;
-        setSurveyStart((s) => (pending ? (s ?? Date.now()) : null));
-        if (!pending) setSurveyOverdue(false);
-        setAnswered(key);
-      },
-      (e: unknown) => {
-        if (stale) return;
-        setTodayError(e);
-        setAnswered(key);
-      },
+    const settled = api<Today>(`/quests/today?lat=${lat}&lng=${lng}`).then(
+      (t) => ({ t }),
+      (e: unknown) => ({ e }),
     );
+    Promise.all([settled, meReady.promise]).then(([res, m]) => {
+      if (stale || !m.onboarded) return;
+      if ("e" in res) {
+        setTodayError(res.e);
+        setAnswered(key);
+        return;
+      }
+      const t = res.t;
+      // The demo account outside the demo region, with nothing loaded here: Midtown
+      // instead (demoAccountLocation), and this empty answer is never shown.
+      const empty = !t.quest && !t.deck.length && !(t.surveying?.pending.length ?? 0);
+      if (m.demo && loc?.source === "gps" && empty && (t.surveying?.outside?.length ?? 0) > 0) {
+        setOutside(true);
+        return;
+      }
+      setToday(t);
+      setSelectedId(t.quest?.place.id ?? t.deck[0]?.place.id ?? null);
+      setTodayError(null);
+      const pending = (t.surveying?.pending.length ?? 0) > 0;
+      setSurveyStart((s) => (pending ? (s ?? Date.now()) : null));
+      if (!pending) setSurveyOverdue(false);
+      setAnswered(key);
+    });
     return () => {
       stale = true;
     };
-    // loc and me.demo only matter with new coordinates or a new account, both deps.
+    // The request key covers the coordinates, the reload count and whether to ask at
+    // all; loc's source only matters with new coordinates. /me landing on an onboarded
+    // account doesn't change the key, so it doesn't refetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, lat, lng, me?.onboarded, reloads]);
+  }, [api, request, meReady]);
+
+  // The map mounts once the first answer has painted (a frame, then a task: after the
+  // paint), or after MAP_WAIT_MS. It fills in behind the sheet, which doesn't move.
+  const [mapOn, setMapOn] = useState(false);
+  const firstAnswer = !!(today || todayError || meError);
+  const hasLoc = loc !== null;
+  useEffect(() => {
+    if (mapOn || !hasLoc) return;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    let raf: number | undefined;
+    if (firstAnswer) raf = requestAnimationFrame(() => (t = setTimeout(() => setMapOn(true), 0)));
+    else t = setTimeout(() => setMapOn(true), MAP_WAIT_MS);
+    return () => {
+      if (raf !== undefined) cancelAnimationFrame(raf);
+      clearTimeout(t);
+    };
+  }, [mapOn, hasLoc, firstAnswer]);
 
   // While areas are being surveyed, check back until the ingest-worker finishes. Every
   // finished request, failed or not, schedules the next check, up to SURVEY_MAX_MS.
@@ -532,7 +570,7 @@ export function QuestHome() {
 
       {/* After the header and the sheet, so the Tab order reaches today's quest before the
           map's pins and credit (the map draws underneath them all the same). */}
-      {loc && <QuestMap
+      {loc && mapOn && <QuestMap
         me={loc}
         quest={quest}
         deck={deck}

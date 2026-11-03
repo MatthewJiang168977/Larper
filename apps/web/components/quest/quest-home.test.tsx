@@ -3,7 +3,15 @@ import { forwardRef, useEffect } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Located } from "@/hooks/use-location";
 import { ApiError, type Me, type Today } from "@/lib/api";
-import { checkedIn, demoAccountLocation, QuestHome, SKIP_REASONS, SURVEY_MAX_MS, SURVEY_POLL_MS } from "./quest-home";
+import {
+  checkedIn,
+  demoAccountLocation,
+  MAP_WAIT_MS,
+  QuestHome,
+  SKIP_REASONS,
+  SURVEY_MAX_MS,
+  SURVEY_POLL_MS,
+} from "./quest-home";
 
 // --- the component's world, replaced -------------------------------------------
 
@@ -362,6 +370,126 @@ describe("QuestHome: never stuck on 'Surveying…'", () => {
     routes["/quests/q1/complete"] = ok({});
     fireEvent.click(screen.getByText("I went"));
     expect(screen.queryByRole("alert")).toBeNull(); // cleared as the next action starts
+  });
+});
+
+describe("QuestHome: the first quest, fast", () => {
+  // /me, held until the test answers it.
+  const heldMe = () => {
+    let answer!: (m: Me) => void;
+    let failWith!: (e: unknown) => void;
+    routes["/me"] = () => new Promise((resolve, reject) => ((answer = resolve), (failWith = reject)));
+    return { answer: (m: Me) => answer(m), fail: (e: unknown) => failWith(e) };
+  };
+
+  it("asks for today's quest without waiting for /me, and shows it once /me is in", async () => {
+    const me = heldMe();
+    routes["/quests/today"] = ok(withQuest);
+    render(<QuestHome />);
+    await settle();
+    expect(calls).toEqual(["/me", "/quests/today?lat=40.7295&lng=-73.9965"]);
+    expect(screen.queryByText("quest: Cafe Uno")).toBeNull(); // not before /me
+
+    me.answer(ME);
+    await settle();
+    expect(screen.getByText("quest: Cafe Uno")).toBeTruthy();
+    expect(todayCalls()).toBe(1); // /me landing doesn't ask again
+  });
+
+  it("drops the deck and goes to onboarding when /me says the account isn't onboarded", async () => {
+    const me = heldMe();
+    routes["/quests/today"] = ok(withQuest);
+    render(<QuestHome />);
+    await settle();
+    me.answer({ ...ME, onboarded: false });
+    await settle();
+    expect(screen.getByText("Set your vibes")).toBeTruthy();
+    expect(screen.queryByText("quest: Cafe Uno")).toBeNull();
+    expect(todayCalls()).toBe(1);
+  });
+
+  it("keeps the answer through a failed /me, and shows it after Retry without asking again", async () => {
+    const me = heldMe();
+    routes["/quests/today"] = ok(withQuest);
+    render(<QuestHome />);
+    await settle();
+    me.fail(new ApiError("boom", 503));
+    await settle();
+    expect(screen.getByText("Couldn't load your journal")).toBeTruthy();
+
+    routes["/me"] = ok(ME);
+    fireEvent.click(screen.getByText("Retry"));
+    await settle();
+    expect(screen.getByText("quest: Cafe Uno")).toBeTruthy();
+    expect(todayCalls()).toBe(1);
+  });
+
+  it("waits for /me on the demo spot, which is Midtown for the demo account only", async () => {
+    location = demoSpot("denied");
+    const me = heldMe();
+    routes["/quests/today"] = ok(withQuest);
+    render(<QuestHome />);
+    await settle();
+    expect(todayCalls()).toBe(0);
+    me.answer({ ...ME, demo: true });
+    await settle();
+    expect(calls.filter((c) => c.startsWith("/quests/today"))).toEqual(["/quests/today?lat=40.7549&lng=-73.984"]);
+  });
+
+  it("the demo account from outside the region still goes to Midtown when its first answer beat /me", async () => {
+    const me = heldMe();
+    location = { lat: 41.88, lng: -87.63, source: "gps", accuracyM: 20 };
+    routes["/quests/today"] = (path) =>
+      Promise.resolve(
+        path.includes("40.7549") ? withQuest : { ...empty, surveying: { pending: [], failed: [], outside: ["dr5ru"] } },
+      );
+    render(<QuestHome />);
+    await settle();
+    expect(todayCalls()).toBe(1);
+    me.answer({ ...ME, demo: true });
+    await settle();
+    await settle();
+    expect(calls.filter((c) => c.startsWith("/quests/today"))).toEqual([
+      "/quests/today?lat=41.88&lng=-87.63",
+      "/quests/today?lat=40.7549&lng=-73.984",
+    ]);
+    expect(screen.getByText("quest: Cafe Uno")).toBeTruthy();
+  });
+
+  it("starts the map only once the sheet is on screen, a frame later", async () => {
+    let answer!: (t: Today) => void;
+    routes["/quests/today"] = () => new Promise((resolve) => (answer = resolve));
+    render(<QuestHome />);
+    await settle();
+    expect(screen.queryByTestId("map")).toBeNull();
+
+    answer(withQuest);
+    await settle();
+    expect(screen.getByText("quest: Cafe Uno")).toBeTruthy();
+    expect(screen.queryByTestId("map")).toBeNull(); // not in the sheet's own frame
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(screen.getByTestId("map")).toBeTruthy();
+  });
+
+  it("starts the map anyway when the answer is slow", async () => {
+    vi.useFakeTimers();
+    routes["/quests/today"] = never;
+    render(<QuestHome />);
+    await settle();
+    await advance(MAP_WAIT_MS - 1);
+    expect(screen.queryByTestId("map")).toBeNull();
+    await advance(1);
+    expect(screen.getByTestId("map")).toBeTruthy();
+    expect(screen.getByText("Loading your quest…")).toBeTruthy();
+  });
+
+  it("starts the map behind an error card too", async () => {
+    routes["/quests/today"] = fail(new ApiError("Internal server error", 500));
+    render(<QuestHome />);
+    await settle();
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect(screen.getByText("Couldn't load your quest")).toBeTruthy();
+    expect(screen.getByTestId("map")).toBeTruthy();
   });
 });
 
@@ -885,7 +1013,7 @@ describe("QuestHome: keyboard and screen readers", () => {
     routes["/quests/today"] = ok(withQuest);
     render(<QuestHome />);
     await settle();
-    const map = screen.getByTestId("map");
+    const map = await screen.findByTestId("map"); // it mounts a frame after the sheet
     const before = (el: Element) => !!(el.compareDocumentPosition(map) & Node.DOCUMENT_POSITION_FOLLOWING);
     expect(before(document.querySelector("header")!)).toBe(true);
     expect(before(screen.getByText("quest: Cafe Uno").closest("section")!)).toBe(true);
@@ -895,6 +1023,7 @@ describe("QuestHome: keyboard and screen readers", () => {
     routes["/quests/today"] = ok(withQuest);
     render(<QuestHome />);
     await settle();
+    await screen.findByTestId("map"); // it mounts a frame after the sheet
     expect(mapProps.last?.bottomCovered).toBe(false);
     fireEvent.click(screen.getByText("Open sheet"));
     expect(mapProps.last?.bottomCovered).toBe(true);
