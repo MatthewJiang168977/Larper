@@ -196,6 +196,26 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
     };
   }, [ready, me.lat, me.lng, me.accuracyM]);
 
+  // With no pin to frame (loading, an error, nothing here), the camera sits on "you are
+  // here": the location the quests are for. The map starts on the first position it gets,
+  // and that can change before any quest arrives (the demo account goes to Midtown once
+  // /me says it's the demo), so follow it once per new position. Not on every refresh: a
+  // map panned by hand isn't pulled back while the same empty answer repeats.
+  const centeredOnRef = useRef(`${me.lat},${me.lng}`);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    const key = `${me.lat},${me.lng}`;
+    if (quest || deck.length) {
+      centeredOnRef.current = key; // the focus effect frames the quest from here
+      return;
+    }
+    if (centeredOnRef.current === key) return;
+    centeredOnRef.current = key;
+    const padding = sheetPadding(bottomInsetRef.current, map.getContainer().clientHeight, rightInsetRef.current);
+    map.jumpTo({ ...viewCamera(viewRef.current, homeBearingAt(me.lat, me.lng)), center: [me.lng, me.lat], padding });
+  }, [ready, me.lat, me.lng, quest, deck]);
+
   // Rebuild quest/lead pins when the deck changes.
   useEffect(() => {
     const lib = libRef.current;

@@ -26,6 +26,7 @@ const fake = vi.hoisted(() => {
     addControl = vi.fn();
     easeTo = vi.fn();
     flyTo = vi.fn();
+    jumpTo = vi.fn();
     remove = vi.fn();
     cameraForBounds = vi.fn(() => ({ center: [-73.99, 40.73], zoom: 16 }));
     // Where a coordinate lands on screen; tests set it to put a pin under the sheet.
@@ -295,6 +296,36 @@ describe("home bearing", () => {
     render(<MapLibreQuestMap {...props({ me: boston, quest: null, deck: [], selectedId: null })} />);
     await toggleButton();
     expect(map().opts).toMatchObject({ bearing: 0 });
+  });
+});
+
+describe("with nothing to frame", () => {
+  const WSQ = { lat: 40.7308, lng: -73.9973 };
+  const MIDTOWN = { lat: 40.7549, lng: -73.984 };
+  const nothing = { quest: null, deck: [], selectedId: null };
+
+  it("moves the camera to the location in use when it changes (the demo's Midtown), once", async () => {
+    const { rerender } = render(<MapLibreQuestMap {...props({ me: WSQ, ...nothing })} />);
+    await toggleButton();
+    expect(map().opts).toMatchObject({ center: [WSQ.lng, WSQ.lat] });
+    expect(map().jumpTo).not.toHaveBeenCalled();
+
+    rerender(<MapLibreQuestMap {...props({ me: MIDTOWN, ...nothing })} />);
+    expect(map().jumpTo).toHaveBeenCalledTimes(1);
+    expect(map().jumpTo).toHaveBeenLastCalledWith(
+      expect.objectContaining({ center: [MIDTOWN.lng, MIDTOWN.lat], bearing: 29, pitch: 50 }),
+    );
+
+    // The same empty answer again (a survey poll): a map panned by hand stays put.
+    rerender(<MapLibreQuestMap {...props({ me: MIDTOWN, ...nothing, deck: [] })} />);
+    expect(map().jumpTo).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a quest's framing to the fly-to", async () => {
+    const { rerender } = render(<MapLibreQuestMap {...props({ me: WSQ })} />);
+    await toggleButton();
+    rerender(<MapLibreQuestMap {...props({ me: MIDTOWN })} />);
+    expect(map().jumpTo).not.toHaveBeenCalled();
   });
 });
 

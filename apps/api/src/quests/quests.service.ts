@@ -151,11 +151,15 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
       if (checkIn) await this.checkGeofence(tx, checkIn, at);
 
       // "Not today" leaves the reason 'unstated' until the user gives one (giveReason).
+      // A simulated demo check-in is marked in the quest's reasons, so the journal can
+      // say so: a flag there needs no migration (no column, no grant), and old pods
+      // leave it alone.
       const { rows } = await tx.query<{ status: QuestStatus; placeId: string }>(
-        `UPDATE quests SET status = $4, updated_at = now(), skip_reason = coalesce($5::skip_reason, skip_reason)
+        `UPDATE quests SET status = $4, updated_at = now(), skip_reason = coalesce($5::skip_reason, skip_reason),
+                reasons = CASE WHEN $6 THEN reasons || '{"simulated": true}'::jsonb ELSE reasons END
          WHERE id = $1 AND user_id = $2 AND status = ANY($3::quest_status[])
          RETURNING status, place_id::text AS "placeId"`,
-        [questId, userId, t.from, t.to, action === 'not-today' ? 'unstated' : null],
+        [questId, userId, t.from, t.to, action === 'not-today' ? 'unstated' : null, !!checkIn?.simulated],
       );
       if (!rows.length) {
         const cur = await tx.query<{ status: QuestStatus }>(
@@ -302,7 +306,8 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
   async log(userId: string) {
     const { rows } = await this.pg.query(
       `SELECT q.id::text, q.status, q.created_at AS "createdAt", q.updated_at AS "updatedAt",
-              p.name, p.categories[array_length(p.categories, 1)] AS category, q.reasons
+              p.name, p.categories[array_length(p.categories, 1)] AS category,
+              q.reasons - 'simulated' AS reasons, coalesce((q.reasons->>'simulated')::boolean, false) AS simulated
        FROM quests q JOIN places p ON p.id = q.place_id
        WHERE q.user_id = $1 AND q.status <> 'expired'
        ORDER BY q.created_at DESC LIMIT 50`,

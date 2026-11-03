@@ -132,6 +132,19 @@ const fail = (e: unknown) => () => Promise.reject(e);
 const never = () => new Promise<never>(() => {});
 const todayCalls = () => calls.filter((c) => c.startsWith("/quests/today")).length;
 
+// window.location.assign, caught for the length of `run`.
+async function catchAssign(run: (assign: ReturnType<typeof vi.fn>) => Promise<void>) {
+  const assign = vi.fn();
+  const real = window.location;
+  Object.defineProperty(window, "location", { configurable: true, value: { ...real, assign } });
+  try {
+    await run(assign);
+  } finally {
+    Object.defineProperty(window, "location", { configurable: true, value: real });
+  }
+}
+const MIDTOWN_URL = `${window.location.origin}/?at=40.7549,-73.984`;
+
 // Lets pending promises settle and React re-render, with fake or real timers.
 const settle = () => act(async () => {});
 const advance = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
@@ -158,6 +171,16 @@ describe("QuestHome: never stuck on 'Surveying…'", () => {
     expect(todayCalls()).toBe(0);
   });
 
+  it("loads in the sheet's shell: a status card with an outline of the peek", async () => {
+    routes["/quests/today"] = never;
+    render(<QuestHome />);
+    await settle();
+    const card = screen.getByTestId("state-card");
+    expect(card.getAttribute("role")).toBe("status");
+    expect(card.textContent).toContain("Loading your quest…");
+    expect(screen.getByTestId("peek-outline").getAttribute("aria-hidden")).toBe("true");
+  });
+
   it("says 'Loading your quest…', not 'Surveying', while the request is in flight", async () => {
     routes["/quests/today"] = never;
     render(<QuestHome />);
@@ -172,7 +195,7 @@ describe("QuestHome: never stuck on 'Surveying…'", () => {
     render(<QuestHome />);
     await settle();
     expect(screen.getByText("Couldn't load your journal")).toBeTruthy();
-    expect(screen.getByText("Something went wrong on our end.")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain("Something went wrong on our end.");
     expect(screen.queryByText(/Surveying|Loading your quest/)).toBeNull();
 
     routes["/me"] = ok(ME);
@@ -185,8 +208,9 @@ describe("QuestHome: never stuck on 'Surveying…'", () => {
     routes["/quests/today"] = fail(new ApiError("Internal server error", 500));
     render(<QuestHome />);
     await settle();
-    expect(screen.getByText("Couldn't load your quest")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain("Couldn't load your quest");
     expect(screen.getByText("Something went wrong on our end.")).toBeTruthy();
+    expect(screen.queryByTestId("peek-outline")).toBeNull();
 
     routes["/quests/today"] = ok(withQuest);
     fireEvent.click(screen.getByText("Retry"));
@@ -203,24 +227,35 @@ describe("QuestHome: never stuck on 'Surveying…'", () => {
     expect(screen.getByText("Retry")).toBeTruthy();
   });
 
-  it("shows the empty state with Try again when nothing is nearby", async () => {
+  it("when nothing is nearby, offers Midtown's quests instead of asking the same again", async () => {
     routes["/quests/today"] = ok(empty);
-    render(<QuestHome />);
-    await settle();
-    expect(screen.getByText("Nothing quest-worthy within reach here. Try somewhere livelier.")).toBeTruthy();
-
-    routes["/quests/today"] = ok(withQuest);
-    fireEvent.click(screen.getByText("Try again"));
-    await settle();
-    expect(screen.getByText("quest: Cafe Uno")).toBeTruthy();
+    await catchAssign(async (assign) => {
+      render(<QuestHome />);
+      await settle();
+      expect(screen.getByRole("status").textContent).toContain("Nothing quest-worthy within reach here. Try somewhere livelier.");
+      expect(screen.queryByText("Try again")).toBeNull();
+      const before = todayCalls();
+      fireEvent.click(screen.getByRole("button", { name: "See Midtown's quests" }));
+      expect(assign).toHaveBeenCalledWith(MIDTOWN_URL);
+      expect(todayCalls()).toBe(before);
+    });
   });
 
-  it("says the survey failed when the area's ingest is dead", async () => {
+  it("offers nothing when it's Midtown that's empty", async () => {
+    routes["/quests/today"] = ok(empty);
+    location = { lat: 40.7549, lng: -73.984, source: "override" };
+    render(<QuestHome />);
+    await settle();
+    expect(screen.getByText("Uncharted")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "See Midtown's quests" })).toBeNull();
+  });
+
+  it("says the survey failed when the area's ingest is dead, and when it's tried again", async () => {
     routes["/quests/today"] = ok({ ...empty, surveying: { pending: [], failed: ["dr72h"] } });
     render(<QuestHome />);
     await settle();
-    expect(screen.getByText("Couldn't survey this area just now. Try again in a bit.")).toBeTruthy();
-    expect(screen.getByText("Try again")).toBeTruthy();
+    expect(screen.getByText("Couldn't survey this area just now. Larper tries again within the hour.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "See Midtown's quests" })).toBeTruthy();
   });
 
   it("polls while surveying and shows the quest once the area lands", async () => {
@@ -229,7 +264,7 @@ describe("QuestHome: never stuck on 'Surveying…'", () => {
     render(<QuestHome />);
     await settle();
     expect(screen.getByText("Uncharted territory")).toBeTruthy();
-    expect(screen.getByRole("status").textContent).toContain("Surveying the area");
+    expect(screen.getByTestId("notices").textContent).toContain("Surveying the area");
 
     await advance(SURVEY_POLL_MS);
     expect(todayCalls()).toBe(2);
@@ -287,7 +322,7 @@ describe("QuestHome: never stuck on 'Surveying…'", () => {
     // One poll at a time, so React re-arms the next one between ticks.
     for (let t = 0; t <= SURVEY_MAX_MS + SURVEY_POLL_MS; t += SURVEY_POLL_MS) await advance(SURVEY_POLL_MS);
     expect(screen.getByText("Taking longer than usual")).toBeTruthy();
-    expect(screen.getByRole("status").textContent).toContain("Still surveying");
+    expect(screen.getByTestId("notices").textContent).toContain("Still surveying");
     const stopped = todayCalls();
     await advance(SURVEY_POLL_MS * 5);
     expect(todayCalls()).toBe(stopped);
@@ -676,21 +711,33 @@ describe("QuestHome: Not today", () => {
 describe("QuestHome: outside the demo region", () => {
   const outside: Today = { ...empty, surveying: { pending: [], failed: [], outside: ["gcpvj"] } };
 
-  it("says the demo covers New York City and offers the demo area, instead of 'nothing here'", async () => {
+  it("tells a real account Larper covers New York City so far, and offers Midtown, instead of 'nothing here'", async () => {
     routes["/quests/today"] = ok(outside);
-    const assign = vi.fn();
-    const real = window.location;
-    Object.defineProperty(window, "location", { configurable: true, value: { ...real, assign } });
-    try {
+    await catchAssign(async (assign) => {
+      render(<QuestHome />);
+      await settle();
+      const card = screen.getByRole("status");
+      expect(card.textContent).toContain("Outside New York City");
+      expect(card.textContent).toContain("Larper covers New York City so far.");
+      expect(card.textContent).not.toMatch(/demo/i);
+      expect(screen.queryByText("Uncharted")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "See Midtown's quests" }));
+      expect(assign).toHaveBeenCalledWith(MIDTOWN_URL);
+    });
+  });
+
+  it("keeps the demo's words for the demo account (here at a ?at= outside)", async () => {
+    routes["/me"] = ok({ ...ME, demo: true });
+    routes["/quests/today"] = ok(outside);
+    location = { lat: 41.88, lng: -87.63, source: "override" };
+    await catchAssign(async (assign) => {
       render(<QuestHome />);
       await settle();
       expect(screen.getByText("Outside the demo area")).toBeTruthy();
-      expect(screen.queryByText("Uncharted")).toBeNull();
+      expect(screen.getByText("This demo covers New York City. Try it from Washington Square instead.")).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "Go to the demo area" }));
-      expect(assign).toHaveBeenCalledWith(`${real.origin}/?at=40.7308,-73.9973`);
-    } finally {
-      Object.defineProperty(window, "location", { configurable: true, value: real });
-    }
+      expect(assign).toHaveBeenCalledWith(`${window.location.origin}/?at=40.7308,-73.9973`);
+    });
   });
 
   it("doesn't poll: there is nothing on its way", async () => {
@@ -767,7 +814,7 @@ describe("QuestHome: the demo account goes to Midtown", () => {
     location = { lat: 41.88, lng: -87.63, source: "gps", accuracyM: 20 };
     render(<QuestHome />);
     await settle();
-    expect(screen.getByText("Outside the demo area")).toBeTruthy();
+    expect(screen.getByText("Outside New York City")).toBeTruthy();
     expect(calls.some((c) => c.includes(MIDTOWN))).toBe(false);
   });
 });
