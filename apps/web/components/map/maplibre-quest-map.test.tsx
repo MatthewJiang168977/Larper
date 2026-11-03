@@ -2,7 +2,7 @@ import { act, configure, fireEvent, render, screen, waitFor } from "@testing-lib
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeckItem, QuestView } from "@/lib/api";
 import { haloDiameterPx } from "./accuracy-halo";
-import MapLibreQuestMap, { inView, MAX_PITCH, resetCamera, sheetPadding, viewCamera } from "./maplibre-quest-map";
+import MapLibreQuestMap, { inView, leadCamera, MAX_PITCH, resetCamera, sheetPadding, viewCamera } from "./maplibre-quest-map";
 import type { QuestMapProps } from "./quest-map";
 
 // The component loads maplibre-gl with a dynamic import(). The first one in a cold test
@@ -37,6 +37,10 @@ const fake = vi.hoisted(() => {
     bearing = 29;
     getBearing = () => this.bearing;
     setMaxPitch = vi.fn();
+    // The style's layers, once it has loaded (tests clear it to stand in for "not yet").
+    layers: Set<string> = new Set(["buildings-3d", "buildings-2d"]);
+    getLayer = vi.fn((id: string) => (this.layers.has(id) ? { id } : undefined));
+    setLayoutProperty = vi.fn();
     onceListeners = new Map<string, (() => void)[]>();
     once(event: string, fn: () => void) {
       this.onceListeners.set(event, [...(this.onceListeners.get(event) ?? []), fn]);
@@ -348,6 +352,149 @@ describe("map credit", () => {
     expect(el.inert).toBe(true);
     rerender(<MapLibreQuestMap {...props({ bottomCovered: false })} />);
     expect(el.inert).toBe(false);
+  });
+});
+
+describe("name labels", () => {
+  const label = (name: string) =>
+    [...document.querySelectorAll<HTMLElement>(".pin-name")].find((el) => el.textContent === name)!;
+
+  it("puts a paper label with the place's name beside every pin, hidden from screen readers (the pin is named)", async () => {
+    render(<MapLibreQuestMap {...props()} />);
+    const pin = await screen.findByRole("button", { name: "Bar Dos" });
+    const l = label("Bar Dos");
+    // Next to the pin inside its marker, so CSS shows it for a selected, focused or hovered pin.
+    expect(pin.nextElementSibling).toBe(l);
+    expect(l.getAttribute("aria-hidden")).toBe("true");
+    expect(label("Cafe Uno").previousElementSibling).toBe(screen.getByRole("button", { name: "Cafe Uno" }));
+  });
+
+  it("marks the selected pin, which the label's CSS keys on", async () => {
+    const { rerender } = render(<MapLibreQuestMap {...props()} />);
+    await screen.findByRole("button", { name: "Bar Dos" });
+    await waitFor(() => expect(label("Cafe Uno").previousElementSibling!.getAttribute("data-selected")).toBe("true"));
+    rerender(<MapLibreQuestMap {...props({ selectedId: "p2" })} />);
+    expect(label("Bar Dos").previousElementSibling!.getAttribute("data-selected")).toBe("true");
+    expect(label("Cafe Uno").previousElementSibling!.getAttribute("data-selected")).toBe("false");
+  });
+});
+
+describe("fly-to a lead", () => {
+  const firstFlight = async () => {
+    await toggleButton();
+    await waitFor(() => expect(map().flyTo).toHaveBeenCalled());
+  };
+  // Midtown: you by Bryant Park, the quest at Birdland, leads a few blocks off.
+  const you = { lat: 40.7549, lng: -73.984 };
+  const birdland = { lat: 40.7596, lng: -73.9897 };
+  const keens = { lat: 40.7506, lng: -73.9881 };
+  const nextDoor = { lat: 40.7598, lng: -73.9895 };
+  const harlem = { lat: 40.8116, lng: -73.9465 };
+  const phone = { w: 390, h: 844 };
+  const desk = { w: 1280, h: 800 };
+  const pad = (size: { h: number }) => sheetPadding(160, size.h);
+
+  // Where a point lands relative to the padded part's middle, in px, for a flat map at
+  // this camera: what the flight puts on screen.
+  const offset = (p: { lat: number; lng: number }, cam: { center: [number, number]; zoom: number }, bearing: number) => {
+    const m = (q: { lat: number; lng: number }) => {
+      const phi = (q.lat * Math.PI) / 180;
+      return { x: (q.lng + 180) / 360, y: (1 - Math.log(Math.tan(phi) + 1 / Math.cos(phi)) / Math.PI) / 2 };
+    };
+    const a = m(p);
+    const c = m({ lng: cam.center[0], lat: cam.center[1] });
+    const k = 512 * 2 ** cam.zoom;
+    const [dx, dy] = [(a.x - c.x) * k, (a.y - c.y) * k];
+    const r = (bearing * Math.PI) / 180;
+    return { x: dx * Math.cos(r) + dy * Math.sin(r), y: -dx * Math.sin(r) + dy * Math.cos(r) };
+  };
+  const inside = (o: { x: number; y: number }, size: { w: number; h: number }, padding: ReturnType<typeof sheetPadding>) =>
+    // (A phone lets pins 32 px into the side padding; half a pixel for rounding.)
+    Math.abs(o.x) <= (size.w - padding.left - padding.right) / 2 + 32.5 && Math.abs(o.y) <= (size.h - padding.top - padding.bottom) / 2 + 0.5;
+
+  it("frames the lead with the quest and you, on a phone and a wide screen", () => {
+    for (const size of [phone, desk]) {
+      const cam = leadCamera(keens, [[birdland, you], [birdland]], size, pad(size), 29);
+      expect(cam.zoom).toBeGreaterThanOrEqual(14.8); // still street scale
+      for (const p of [keens, birdland, you]) expect(inside(offset(p, cam, 29), size, pad(size))).toBe(true);
+    }
+  });
+
+  it("gets no closer than a single pin's usual zoom when they're next door", () => {
+    expect(leadCamera(nextDoor, [[birdland, you], [birdland]], desk, pad(desk), 29).zoom).toBeLessThanOrEqual(16.6);
+    expect(leadCamera(birdland, [[birdland]], desk, pad(desk), 29).zoom).toBe(16.6);
+  });
+
+  it("drops you from the frame before the quest when all three don't fit", () => {
+    const far = { lat: 40.765, lng: -73.9858 }; // up the avenue from the quest, away from you
+    const cam = leadCamera(far, [[birdland, harlem], [birdland]], phone, pad(phone), 29);
+    expect(cam.zoom).toBeGreaterThanOrEqual(14.8);
+    expect(inside(offset(birdland, cam, 29), phone, pad(phone))).toBe(true);
+    expect(inside(offset(harlem, cam, 29), phone, pad(phone))).toBe(false);
+  });
+
+  it("too far for street scale, keeps the lead well inside, leaning toward the quest", () => {
+    const cam = leadCamera(harlem, [[birdland, you], [birdland]], phone, pad(phone), 29);
+    expect(cam.zoom).toBe(14.8);
+    const lead = offset(harlem, cam, 29);
+    expect(inside(lead, phone, pad(phone))).toBe(true);
+    expect(cam.center).not.toEqual([harlem.lng, harlem.lat]);
+    // The middle sits between the lead and the quest.
+    expect(cam.center[1]).toBeLessThan(harlem.lat);
+    expect(cam.center[1]).toBeGreaterThan(birdland.lat);
+  });
+
+  it("flies to that frame, at the view's tilt and the home bearing, leaving room for the sheet", async () => {
+    const { rerender } = render(<MapLibreQuestMap {...props()} />);
+    await firstFlight();
+    const el = map().getContainer();
+    Object.defineProperty(el, "clientHeight", { configurable: true, value: 844 });
+    Object.defineProperty(el, "clientWidth", { configurable: true, value: 390 });
+    rerender(<MapLibreQuestMap {...props({ selectedId: "p2" })} />);
+    const padding = sheetPadding(280, 844);
+    const me = props().me;
+    const lead = { lat: 40.731, lng: -73.997 };
+    expect(map().flyTo).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ...leadCamera(lead, [[lead, me], [lead]], phone, padding, 29), padding, pitch: 50, bearing: 29 }),
+    );
+  });
+
+  it("flies straight to a lead when there is no quest", async () => {
+    const { rerender } = render(<MapLibreQuestMap {...props({ quest: null, selectedId: null })} />);
+    await toggleButton();
+    rerender(<MapLibreQuestMap {...props({ quest: null, selectedId: "p2" })} />);
+    expect(map().flyTo).toHaveBeenLastCalledWith(expect.objectContaining({ center: [-73.997, 40.731], zoom: 16.6 }));
+  });
+});
+
+describe("buildings per view", () => {
+  const visibility = (id: string) =>
+    map()
+      .setLayoutProperty.mock.calls.filter((c) => c[0] === id)
+      .at(-1)?.[2];
+
+  it("shows extruded buildings in 3D and flat footprints in 2D, both ways", async () => {
+    render(<MapLibreQuestMap {...props()} />);
+    const button = await toggleButton();
+    fireEvent.click(button); // to 2D
+    expect(visibility("buildings-3d")).toBe("none");
+    expect(visibility("buildings-2d")).toBe("visible");
+    fireEvent.click(button); // back to 3D
+    expect(visibility("buildings-3d")).toBe("visible");
+    expect(visibility("buildings-2d")).toBe("none");
+  });
+
+  it("waits for the style to load before swapping them", async () => {
+    render(<MapLibreQuestMap {...props()} />);
+    const button = await toggleButton();
+    map().layers.clear();
+    map().setLayoutProperty.mockClear();
+    fireEvent.click(button); // to 2D before the style is in
+    expect(map().setLayoutProperty).not.toHaveBeenCalled();
+    map().layers = new Set(["buildings-3d", "buildings-2d"]);
+    act(() => map().fireOnce("load"));
+    expect(visibility("buildings-3d")).toBe("none");
+    expect(visibility("buildings-2d")).toBe("visible");
   });
 });
 

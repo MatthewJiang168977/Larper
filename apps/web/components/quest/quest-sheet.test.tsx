@@ -61,13 +61,10 @@ describe("QuestSheet on a phone: peek", () => {
     expect(within(peekPart()).getByRole("button", { name: "I went" })).toBeTruthy();
   });
 
-  it("keeps everything else out of reach until expanded: no chips, links or Skip in peek", () => {
+  it("keeps everything else out of reach until expanded: no chips or links in peek", () => {
     sheet("offered");
     expect(rest().hasAttribute("inert")).toBe(true);
     expect(within(peekPart()).queryByRole("navigation", { name: "Leads" })).toBeNull();
-    // Peek's Skip is for wide screens only: display:none on phones (jsdom applies no CSS).
-    const peekSkip = within(peekPart()).getByRole("button", { name: "Skip" });
-    expect(peekSkip.className.split(" ")).toEqual(expect.arrayContaining(["hidden", "lg:inline-flex"]));
     expect(within(peekPart()).queryByRole("link", { name: "Check hours" })).toBeNull();
     expect(within(rest()).getByRole("navigation", { name: "Leads" })).toBeTruthy();
   });
@@ -174,13 +171,29 @@ describe("QuestSheet on a phone: the handle", () => {
   });
 });
 
-describe("QuestSheet on a phone: full", () => {
+// Peek has two copies of the quieter action, one per screen size; the other is
+// display:none (jsdom applies no CSS). This is the phone's.
+const phoneSecondary = (name: string) =>
+  within(peekPart())
+    .getAllByRole("button", { name })
+    .find((b) => b.className.split(" ").includes("lg:hidden"))!;
+
+describe("QuestSheet on a phone: Skip at peek", () => {
+  it("puts a quiet text Skip beside Accept, with a 44 px hit area, and none in full", () => {
+    sheet("offered");
+    const skip = phoneSecondary("Skip");
+    expect(skip.parentElement).toBe(within(peekPart()).getByRole("button", { name: "Accept quest" }).parentElement);
+    const classes = skip.className.split(" ");
+    expect(classes).toEqual(expect.arrayContaining(["hit-target", "underline", "lg:hidden"]));
+    expect(classes).not.toContain("stamp-btn");
+    expect(within(rest()).queryByRole("button", { name: "Skip" })).toBeNull();
+  });
+
   it("says 'Not today' (not 'Abandon') on an accepted quest, and sets it aside rather than skipping", () => {
     const onAction = vi.fn();
     sheet("accepted", { onAction });
-    expand();
     expect(screen.queryByText("Abandon")).toBeNull();
-    fireEvent.click(within(rest()).getByRole("button", { name: "Not today" }));
+    fireEvent.click(phoneSecondary("Not today"));
     expect(onAction).toHaveBeenCalledWith("not-today");
     expect(onAction).not.toHaveBeenCalledWith("skip");
   });
@@ -188,9 +201,21 @@ describe("QuestSheet on a phone: full", () => {
   it("keeps Skip on an offered quest as a skip", () => {
     const onAction = vi.fn();
     sheet("offered", { onAction });
-    expand();
-    fireEvent.click(within(rest()).getByRole("button", { name: "Skip" }));
+    fireEvent.click(phoneSecondary("Skip"));
     expect(onAction).toHaveBeenCalledWith("skip");
+  });
+});
+
+describe("QuestSheet on a phone: full", () => {
+  it("says what a lead is for: a backup, and lead 1 moves up on a skip", () => {
+    sheet("offered", { selectedId: "p2" });
+    expect(within(rest()).getByText("A backup nearby. If you skip today's quest, lead 1 moves up.")).toBeTruthy();
+    expect(screen.queryByText(/best remaining lead/)).toBeNull();
+  });
+
+  it("shows no lead copy on the quest itself", () => {
+    sheet("offered");
+    expect(screen.queryByText(/A backup nearby/)).toBeNull();
   });
 
   it("explains why this place and lists its tags", () => {
@@ -269,7 +294,7 @@ describe("QuestSheet on a phone: full", () => {
     sheet("offered", { selectedId: "p2" });
     expect(screen.getByText("Lead 1")).toBeTruthy();
     expect(within(peekPart()).queryByRole("button", { name: "Accept quest" })).toBeNull();
-    expect(rest().textContent).toContain("A lead, not your quest.");
+    expect(rest().textContent).toContain("A backup nearby.");
   });
 
   it("escapes names that would break the hours URL", () => {
@@ -353,13 +378,21 @@ describe("QuestSheet on a wide screen", () => {
     expect(quest.querySelector("svg")).toBeTruthy(); // its flag
   });
 
-  it("puts Skip beside Accept in peek on wide screens, and keeps it in full on phones", () => {
+  it("puts Skip beside Accept in peek on wide screens, as a stamped button", () => {
     sheet("offered");
-    const peekSkip = within(peekPart()).getByRole("button", { name: "Skip" });
-    expect(peekSkip.parentElement).toBe(within(peekPart()).getByRole("button", { name: "Accept quest" }).parentElement);
-    expect(peekSkip.className).toContain("lg:inline-flex");
-    const fullSkip = within(rest()).getByRole("button", { name: "Skip" });
-    expect(fullSkip.parentElement!.className).toContain("lg:hidden");
+    const wide = within(peekPart())
+      .getAllByRole("button", { name: "Skip" })
+      .find((b) => b.className.split(" ").includes("lg:inline-flex"))!;
+    expect(wide.parentElement).toBe(within(peekPart()).getByRole("button", { name: "Accept quest" }).parentElement);
+    expect(wide.className.split(" ")).toEqual(expect.arrayContaining(["hidden", "stamp-btn"]));
+  });
+
+  it("sets the lead rows in the app's serif and mono, not a sans face", () => {
+    sheet("offered");
+    const row = screen.getByRole("button", { name: "1. A Very Long Lead Name That Truncates" });
+    expect(row.className).not.toContain("font-sans");
+    expect(row.className.split(" ")).toContain("lg:font-serif");
+    expect(within(row).getByText("ramen restaurant · 100 m").className.split(" ")).toContain("font-mono");
   });
 
   it("formats distances", () => {
@@ -502,7 +535,7 @@ describe("QuestSheet at 200% text or zoom", () => {
     vi.unstubAllGlobals();
   });
 
-  it("open, scrolls as one, so the leads, links and Skip have room (they had 0 px)", () => {
+  it("open, scrolls as one, so the leads and links have room (they had 0 px)", () => {
     stubHeights({ handle: 88, peek: 700, rest: 900 });
     sheet("offered", { selectedId: "p1" });
     expand();
@@ -515,7 +548,6 @@ describe("QuestSheet at 200% text or zoom", () => {
     expect(rest().className).not.toContain("flex-1");
     expect(within(rest()).getByRole("navigation", { name: "Leads" })).toBeTruthy();
     expect(within(rest()).getByRole("link", { name: "Check hours" })).toBeTruthy();
-    expect(within(rest()).getByRole("button", { name: "Skip" })).toBeTruthy();
     vi.unstubAllGlobals();
   });
 
