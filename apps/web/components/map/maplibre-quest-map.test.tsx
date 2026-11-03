@@ -2,7 +2,7 @@ import { act, configure, fireEvent, render, screen, waitFor } from "@testing-lib
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeckItem, QuestView } from "@/lib/api";
 import { haloDiameterPx } from "./accuracy-halo";
-import MapLibreQuestMap, { inView, MAX_PITCH, RESET_CAMERA, sheetPadding, VIEW_CAMERA } from "./maplibre-quest-map";
+import MapLibreQuestMap, { inView, MAX_PITCH, resetCamera, sheetPadding, viewCamera } from "./maplibre-quest-map";
 import type { QuestMapProps } from "./quest-map";
 
 // The component loads maplibre-gl with a dynamic import(). The first one in a cold test
@@ -33,7 +33,7 @@ const fake = vi.hoisted(() => {
     project = vi.fn(() => this.projected);
     moving = false;
     isMoving = () => this.moving;
-    bearing = -20;
+    bearing = 29;
     getBearing = () => this.bearing;
     setMaxPitch = vi.fn();
     onceListeners = new Map<string, (() => void)[]>();
@@ -45,8 +45,8 @@ const fake = vi.hoisted(() => {
       this.onceListeners.delete(event);
       fns.forEach((fn) => fn());
     }
-    opts: { container: HTMLElement; maxPitch?: number };
-    constructor(opts: { container: HTMLElement; maxPitch?: number }) {
+    opts: { container: HTMLElement; maxPitch?: number; bearing?: number; pitch?: number };
+    constructor(opts: { container: HTMLElement; maxPitch?: number; bearing?: number; pitch?: number }) {
       this.opts = opts;
       this.container = opts.container;
       state.maps.push(this);
@@ -232,14 +232,14 @@ describe("2D/3D toggle", () => {
     expect(map().addControl).not.toHaveBeenCalled();
   });
 
-  it("works both ways, resets the bearing, and names the action it will take", async () => {
+  it("works both ways, goes back to the home bearing, and names the action it will take", async () => {
     render(<MapLibreQuestMap {...props()} />);
     const button = await toggleButton();
     expect(button.getAttribute("aria-label")).toBe("Switch to flat 2D view");
     expect(button.textContent).toBe("2D");
 
     fireEvent.click(button);
-    expect(map().easeTo).toHaveBeenLastCalledWith(expect.objectContaining({ pitch: 0, bearing: 0 }));
+    expect(map().easeTo).toHaveBeenLastCalledWith(expect.objectContaining({ pitch: 0, bearing: 29 })); // flat, grid straight
     expect(map().dragRotate.disable).toHaveBeenCalled();
     expect(map().touchPitch.disable).toHaveBeenCalled();
     expect(map().touchZoomRotate.disableRotation).toHaveBeenCalled();
@@ -247,7 +247,8 @@ describe("2D/3D toggle", () => {
     expect(button.textContent).toBe("3D");
 
     fireEvent.click(button);
-    expect(map().easeTo).toHaveBeenLastCalledWith(expect.objectContaining(VIEW_CAMERA["3d"]));
+    expect(map().easeTo).toHaveBeenLastCalledWith(expect.objectContaining(viewCamera("3d", 29)));
+    expect(viewCamera("3d", 29)).toEqual({ pitch: 50, bearing: 29 });
     expect(map().dragRotate.enable).toHaveBeenCalled();
     expect(map().touchPitch.enable).toHaveBeenCalled();
     expect(button.getAttribute("aria-label")).toBe("Switch to flat 2D view");
@@ -277,7 +278,23 @@ describe("2D/3D toggle", () => {
 
     rerender(<MapLibreQuestMap {...props({ selectedId: "p2" })} />);
     expect(map().flyTo).toHaveBeenCalledTimes(1);
-    expect(map().flyTo).toHaveBeenLastCalledWith(expect.objectContaining({ pitch: 0, bearing: 0 }));
+    expect(map().flyTo).toHaveBeenLastCalledWith(expect.objectContaining({ pitch: 0, bearing: 29 }));
+  });
+});
+
+describe("home bearing", () => {
+  it("opens and flies facing Manhattan north in NYC, so the grid reads straight", async () => {
+    render(<MapLibreQuestMap {...props()} />);
+    await toggleButton();
+    expect(map().opts).toMatchObject({ bearing: 29, pitch: 55 });
+    expect(map().flyTo).toHaveBeenLastCalledWith(expect.objectContaining({ bearing: 29, pitch: 50 }));
+  });
+
+  it("opens north-up outside every region", async () => {
+    const boston = { lat: 42.3601, lng: -71.0589, accuracyM: 40 };
+    render(<MapLibreQuestMap {...props({ me: boston, quest: null, deck: [], selectedId: null })} />);
+    await toggleButton();
+    expect(map().opts).toMatchObject({ bearing: 0 });
   });
 });
 
@@ -387,12 +404,18 @@ describe("compass and tilt", () => {
     expect(MAX_PITCH).toBeLessThanOrEqual(60);
   });
 
-  it("puts the map back north-up at the usual tilt from the compass, in 3D", async () => {
+  it("puts the map true north-up at the usual tilt from the compass, in 3D", async () => {
     render(<MapLibreQuestMap {...props()} />);
     await toggleButton();
     fireEvent.click(compass()!);
-    expect(map().easeTo).toHaveBeenLastCalledWith(expect.objectContaining(RESET_CAMERA));
-    expect(RESET_CAMERA).toEqual({ bearing: 0, pitch: 50 });
+    expect(map().easeTo).toHaveBeenLastCalledWith(expect.objectContaining(resetCamera("3d")));
+    expect(resetCamera("3d")).toEqual({ bearing: 0, pitch: 50 });
+  });
+
+  it("points the needle to real north from the start, not up the screen", async () => {
+    render(<MapLibreQuestMap {...props()} />);
+    await toggleButton();
+    expect(screen.getByTestId("compass-needle").style.transform).toBe("rotate(-29deg)");
   });
 
   it("turns the needle against the bearing as the map rotates", async () => {
@@ -405,11 +428,12 @@ describe("compass and tilt", () => {
     expect(screen.getByTestId("compass-needle").style.transform).toBe("rotate(-35deg)");
   });
 
-  it("in 2D: no compass, no rotation, and flat for good once the ease lands", async () => {
+  it("in 2D: no rotation by gesture, flat for good once the ease lands, and the compass turns it north-up flat", async () => {
     render(<MapLibreQuestMap {...props()} />);
     fireEvent.click(await toggleButton()); // to 2D
-    expect(compass()).toBeNull();
     expect(map().dragRotate.disable).toHaveBeenCalled();
+    fireEvent.click(compass()!);
+    expect(map().easeTo).toHaveBeenLastCalledWith(expect.objectContaining({ bearing: 0, pitch: 0 }));
     expect(map().setMaxPitch).not.toHaveBeenCalledWith(0); // not before the ease lands (it would jump)
     act(() => map().fireOnce("moveend"));
     expect(map().setMaxPitch).toHaveBeenLastCalledWith(0);
