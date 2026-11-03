@@ -125,6 +125,28 @@ describe("QuestSheet on a phone: the handle", () => {
     expect(handle().getAttribute("aria-expanded")).toBe("false");
   });
 
+  it("tells the page each snap it goes to, and peek again as it goes away", () => {
+    const onSnapChange = vi.fn();
+    const { unmount } = render(
+      <QuestSheet
+        quest={quest("offered")}
+        deck={deck}
+        selectedId="p1"
+        onSelect={vi.fn()}
+        onAction={vi.fn()}
+        busy={false}
+        topLimit={120}
+        onCoveredChange={vi.fn()}
+        onSnapChange={onSnapChange}
+      />,
+    );
+    expect(onSnapChange).toHaveBeenLastCalledWith("peek");
+    expand();
+    expect(onSnapChange).toHaveBeenLastCalledWith("full");
+    unmount();
+    expect(onSnapChange).toHaveBeenLastCalledWith("peek");
+  });
+
   it("doesn't leave focus on something collapsing hides", () => {
     sheet("offered");
     expand();
@@ -221,6 +243,26 @@ describe("QuestSheet on a phone: full", () => {
     expect(link.getAttribute("href")).toBe("https://www.google.com/maps/search/Cafe%20Uno/@40.73,-73.99,18z");
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.parentElement).toBe(within(rest()).getByRole("link", { name: "Directions" }).parentElement);
+  });
+
+  it("gives every link a 44 px hit area, spaced so neighbours' areas don't overlap", () => {
+    render(
+      <QuestSheet
+        quest={{ ...quest("offered"), place: { ...place("p1", "Cafe Uno"), website: "https://a.example", instagram: "https://instagram.com/a", phone: "212 555 0100" } }}
+        deck={deck}
+        selectedId="p1"
+        onSelect={vi.fn()}
+        onAction={vi.fn()}
+        busy={false}
+        topLimit={120}
+        onCoveredChange={vi.fn()}
+      />,
+    );
+    const links = within(rest()).getAllByRole("link");
+    expect(links.map((l) => l.textContent)).toEqual(["Directions", "Website", "Instagram", "Call", "Check hours"]);
+    for (const link of links) expect(link.classList).toContain("hit-target");
+    // 20 px text in a 44 px area reaches 12 px past each edge: 24 px apart either way.
+    expect(links[0].parentElement!.className.split(" ")).toEqual(expect.arrayContaining(["gap-x-6", "gap-y-6"]));
   });
 
   it("shows a lead's note instead of quest actions, and no main action in its peek", () => {

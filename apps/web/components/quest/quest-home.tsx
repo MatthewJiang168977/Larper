@@ -12,6 +12,7 @@ import { getPreciseFix } from "@/lib/precise-fix";
 import { formatDistance } from "@/lib/format";
 import { DemoNotice } from "./demo-notice";
 import { type Covered, QuestSheet, type QuestAction, type SheetNote } from "./quest-sheet";
+import type { Snap } from "./sheet-snap";
 
 export const SURVEY_POLL_MS = 4000;
 
@@ -96,6 +97,12 @@ export function QuestHome() {
     (c: Covered) => setCovered((p) => (p.bottom === c.bottom && p.right === c.right ? p : c)),
     [],
   );
+  // The sheet is open (full): on a phone it then covers the map's bottom edge.
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const onSnapChange = useCallback((s: Snap) => setSheetOpen(s === "full"), []);
+  // After "Not today", focus goes to the first reason, so the question is heard and
+  // answerable where it appeared (the button pressed may be gone by then).
+  const firstReasonRef = useRef<HTMLButtonElement>(null);
   const [reloads, setReloads] = useState(0);
   const sheetRef = useRef<HTMLDivElement>(null);
   // The top bar: the notices start below it, however many lines it wraps to. The map's
@@ -207,6 +214,10 @@ export function QuestHome() {
     return () => ro.disconnect();
   }, []);
 
+  useEffect(() => {
+    if (setAside) firstReasonRef.current?.focus();
+  }, [setAside]);
+
   const reload = () => setReloads((n) => n + 1);
   const retryMe = () => {
     setMeError(null);
@@ -312,17 +323,6 @@ export function QuestHome() {
 
   return (
     <main className="relative h-dvh w-full overflow-hidden">
-      {loc && <QuestMap
-        me={loc}
-        quest={quest}
-        deck={deck}
-        selectedId={selected}
-        onSelect={setSelectedId}
-        bottomInset={covered.bottom}
-        rightInset={covered.right}
-        controlsHost={controlsHost}
-      />}
-
       {/* The pill and the map's buttons side by side, or the buttons on a second line
           (right-aligned) when both don't fit: large text, zoom, a narrow screen. */}
       <header
@@ -332,7 +332,7 @@ export function QuestHome() {
         {/* Wraps too, at the narrowest (200% zoom on a phone): rounded-3xl looks the same as
             rounded-full on one line and stays a card on two. */}
         <div className="pointer-events-auto flex max-w-full flex-wrap items-center gap-x-3 rounded-3xl border border-paper-edge bg-paper/90 py-1 pl-4 pr-1 shadow-sm backdrop-blur">
-          <span className="text-lg font-semibold tracking-tight">Larper</span>
+          <h1 className="text-lg font-semibold tracking-tight">Larper</h1>
           <Link
             href="/journal"
             className="hit-target font-mono text-xs uppercase tracking-wider text-ink-soft underline-offset-4 hover:underline"
@@ -360,7 +360,7 @@ export function QuestHome() {
         )}
 
         {fixing && (
-          <p role="status" className="field-label animate-pulse rounded border border-rule bg-paper/95 px-3 py-1.5">
+          <p role="status" className="field-label motion-safe:animate-pulse rounded border border-rule bg-paper/95 px-3 py-1.5">
             Getting a precise fix…
           </p>
         )}
@@ -368,7 +368,7 @@ export function QuestHome() {
         {surveying && (
           <p
             role="status"
-            className={`field-label rounded border border-rule bg-paper/95 px-3 py-1.5 ${surveyOverdue ? "" : "animate-pulse"}`}
+            className={`field-label rounded border border-rule bg-paper/95 px-3 py-1.5 ${surveyOverdue ? "" : "motion-safe:animate-pulse"}`}
           >
             {surveyOverdue ? "Still surveying" : "Surveying the area…"} mapping {today!.surveying!.pending.length} new{" "}
             {today!.surveying!.pending.length === 1 ? "district" : "districts"}
@@ -378,17 +378,19 @@ export function QuestHome() {
         {setAside && (
           <div role="region" aria-label="Why not today?" className="w-full rounded border border-rule bg-paper/95 px-3 py-2 text-sm">
             <div className="flex items-center gap-3">
-              <p className="flex-1">
+              <p id="why-not-today" className="flex-1">
                 <span className="font-medium">Set aside for today.</span> Want to say why? It&apos;s optional.
               </p>
               <button onClick={() => setSetAside(null)} aria-label="No reason" className="hit-target px-1">
                 ×
               </button>
             </div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {SKIP_REASONS.map(({ reason, label }) => (
+            {/* Named by the question, so focus landing on the first reason reads it out. */}
+            <div role="group" aria-labelledby="why-not-today" className="mt-2 flex flex-wrap gap-2">
+              {SKIP_REASONS.map(({ reason, label }, i) => (
                 <button
                   key={reason}
+                  ref={i === 0 ? firstReasonRef : undefined}
                   onClick={() => giveReason(reason)}
                   disabled={busy}
                   className="min-h-11 rounded-full border border-paper-edge bg-paper px-4 disabled:opacity-50"
@@ -478,6 +480,7 @@ export function QuestHome() {
           demo={me?.demo}
           stampSlam={stampSlam}
           onStampSlammed={() => setStampSlam(false)}
+          onSnapChange={onSnapChange}
         />
       ) : (
         <Panel
@@ -491,6 +494,20 @@ export function QuestHome() {
           action={{ text: loading ? "Checking…" : "Try again", onClick: reload, disabled: loading }}
         />
       )}
+
+      {/* After the header and the sheet, so the Tab order reaches today's quest before the
+          map's pins and credit (the map draws underneath them all the same). */}
+      {loc && <QuestMap
+        me={loc}
+        quest={quest}
+        deck={deck}
+        selectedId={selected}
+        onSelect={setSelectedId}
+        bottomInset={covered.bottom}
+        rightInset={covered.right}
+        bottomCovered={sheetOpen && covered.right === 0}
+        controlsHost={controlsHost}
+      />}
     </main>
   );
 }

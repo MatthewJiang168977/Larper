@@ -44,6 +44,8 @@ interface Props {
   stampSlam?: boolean;
   /** Called as the slam starts, so a later re-render can't play it again. */
   onStampSlammed?: () => void;
+  /** Each snap the sheet goes to (and peek again as it goes away). */
+  onSnapChange?: (snap: Snap) => void;
 }
 
 /**
@@ -60,6 +62,8 @@ export interface Covered {
 export const SIDE_GUTTER_PX = 240;
 
 const WALK_M_PER_MIN = 80;
+// Whole metres, as the count-up shows them when it lands.
+const DISTANCE = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const SPRING = { type: "spring", stiffness: 420, damping: 40 } as const;
 /** Peek's share of the screen, at most. */
 export const PEEK_MAX = 0.5;
@@ -84,7 +88,7 @@ function useFocused({ quest, deck, selectedId }: Pick<Props, "quest" | "deck" | 
 }
 
 function BottomSheet(props: Props) {
-  const { topLimit, onCoveredChange } = props;
+  const { topLimit, onCoveredChange, onSnapChange } = props;
   const { focused, isQuest, label } = useFocused(props);
   const reduce = useReducedMotion();
   const restId = useId();
@@ -175,6 +179,11 @@ function BottomSheet(props: Props) {
     if (snap === "peek") onCoveredChange({ bottom: peekH, right: 0 });
     else if (sheetLeft >= SIDE_GUTTER_PX) onCoveredChange({ bottom: 0, right: viewW - sheetLeft + 24 });
   }, [snap, peekH, sheetLeft, viewW, onCoveredChange]);
+
+  useEffect(() => {
+    onSnapChange?.(snap);
+    return () => onSnapChange?.("peek");
+  }, [snap, onSnapChange]);
 
   const go = useCallback(
     (next: Snap) => {
@@ -344,8 +353,11 @@ function Peek({
 }: Props & { place: PlaceView; label: string; isQuest: boolean; onImpact: () => void }) {
   const done = isQuest && quest?.status === "completed";
   const walkMin = Math.max(1, Math.round(place.distanceM / WALK_M_PER_MIN));
+  // Reduced motion: the new place just fades in (no blur, no slide), and its distance is
+  // a plain number rather than one that counts up.
+  const reduce = useReducedMotion();
   return (
-    <BlurFade key={place.id} duration={0.25} offset={4}>
+    <BlurFade key={place.id} duration={0.25} offset={reduce ? 0 : 4} blur={reduce ? "0px" : undefined}>
       <p className="field-label">{label}</p>
       {/* The name gets the full width (two lines at most: names run long); the action
           sits beside the distance underneath, or below it when there isn't room (large
@@ -355,7 +367,13 @@ function Peek({
       </h2>
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-2">
         <p className="min-w-[8rem] flex-1 text-ink-soft">
-          {humanize(place.category)} · <NumberTicker value={place.distanceM} className="text-ink-soft" /> m, about{" "}
+          {humanize(place.category)} ·{" "}
+          {reduce ? (
+            <span className="inline-block tabular-nums tracking-wider">{DISTANCE.format(place.distanceM)}</span>
+          ) : (
+            <NumberTicker value={place.distanceM} className="text-ink-soft" />
+          )}{" "}
+          m, about{" "}
           {walkMin} min on foot
         </p>
         {isQuest && quest && (
@@ -602,9 +620,11 @@ export function hoursSearchUrl(place: Pick<PlaceView, "name" | "lat" | "lng">) {
 function Links({ place }: { place: PlaceView }) {
   return (
     <>
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+      {/* Each link has a 44 px hit area; the gaps keep neighbours' areas apart, also
+          when they wrap onto a second line. */}
+      <div className="mt-4 flex flex-wrap gap-x-6 gap-y-6 text-sm">
         <a
-          className="underline decoration-oxblood underline-offset-4"
+          className="hit-target underline decoration-oxblood underline-offset-4"
           href={`https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}&travelmode=walking`}
           target="_blank"
           rel="noreferrer"
@@ -612,25 +632,25 @@ function Links({ place }: { place: PlaceView }) {
           Directions
         </a>
         {place.website && (
-          <a className="underline underline-offset-4" href={place.website} target="_blank" rel="noreferrer">
+          <a className="hit-target underline underline-offset-4" href={place.website} target="_blank" rel="noreferrer">
             Website
           </a>
         )}
         {place.instagram && (
-          <a className="underline underline-offset-4" href={place.instagram} target="_blank" rel="noreferrer">
+          <a className="hit-target underline underline-offset-4" href={place.instagram} target="_blank" rel="noreferrer">
             Instagram
           </a>
         )}
         {place.phone && (
-          <a className="underline underline-offset-4" href={`tel:${place.phone.replace(/[^\d+]/g, "")}`}>
+          <a className="hit-target underline underline-offset-4" href={`tel:${place.phone.replace(/[^\d+]/g, "")}`}>
             Call
           </a>
         )}
-        <a className="underline underline-offset-4" href={hoursSearchUrl(place)} target="_blank" rel="noreferrer">
+        <a className="hit-target underline underline-offset-4" href={hoursSearchUrl(place)} target="_blank" rel="noreferrer">
           Check hours
         </a>
       </div>
-      <p className="mt-2 text-xs text-ink-label">No opening hours yet. Check before you go.</p>
+      <p className="mt-4 text-xs text-ink-label">No opening hours yet. Check before you go.</p>
     </>
   );
 }

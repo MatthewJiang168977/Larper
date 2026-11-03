@@ -225,6 +225,131 @@ describe("map markers", () => {
   });
 });
 
+describe("pins from the keyboard", () => {
+  const deck3: DeckItem[] = [
+    { score: 0.5, reasons, place: place("p2", "Bar Dos") },
+    { score: 0.4, reasons, place: place("p3", "Tres Cafe") },
+  ];
+  const pin = (name: string) => screen.getByRole("button", { name });
+  // Re-renders with whatever the map last selected, as the page does.
+  const controlled = async (selectedId = "p1") => {
+    const onSelect = vi.fn();
+    const view = render(<MapLibreQuestMap {...props({ deck: deck3, selectedId, onSelect })} />);
+    await screen.findByRole("button", { name: "Cafe Uno" });
+    onSelect.mockImplementation((id: string) => view.rerender(<MapLibreQuestMap {...props({ deck: deck3, selectedId: id, onSelect })} />));
+    return onSelect;
+  };
+  const tabStops = () => ["Cafe Uno", "Bar Dos", "Tres Cafe"].filter((n) => pin(n).tabIndex === 0);
+
+  it("are one Tab stop: the selected pin, which follows the selection", async () => {
+    const { rerender } = render(<MapLibreQuestMap {...props({ deck: deck3 })} />);
+    await screen.findByRole("button", { name: "Cafe Uno" });
+    expect(tabStops()).toEqual(["Cafe Uno"]);
+    expect(pin("Bar Dos").tabIndex).toBe(-1);
+    rerender(<MapLibreQuestMap {...props({ deck: deck3, selectedId: "p3" })} />);
+    expect(tabStops()).toEqual(["Tres Cafe"]);
+    // Nothing selected (the day's quest done): still one stop, the first pin.
+    rerender(<MapLibreQuestMap {...props({ deck: deck3, selectedId: null })} />);
+    expect(tabStops()).toEqual(["Cafe Uno"]);
+  });
+
+  it("arrow keys move focus and the selection together, quest first then the leads, wrapping", async () => {
+    const onSelect = await controlled();
+    pin("Cafe Uno").focus();
+    const press = (key: string) => fireEvent.keyDown(document.activeElement!, { key });
+
+    press("ArrowRight");
+    expect(document.activeElement).toBe(pin("Bar Dos"));
+    expect(onSelect).toHaveBeenLastCalledWith("p2");
+    expect(tabStops()).toEqual(["Bar Dos"]);
+    press("ArrowDown");
+    expect(document.activeElement).toBe(pin("Tres Cafe"));
+    press("ArrowRight"); // wraps
+    expect(document.activeElement).toBe(pin("Cafe Uno"));
+    press("ArrowLeft"); // and back
+    expect(document.activeElement).toBe(pin("Tres Cafe"));
+    press("Home");
+    expect(document.activeElement).toBe(pin("Cafe Uno"));
+    press("End");
+    expect(document.activeElement).toBe(pin("Tres Cafe"));
+    expect(onSelect).toHaveBeenLastCalledWith("p3");
+  });
+
+  it("keeps the arrow keys from panning the map (it listens on the pins' parent)", async () => {
+    await controlled();
+    const panned = vi.fn();
+    map().getContainer().addEventListener("keydown", panned);
+    pin("Cafe Uno").focus();
+    const e = fireEvent.keyDown(pin("Cafe Uno"), { key: "ArrowRight" });
+    expect(e).toBe(false); // default prevented
+    expect(panned).not.toHaveBeenCalled();
+    // Other keys still reach the map (+/- zoom), and Enter/Space stay the button's.
+    fireEvent.keyDown(document.activeElement!, { key: "+" });
+    expect(panned).toHaveBeenCalledTimes(1);
+  });
+
+  it("pans to a pin that takes focus off screen, keeping zoom, tilt and bearing", async () => {
+    await controlled();
+    await waitFor(() => expect(map().flyTo).toHaveBeenCalled());
+    const el = map().getContainer();
+    Object.defineProperty(el, "clientHeight", { configurable: true, value: 800 });
+    Object.defineProperty(el, "clientWidth", { configurable: true, value: 400 });
+
+    map().projected = { x: 200, y: 300 }; // in view: left alone
+    pin("Cafe Uno").focus();
+    expect(map().easeTo).not.toHaveBeenCalled();
+
+    pin("Cafe Uno").blur();
+    map().projected = { x: -150, y: 300 }; // panned away
+    pin("Cafe Uno").focus();
+    expect(map().easeTo).toHaveBeenCalledTimes(1);
+    const call = map().easeTo.mock.calls[0][0];
+    expect(call).toMatchObject({ center: [-73.997, 40.731], padding: sheetPadding(280, 800) });
+    expect(call).not.toHaveProperty("zoom");
+    expect(call).not.toHaveProperty("pitch");
+  });
+});
+
+describe("map credit", () => {
+  // MapLibre's corner for the attribution control (the stand-in map has none).
+  const corner = async () => {
+    await toggleButton();
+    const el = document.createElement("div");
+    el.className = "maplibregl-ctrl-bottom-right";
+    map().getContainer().appendChild(el);
+    return el;
+  };
+
+  it("sits above the sheet, following its height, so it's never behind it", async () => {
+    const { rerender } = render(<MapLibreQuestMap {...props()} />);
+    const el = await corner();
+    rerender(<MapLibreQuestMap {...props({ bottomInset: 312 })} />);
+    expect(el.style.bottom).toBe("312px");
+    expect(el.inert).toBe(false);
+  });
+
+  it("beside the open sheet on a wide screen, fits the strip of map right of the card", async () => {
+    const { rerender } = render(<MapLibreQuestMap {...props()} />);
+    const el = await corner();
+    Object.defineProperty(map().getContainer(), "clientWidth", { configurable: true, value: 1280 });
+    // A 768 px card centred: its left edge at 256, so rightInset = 1280 - 256 + 24.
+    rerender(<MapLibreQuestMap {...props({ bottomInset: 0, rightInset: 1048 })} />);
+    expect(el.style.bottom).toBe("0px");
+    expect(el.style.maxWidth).toBe("256px");
+    rerender(<MapLibreQuestMap {...props({ bottomInset: 200, rightInset: 0 })} />);
+    expect(el.style.maxWidth).toBe("");
+  });
+
+  it("leaves the Tab order while the open sheet covers it", async () => {
+    const { rerender } = render(<MapLibreQuestMap {...props()} />);
+    const el = await corner();
+    rerender(<MapLibreQuestMap {...props({ bottomCovered: true })} />);
+    expect(el.inert).toBe(true);
+    rerender(<MapLibreQuestMap {...props({ bottomCovered: false })} />);
+    expect(el.inert).toBe(false);
+  });
+});
+
 describe("2D/3D toggle", () => {
   it("replaces MapLibre's compass", async () => {
     render(<MapLibreQuestMap {...props()} />);

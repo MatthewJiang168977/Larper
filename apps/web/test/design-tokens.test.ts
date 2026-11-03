@@ -76,6 +76,16 @@ describe("focus and touch targets", () => {
     expect(before).toContain("height: max(100%, 44px)");
     expect(before).toContain("transform: translate(-50%, -50%)");
   });
+
+  it("stamp buttons are at least 44 px tall (py-2 text came to 42)", () => {
+    expect(rule(".stamp-btn")).toContain("min-height: 44px");
+  });
+});
+
+describe("map credit", () => {
+  it("is set at 11 px, not 10", () => {
+    expect(rule(".maplibregl-ctrl-attrib")).toContain("font-size: 11px");
+  });
 });
 
 describe("map markers", () => {
