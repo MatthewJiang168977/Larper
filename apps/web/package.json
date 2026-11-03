@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^7.9.14",
+    "@vercel/analytics": "2.0.1",
     "clsx": "^2.1.1",
     "maplibre-gl": "^6.14.0",
     "motion": "^14.1.0",
