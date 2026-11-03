@@ -15,6 +15,8 @@ export interface QuestMapProps {
   bottomInset: number;
   /** Pixels covered on the right (the open sheet on a wide screen: pins go left of it). */
   rightInset?: number;
+  /** The open sheet covers the map's bottom edge (a phone's full sheet): what sits there is hidden. */
+  bottomCovered?: boolean;
   /**
    * Where the map's buttons (compass, 2D/3D) go: the page's top bar, so they wrap below
    * its other contents when the two don't fit side by side. Without one, top right.

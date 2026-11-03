@@ -44,6 +44,16 @@ export const VIEW_TOGGLE: Record<MapView, { text: string; label: string }> = {
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
+// Keys that move between pins: a step through them (wrapping), or to the first or last.
+const PIN_KEYS: Record<string, 1 | -1 | "first" | "last"> = {
+  ArrowRight: 1,
+  ArrowDown: 1,
+  ArrowLeft: -1,
+  ArrowUp: -1,
+  Home: "first",
+  End: "last",
+};
+
 // The quest marker: a pole and a pennant, stroked in the seal's paper colour.
 function flagIcon() {
   const svg = document.createElementNS(SVG_NS, "svg");
@@ -98,10 +108,12 @@ function allowRotation(map: MLMap, on: boolean) {
   }
 }
 
-export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect, bottomInset, rightInset = 0, controlsHost }: QuestMapProps) {
+export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect, bottomInset, rightInset = 0, bottomCovered = false, controlsHost }: QuestMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const markersRef = useRef<{ marker: Marker; pin: HTMLElement; placeId: string }[]>([]);
+  // The same pins in keyboard order: the quest, then the leads by number.
+  const pinOrderRef = useRef<{ marker: Marker; pin: HTMLElement; placeId: string }[]>([]);
   const meMarkerRef = useRef<Marker | null>(null);
   const haloMarkerRef = useRef<Marker | null>(null);
   const libRef = useRef<typeof import("maplibre-gl") | null>(null);
@@ -158,6 +170,7 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
       meMarkerRef.current = null;
       haloMarkerRef.current = null;
       markersRef.current = [];
+      pinOrderRef.current = [];
     };
     // Center is only the initial camera; later moves go through fly-to.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -219,19 +232,50 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
       const { root, pin } = pinElement(`${cls} hit-target`, content, p.name, (e) =>
         onSelectRef.current(nearestPin(e) ?? p.id),
       );
+      pin.addEventListener("keydown", (e) => pinKey(e as KeyboardEvent, p.id));
+      pin.addEventListener("focus", () => showFocused(p));
       const marker = new lib.Marker({ element: root, anchor: "center" }).setLngLat([p.lng, p.lat]).addTo(map);
       return { marker, pin, placeId: p.id };
+    };
+    // The pins are one Tab stop (the selected pin; the focus effect keeps the rest out of
+    // the Tab order). Arrow keys go through them in the sheet's order, quest first, and
+    // move the selection with the focus. They'd pan the map otherwise: it listens on the
+    // pins' parent, so the event stops here.
+    const pinKey = (e: KeyboardEvent, id: string) => {
+      const step = PIN_KEYS[e.key];
+      if (step === undefined || e.altKey || e.ctrlKey || e.metaKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const ring = pinOrderRef.current;
+      const at = ring.findIndex((m) => m.placeId === id);
+      const next = ring[step === "first" ? 0 : step === "last" ? ring.length - 1 : (at + step + ring.length) % ring.length];
+      if (!next || next.placeId === id) return;
+      next.pin.focus({ preventScroll: true });
+      onSelectRef.current(next.placeId);
+    };
+    // Tabbing onto a pin the map was panned away from: bring it into view (zoom, tilt and
+    // bearing stay). Arrow keys select the pin too, and that fly-to takes over.
+    const showFocused = (p: { lat: number; lng: number }) => {
+      const el = map.getContainer();
+      const padding = sheetPadding(bottomInsetRef.current, el.clientHeight, rightInsetRef.current);
+      if (!inView(map.project([p.lng, p.lat]), el.clientWidth, el.clientHeight, padding)) {
+        map.easeTo({ center: [p.lng, p.lat], padding, duration: 450, essential: false });
+      }
     };
     // Quest pin added last so it draws above any lead it overlaps.
     const markers = deck.map((d, i) => add("pin-lead", String(i + 1), d.place));
     if (quest) markers.push(add("pin-quest", flagIcon(), quest.place));
     markersRef.current = markers;
+    pinOrderRef.current = quest ? [markers[markers.length - 1], ...markers.slice(0, -1)] : markers;
     return () => markers.forEach((m) => m.marker.remove());
   }, [ready, quest, deck]);
 
   // Focus: highlight the pin and fly to it, leaving room for the sheet.
   useEffect(() => {
     markersRef.current.forEach((m) => (m.pin.dataset.selected = String(m.placeId === selectedId)));
+    // One Tab stop for all the pins: the selected one, else the first.
+    const tabStop = pinOrderRef.current.find((m) => m.placeId === selectedId) ?? pinOrderRef.current[0];
+    pinOrderRef.current.forEach((m) => (m.pin.tabIndex = m === tabStop ? 0 : -1));
     const map = mapRef.current;
     const target = [quest?.place, ...deck.map((d) => d.place)].find((p) => p?.id === selectedId);
     if (!ready || !map || !target) return;
@@ -290,6 +334,20 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
     // Only a height change runs this; selection changes go through the focus effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, bottomInset, rightInset]);
+
+  // The map credit (a licence requirement) sits above the sheet, not behind it. Beside the
+  // open sheet on a wide screen, it wraps to fit the strip of map right of the card. With
+  // the sheet open over it (a phone), it's out of sight, so out of the Tab order too.
+  useEffect(() => {
+    const el = mapRef.current?.getContainer();
+    const corner = el?.querySelector<HTMLElement>(".maplibregl-ctrl-bottom-right");
+    if (!ready || !el || !corner) return;
+    corner.style.bottom = `${bottomInset}px`;
+    // rightInset is the card's left edge from the right, plus 24 px; centred, the strip
+    // right of it is as wide as the card's left edge is from the left.
+    corner.style.maxWidth = rightInset > 0 ? `${Math.max(0, el.clientWidth - (rightInset - 24))}px` : "";
+    corner.inert = bottomCovered;
+  }, [ready, bottomInset, rightInset, bottomCovered]);
 
   // 2D/3D beside our own compass (MapLibre's isn't used). Either way the camera goes
   // back to the home bearing, at the new view's tilt.
@@ -352,7 +410,9 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
   // which would cancel `absolute inset-0` and collapse it to zero height. So position
   // a wrapper and give the map a plain full-size child.
   return (
-    <div className="absolute inset-0">
+    // z-0: the page puts the map after its header and sheet (so they come first in the Tab
+    // order); this keeps MapLibre's own layers under them all the same.
+    <div className="absolute inset-0 z-0">
       <div ref={containerRef} className="h-full w-full" aria-label="Map of nearby quests" role="region" />
       {/* In the page's top bar when it gives a place for them (they wrap below its pill
           when both don't fit); otherwise top right, level with the header. */}

@@ -79,6 +79,8 @@ body {
 
 /* A stamped button: ink border, hard offset shadow, presses down on click. */
 .stamp-btn {
+  /* The app's 44 px rule: py-2 text came to 42. Centred, so it looks the same. */
+  min-height: 44px;
   border: 1.5px solid var(--ink);
   box-shadow: 2px 2px 0 var(--ink);
   transition: transform 80ms, box-shadow 80ms;
@@ -88,14 +90,19 @@ body {
   box-shadow: 0 0 0 var(--ink);
 }
 
-/* MapLibre's attribution control, re-inked to sit on paper. */
+/* MapLibre's attribution control, re-inked to sit on paper. The map lifts its corner
+   above the sheet. */
 .maplibregl-ctrl-attrib {
   background: color-mix(in srgb, var(--paper) 85%, transparent) !important;
   font-family: var(--font-jetbrains), monospace;
-  font-size: 10px;
+  font-size: 11px;
 }
 .maplibregl-ctrl-attrib a {
   color: var(--ink-soft) !important;
+}
+/* Its toggle takes the app's oxblood focus ring, not MapLibre's blue glow. */
+.maplibregl-ctrl-attrib-button:focus {
+  box-shadow: none;
 }
 
 /* --- map pins ------------------------------------------------------------ */

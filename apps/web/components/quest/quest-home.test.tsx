@@ -14,7 +14,15 @@ vi.mock("@clerk/nextjs", () => ({
   UserButton: (p: UserButtonProps) => userButton(p),
   useUser: () => ({ user: clerkUser }),
 }));
-vi.mock("next/dynamic", () => ({ default: () => () => null })); // the WebGL map
+// The WebGL map: a stand-in that keeps the props it got and marks where it sits in the page.
+const mapProps = vi.hoisted(() => ({ last: null as Record<string, unknown> | null }));
+vi.mock("next/dynamic", () => ({
+  default: () =>
+    function QuestMap(p: Record<string, unknown>) {
+      mapProps.last = p;
+      return <div data-testid="map" />;
+    },
+}));
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
     <a href={href} {...rest}>
@@ -67,8 +75,9 @@ vi.mock("./quest-sheet", () => ({
       demo?: boolean;
       stampSlam?: boolean;
       onStampSlammed?: () => void;
+      onSnapChange?: (s: "peek" | "full") => void;
     }
-  >(function QuestSheet({ quest, deck, onAction, topLimit, onCoveredChange, note, onDismissNote, demo, stampSlam, onStampSlammed }, ref) {
+  >(function QuestSheet({ quest, deck, onAction, topLimit, onCoveredChange, note, onDismissNote, demo, stampSlam, onStampSlammed, onSnapChange }, ref) {
     useEffect(() => onCoveredChange({ bottom: SHEET_PEEK, right: 0 }), [onCoveredChange]);
     return (
       <section ref={ref} data-top-limit={topLimit}>
@@ -95,6 +104,8 @@ vi.mock("./quest-sheet", () => ({
         <button onClick={() => onAction("complete")}>I went</button>
         <button onClick={() => onAction("not-today")}>Set aside</button>
         <button onClick={() => onAction("skip")}>Skip</button>
+        <button onClick={() => onSnapChange?.("full")}>Open sheet</button>
+        <button onClick={() => onSnapChange?.("peek")}>Close sheet</button>
       </section>
     );
   }),
@@ -661,6 +672,14 @@ describe("QuestHome: Not today", () => {
     expect(reasonsPrompt()).toBeNull();
   });
 
+  it("moves focus to the first reason, in a group named by the question, so it's read out where it appeared", async () => {
+    await setAside();
+    const first = screen.getByRole("button", { name: "Not my thing" });
+    expect(document.activeElement).toBe(first);
+    const group = screen.getByRole("group", { name: "Set aside for today. Want to say why? It's optional." });
+    expect(group.contains(first)).toBe(true);
+  });
+
   it("asks nothing after a plain Skip", async () => {
     routes["/quests/today"] = ok(withQuest);
     routes["/quests/q1/skip"] = ok({});
@@ -804,5 +823,44 @@ describe("QuestHome: room for the quest sheet", () => {
     expect(header.className.split(" ")).toEqual(expect.arrayContaining(["flex-wrap", "justify-between"]));
     expect(slot.className.split(" ")).toContain("ml-auto"); // right-aligned on its own line too
     expect(header.contains(screen.getByRole("link", { name: "Journal" }))).toBe(true);
+  });
+});
+
+describe("QuestHome: keyboard and screen readers", () => {
+  it("makes the wordmark the page's h1", async () => {
+    routes["/quests/today"] = ok(withQuest);
+    render(<QuestHome />);
+    await settle();
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Larper");
+  });
+
+  it("puts the header and the sheet before the map in the page, so Tab reaches the quest first", async () => {
+    routes["/quests/today"] = ok(withQuest);
+    render(<QuestHome />);
+    await settle();
+    const map = screen.getByTestId("map");
+    const before = (el: Element) => !!(el.compareDocumentPosition(map) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(before(document.querySelector("header")!)).toBe(true);
+    expect(before(screen.getByText("quest: Cafe Uno").closest("section")!)).toBe(true);
+  });
+
+  it("tells the map when the open sheet covers its bottom edge (its credit is hidden there)", async () => {
+    routes["/quests/today"] = ok(withQuest);
+    render(<QuestHome />);
+    await settle();
+    expect(mapProps.last?.bottomCovered).toBe(false);
+    fireEvent.click(screen.getByText("Open sheet"));
+    expect(mapProps.last?.bottomCovered).toBe(true);
+    fireEvent.click(screen.getByText("Close sheet"));
+    expect(mapProps.last?.bottomCovered).toBe(false);
+  });
+
+  it("doesn't pulse the surveying pill under reduced motion", async () => {
+    routes["/quests/today"] = ok({ ...withQuest, surveying: { pending: ["dr72h"], failed: [] } });
+    render(<QuestHome />);
+    await settle();
+    const pill = screen.getAllByRole("status").find((el) => /Surveying the area/.test(el.textContent ?? ""))!;
+    expect(pill.className.split(" ")).toContain("motion-safe:animate-pulse");
+    expect(pill.className.split(" ")).not.toContain("animate-pulse");
   });
 });
