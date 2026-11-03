@@ -92,4 +92,19 @@ describe("describeError", () => {
     expect(describeError(new ApiError("x", 0, "timeout"))).toBe("The server is taking too long to answer.");
     expect(describeError(new Error("weird"))).toBe("Something went wrong.");
   });
+
+  it("says plain words instead of a developer's 4xx when given them, but keeps a rate limit's wait", () => {
+    expect(describeError(new ApiError("unknown card z in liked", 400), "Couldn't save your answers.")).toBe(
+      "Couldn't save your answers.",
+    );
+    expect(describeError(new ApiError("Too many requests. Try again in 30 s.", 429), "x")).toBe(
+      "Too many requests. Try again in 30 s.",
+    );
+    expect(describeError(new ApiError("x", 0, "network"), "Couldn't save.")).toBe("Can't reach the server. Check your connection.");
+    expect(describeError(new Error("weird"), "Couldn't save.")).toBe("Couldn't save.");
+  });
+
+  it("says a 401 means the session ended, never 'Unauthorized'", () => {
+    expect(describeError(new ApiError("Unauthorized", 401))).toBe("You've been signed out. Sign in again to carry on.");
+  });
 });

@@ -11,13 +11,21 @@ import { DEMO_MIDTOWN, DEMO_SPOT } from "@/lib/demo-spot";
 import { getPreciseFix } from "@/lib/precise-fix";
 import { formatDistance } from "@/lib/format";
 import { DemoNotice } from "./demo-notice";
+import { StateCard } from "./state-card";
 import { type Covered, QuestSheet, type QuestAction, type SheetNote } from "./quest-sheet";
 import type { Snap } from "./sheet-snap";
 
 export const SURVEY_POLL_MS = 4000;
 
 // A full page load on purpose: the location hook reads ?at= when the page starts.
-const demoAreaUrl = () => new URL(`/?at=${DEMO_SPOT.lat},${DEMO_SPOT.lng}`, window.location.origin).href;
+const atUrl = (p: { lat: number; lng: number }) => new URL(`/?at=${p.lat},${p.lng}`, window.location.origin).href;
+const demoAreaUrl = () => atUrl(DEMO_SPOT);
+// Where "nothing here" and "outside New York City" send a real account: Midtown is dense
+// and loaded, so it always has quests.
+const seeMidtown = { text: "See Midtown's quests", onClick: () => window.location.assign(atUrl(DEMO_MIDTOWN)) };
+// Already there (the demo account's fallback, or ?at= Midtown): no point offering it.
+export const isMidtown = (p: { lat: number; lng: number }) =>
+  Math.abs(p.lat - DEMO_MIDTOWN.lat) < 0.005 && Math.abs(p.lng - DEMO_MIDTOWN.lng) < 0.005;
 // An area's ingest takes about a minute (longer on a one-core VM). Past this, stop
 // polling and say so: the ingest-worker may be down, and the API keeps reporting the
 // area as pending while its job waits or retries.
@@ -104,7 +112,8 @@ export function QuestHome() {
   // answerable where it appeared (the button pressed may be gone by then).
   const firstReasonRef = useRef<HTMLButtonElement>(null);
   const [reloads, setReloads] = useState(0);
-  const sheetRef = useRef<HTMLDivElement>(null);
+  // The state card on screen instead of the sheet (loading, errors, surveying), if any.
+  const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null);
   // The top bar: the notices start below it, however many lines it wraps to. The map's
   // buttons go in its second slot.
   const headerRef = useRef<HTMLElement>(null);
@@ -184,15 +193,15 @@ export function QuestHome() {
     return () => clearTimeout(t);
   }, [surveying, surveyOverdue, loading, surveyStart, answered, pollDelay]);
 
-  // The fixed cards (errors, surveying) report their height here; the quest sheet
-  // reports its own settled height through onCoveredChange.
+  // The state cards (loading, errors, surveying) report their height here; the quest
+  // sheet reports its own settled height through onCoveredChange.
   useEffect(() => {
-    const el = sheetRef.current;
+    const el = cardEl;
     if (!el) return;
     const ro = new ResizeObserver(() => onCoveredChange({ bottom: el.offsetHeight, right: 0 }));
     ro.observe(el);
     return () => ro.disconnect();
-  }, [today, todayError, meError, onCoveredChange]);
+  }, [cardEl, onCoveredChange]);
 
   useEffect(() => {
     const el = headerRef.current;
@@ -424,47 +433,69 @@ export function QuestHome() {
         )}
       </div>
 
+      {/* Keyed by state: a new state is a new card, so an alert is announced as one. */}
       {!loc ? (
-        <BottomLabel>Finding you…</BottomLabel>
+        <StateCard key="Finding you…" ref={setCardEl} role="status" label="Finding you…" placeholder />
       ) : meError && !me ? (
-        <Panel
-          ref={sheetRef}
+        <StateCard
+          key="Couldn't load your journal"
+          ref={setCardEl}
+          role="alert"
           label="Couldn't load your journal"
           body={describeError(meError)}
           action={{ text: "Retry", onClick: retryMe }}
         />
       ) : !today && todayError ? (
-        <Panel
-          ref={sheetRef}
+        <StateCard
+          key="Couldn't load your quest"
+          ref={setCardEl}
+          role="alert"
           label="Couldn't load your quest"
           body={describeError(todayError)}
           action={{ text: loading ? "Retrying…" : "Retry", onClick: reload, disabled: loading }}
         />
       ) : !today ? (
-        <BottomLabel>Loading your quest…</BottomLabel>
+        <StateCard key="Loading your quest…" ref={setCardEl} role="status" label="Loading your quest…" placeholder />
       ) : surveying && !today.deck.length && quest?.status !== "completed" ? (
         surveyOverdue ? (
-          <Panel
-            ref={sheetRef}
+          <StateCard
+            key="Taking longer than usual"
+            ref={setCardEl}
+            role="status"
             label="Taking longer than usual"
             body="This area is still being surveyed. Check again in a bit, or try somewhere else."
             action={{ text: "Check again", onClick: keepSurveying }}
           />
         ) : (
-          <Panel
-            ref={sheetRef}
+          <StateCard
+            key="Uncharted territory"
+            ref={setCardEl}
+            role="status"
             label="Uncharted territory"
             body="Nobody's mapped this area yet. Surveying it now; your quest appears here in a minute or so."
           />
         )
       ) : !quest && !deck.length && (today.surveying?.outside?.length ?? 0) > 0 && !surveying ? (
-        // Nothing loaded here, and the API won't load it: the public demo covers one city.
-        <Panel
-          ref={sheetRef}
-          label="Outside the demo area"
-          body="This demo covers New York City. Try it from Washington Square instead."
-          action={{ text: "Go to the demo area", onClick: () => window.location.assign(demoAreaUrl()) }}
-        />
+        // Nothing loaded here, and the API won't load it: Larper covers one city.
+        me?.demo ? (
+          <StateCard
+            key="Outside the demo area"
+            ref={setCardEl}
+            role="status"
+            label="Outside the demo area"
+            body="This demo covers New York City. Try it from Washington Square instead."
+            action={{ text: "Go to the demo area", onClick: () => window.location.assign(demoAreaUrl()) }}
+          />
+        ) : (
+          <StateCard
+            key="Outside New York City"
+            ref={setCardEl}
+            role="status"
+            label="Outside New York City"
+            body="Larper covers New York City so far. You can look around Midtown in the meantime."
+            action={seeMidtown}
+          />
+        )
       ) : quest || deck.length ? (
         <QuestSheet
           quest={quest}
@@ -483,15 +514,19 @@ export function QuestHome() {
           onSnapChange={onSnapChange}
         />
       ) : (
-        <Panel
-          ref={sheetRef}
+        // Nothing here. Asking again gives the same answer (a failed survey is retried
+        // within the hour), so the action goes where there is something: Midtown.
+        <StateCard
+          key="Uncharted"
+          ref={setCardEl}
+          role="status"
           label="Uncharted"
           body={
             today.surveying?.failed.length
-              ? "Couldn't survey this area just now. Try again in a bit."
+              ? "Couldn't survey this area just now. Larper tries again within the hour."
               : "Nothing quest-worthy within reach here. Try somewhere livelier."
           }
-          action={{ text: loading ? "Checking…" : "Try again", onClick: reload, disabled: loading }}
+          action={loc && isMidtown(loc) ? undefined : seeMidtown}
         />
       )}
 
@@ -525,40 +560,6 @@ export function checkedIn(place: string, res: { simulated?: boolean; distanceM?:
     };
   }
   return { tone: "done", label: "Checked in", text: `${place} is in your journal.` };
-}
-
-function BottomLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <p role="status" className="field-label absolute inset-x-0 bottom-8 z-10 text-center">
-      {children}
-    </p>
-  );
-}
-
-interface PanelProps {
-  label: string;
-  body: string;
-  action?: { text: string; onClick: () => void; disabled?: boolean };
-  ref?: React.Ref<HTMLDivElement>;
-}
-
-// The bottom card for every state that isn't a quest: errors, surveying, nothing nearby.
-function Panel({ label, body, action, ref }: PanelProps) {
-  return (
-    <div ref={ref} className="absolute inset-x-0 bottom-0 z-10 mx-auto max-w-xl rounded-t-2xl bg-paper p-5 text-center">
-      <p className="field-label">{label}</p>
-      <p className="mt-1 text-ink-soft">{body}</p>
-      {action && (
-        <button
-          onClick={action.onClick}
-          disabled={action.disabled}
-          className="stamp-btn mt-3 rounded-md bg-oxblood px-4 py-2 text-paper disabled:opacity-50"
-        >
-          {action.text}
-        </button>
-      )}
-    </div>
-  );
 }
 
 function Centered({ children }: { children: React.ReactNode }) {

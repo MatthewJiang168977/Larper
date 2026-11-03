@@ -42,15 +42,22 @@ export class ApiError extends Error {
   }
 }
 
-/** What to tell the user about a failed call: the API's own words for 4xx, plain copy otherwise. */
-export function describeError(e: unknown): string {
+/**
+ * What to tell the user about a failed call: the API's own words for 4xx, plain copy
+ * otherwise. Pass `plain` for a call whose 4xx text is written for developers ("unknown
+ * card x in liked"): it's said instead. A rate limit keeps the API's words either way
+ * (they say how long to wait), and a 401 always means the session ended.
+ */
+export function describeError(e: unknown, plain?: string): string {
   if (e instanceof ApiError) {
     if (e.kind === "timeout") return "The server is taking too long to answer.";
     if (e.kind === "network") return "Can't reach the server. Check your connection.";
     if (e.status >= 500) return "Something went wrong on our end.";
-    return e.message;
+    if (e.status === 401) return "You've been signed out. Sign in again to carry on.";
+    if (e.status === 429) return e.message;
+    return plain ?? e.message;
   }
-  return "Something went wrong.";
+  return plain ?? "Something went wrong.";
 }
 
 // A 429's wait: the body's retryAfterS, else the Retry-After header (seconds). The body
@@ -179,4 +186,6 @@ export interface JournalEntry {
   name: string;
   category: string;
   reasons: Reasons;
+  /** A demo check-in the geofence would have refused: the demo pretended you arrived. */
+  simulated?: boolean;
 }

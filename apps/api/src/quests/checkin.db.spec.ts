@@ -158,6 +158,10 @@ describeDb('check-in (real database)', () => {
       expect(await statusOf()).toBe('completed');
       expect(logged()).toMatchObject({ outcome: 'too_far', simulated: true });
       expect((await stored())[0]).toMatchObject({ outcome: 'too_far', demo: true });
+      // The journal says so, and keeps the flag out of the reasons it shows.
+      const entry = (await quests.log(userId)).find((e) => e.id === questId);
+      expect(entry).toMatchObject({ status: 'completed', simulated: true });
+      expect(entry.reasons).not.toHaveProperty('simulated');
     });
 
     it('checks in normally at the door (not simulated)', async () => {
@@ -165,6 +169,7 @@ describeDb('check-in (real database)', () => {
       expect(res).toEqual({ id: questId, status: 'completed' });
       expect(logged()).toMatchObject({ outcome: 'accepted' });
       expect(logged()).not.toHaveProperty('simulated');
+      expect((await quests.log(userId)).find((e) => e.id === questId)).toMatchObject({ simulated: false });
     });
 
     it('still needs a position', async () => {
