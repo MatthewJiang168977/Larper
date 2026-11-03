@@ -34,7 +34,7 @@ helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
 # A cluster from before the per-service DB roles needs this once (see the script).
 scripts/pg-owner-createrole.sh
 helm upgrade --install larper infra/helm/larper -n larper -f infra/helm/larper/values-aks.yaml \
-  --set postgres.image="$ACR/larper-postgres:$(scripts/pg-tag.sh "$TAG")" \
+  --set postgres.image="$ACR/larper-postgres:$(scripts/pg-tag.sh)" \
   --set migrate.image="$ACR/larper-migrate:$TAG" \
   --set workers.image="$ACR/larper-workers:$TAG" \
   --set ingest.image="$ACR/larper-ingest:$TAG" \

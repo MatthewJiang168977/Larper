@@ -312,7 +312,7 @@ the old VM was removed.
 
 Passed on 2026-10-16: fresh bootstrap, re-running `oci-up.sh`, a reboot, and a
 restore chain (`pg` → `pg-2` → `pg-3`). Along the way it found the Postgres image tag
-CloudNativePG rejects (now `17-<commit>`, `scripts/pg-tag.sh`), the open Traefik
+CloudNativePG rejects (now `17-<content hash>`, `scripts/pg-tag.sh`), the open Traefik
 ports (the mangle guard), a restore that pointed the app at an empty database, and
 Git Bash rewriting `/readyz`-style arguments.
 

@@ -1,6 +1,7 @@
 # Checks every pull request and every push to main: the API and the web app (typecheck,
 # lint, unit tests), the Go workers (gofmt, vet, unit tests), the database tests against a real
-# Postgres with PostGIS and pgvector, the Helm chart, and that no committed load-test
+# Postgres with PostGIS and pgvector, that our Postgres image builds and loads its
+# extensions, the Helm chart, and that no committed load-test
 # result carries a Clerk session ID or token; gitleaks scans every commit for secrets.
 #
 # No secrets and no cloud: nothing here deploys, and pull requests from forks run it
@@ -192,6 +193,10 @@ jobs:
       # CRLF, failures), and a dirty tree is refused without --allow-dirty (fake CLIs).
       - name: oci-up.sh fails closed
         run: bash scripts/test/oci-up-guards.test.sh
+      # The Postgres tag follows infra/postgres's contents, so a deploy that doesn't
+      # change the image doesn't restart Postgres.
+      - name: Postgres tag follows the image's contents
+        run: bash scripts/test/pg-tag.test.sh
       - name: Render with each values file
         run: |
           chart=infra/helm/larper
@@ -248,6 +253,17 @@ jobs:
             helm template larper $chart -n larper $values | grep -q 'name: RATE_LIMIT_ENABLED, value: "1"' ||
               { echo "rate limits off with: ${values:-defaults}"; exit 1; }
           done
+
+  postgres-image:
+    name: Postgres image (build, PostGIS + pgvector load)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      # infra/postgres is what runs in production; the db job uses a stand-in image.
+      # This is what tests a Dependabot bump of the pinned base image.
+      - name: Build infra/postgres and load the extensions
+        run: bash scripts/test/pg-image.test.sh
 
   secrets:
     name: Secret scan (gitleaks, full history)

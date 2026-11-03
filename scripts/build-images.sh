@@ -30,7 +30,7 @@ build() { # image name, tag, then docker build args
   docker buildx build --builder larper-multi --platform "$PLATFORMS" \
     -t "$REGISTRY/$name:$tag" --push "$@"
 }
-PG_TAG=$(scripts/pg-tag.sh "$TAG")
+PG_TAG=$(scripts/pg-tag.sh)
 build larper-postgres "$PG_TAG" infra/postgres
 build larper-migrate "$TAG" db
 build larper-workers "$TAG" --target static workers
