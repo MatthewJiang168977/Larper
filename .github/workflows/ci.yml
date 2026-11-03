@@ -192,6 +192,10 @@ jobs:
       # CRLF, failures), and a dirty tree is refused without --allow-dirty (fake CLIs).
       - name: oci-up.sh fails closed
         run: bash scripts/test/oci-up-guards.test.sh
+      # The Postgres tag follows infra/postgres's contents, so a deploy that doesn't
+      # change the image doesn't restart Postgres.
+      - name: Postgres tag follows the image's contents
+        run: bash scripts/test/pg-tag.test.sh
       - name: Render with each values file
         run: |
           chart=infra/helm/larper

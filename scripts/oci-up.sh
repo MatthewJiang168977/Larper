@@ -332,7 +332,7 @@ import() { # image name, tag, docker build args...
     -t "$REG/$name:$tag" --output type=docker,dest=- "$@" \
     | vm "sudo k3s ctr -n k8s.io images import -"
 }
-PG_TAG=$(scripts/pg-tag.sh "$TAG")
+PG_TAG=$(scripts/pg-tag.sh)
 import larper-postgres "$PG_TAG" infra/postgres
 import larper-migrate "$TAG" db
 import larper-workers "$TAG" --target static workers
