@@ -6,11 +6,13 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { homeBearingAt } from "@/lib/regions";
 import { haloDiameterPx } from "./accuracy-halo";
-import { journalStyle } from "./journal-style";
+import { BUILDINGS_3D, buildingVisibility, journalStyle } from "./journal-style";
 import type { QuestMapProps } from "./quest-map";
 
 const PITCH = 55;
 const MIN_FRAME_ZOOM = 14.8;
+// How close a fly-to a single pin gets.
+const LEAD_ZOOM = 16.6;
 // Right- or Ctrl-drag tilts the 3D view; past this the map turns to sky and is hard to
 // read or recover from.
 export const MAX_PITCH = 60;
@@ -90,6 +92,87 @@ function pinElement(className: string, content: string | Node, title: string, on
   }
   root.appendChild(pin);
   return { root, pin };
+}
+
+// The place's name on a small paper label under its pin, shown by CSS (globals.css) on
+// the selected pin, a keyboard-focused one, and on hover where there is hover. The
+// pin's own aria-label already names it, so this is for the eye only.
+function nameLabel(name: string) {
+  const label = document.createElement("span");
+  label.className = "pin-name";
+  label.textContent = name;
+  label.setAttribute("aria-hidden", "true");
+  return label;
+}
+
+type LngLat = { lat: number; lng: number };
+type Padding = ReturnType<typeof sheetPadding>;
+
+// Web Mercator in world units (0..1 across), as MapLibre lays the world out: 512 px
+// wide at zoom 0.
+const WORLD_PX = 512;
+const LABEL_ROOM = 28;
+const NARROW_PX = 600;
+const toMerc = ({ lat, lng }: LngLat) => {
+  const phi = (lat * Math.PI) / 180;
+  return { x: (lng + 180) / 360, y: (1 - Math.log(Math.tan(phi) + 1 / Math.cos(phi)) / Math.PI) / 2 };
+};
+const fromMerc = (x: number, y: number): [number, number] => [
+  x * 360 - 180,
+  (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI,
+];
+
+// Flying to a lead keeps the quest in view, and you too if that still fits: the camera
+// that frames them all in the part of the map the sheet leaves, no closer than a pin's
+// usual 16.6. Too far apart for street scale, the lead wins at that scale, with the view
+// leaning toward the quest as far as the lead stays well inside. The center goes in the
+// padded part (the flight passes the padding).
+// (MapLibre's cameraForBounds fits the whole lat/lng rectangle turned by the bearing and
+// counts the map's padding twice: about two zoom levels further out than needed.)
+export function leadCamera(
+  lead: LngLat,
+  others: LngLat[][],
+  size: { w: number; h: number },
+  padding: Padding,
+  bearing: number,
+): { center: [number, number]; zoom: number } {
+  const a = (bearing * Math.PI) / 180;
+  const [cos, sin] = [Math.cos(a), Math.sin(a)];
+  // Into screen axes: the map turned by its bearing (u right, v down), and back.
+  const turn = (p: LngLat) => {
+    const m = toMerc(p);
+    return { u: m.x * cos + m.y * sin, v: -m.x * sin + m.y * cos };
+  };
+  const unturn = (u: number, v: number) => fromMerc(u * cos - v * sin, u * sin + v * cos);
+  // Room for the selected pin's name label under it. Sideways, a phone lets pins into
+  // the side padding (it's still on screen) or almost nothing would fit at street
+  // scale; a wide screen keeps them further in, so an edge pin's label isn't cut off.
+  const side = size.w < NARROW_PX ? -32 : 40;
+  const availW = size.w - padding.left - padding.right - 2 * side;
+  const availH = size.h - padding.top - padding.bottom - LABEL_ROOM;
+  const l = turn(lead);
+  if (availW > 0 && availH > 0) {
+    for (const extra of others) {
+      const pts = [l, ...extra.map(turn)];
+      const us = pts.map((p) => p.u);
+      const vs = pts.map((p) => p.v);
+      const [u0, u1, v0, v1] = [Math.min(...us), Math.max(...us), Math.min(...vs), Math.max(...vs)];
+      const zoom = Math.min(
+        LEAD_ZOOM,
+        Math.log2(availW / ((u1 - u0) * WORLD_PX)),
+        Math.log2(availH / ((v1 - v0) * WORLD_PX)),
+      );
+      if (zoom >= MIN_FRAME_ZOOM) return { center: unturn((u0 + u1) / 2, (v0 + v1) / 2), zoom };
+    }
+  }
+  // The lead no more than 70% of the way from the middle to the padded edge.
+  const q = others.at(-1)?.[0];
+  if (!q || availW <= 0 || availH <= 0) return { center: [lead.lng, lead.lat], zoom: MIN_FRAME_ZOOM };
+  const t = turn(q);
+  const px = WORLD_PX * 2 ** MIN_FRAME_ZOOM;
+  const [du, dv] = [(t.u - l.u) * px, (t.v - l.v) * px];
+  const k = Math.min(1, (availW * 0.35) / Math.abs(du), (availH * 0.35) / Math.abs(dv));
+  return { center: unturn(l.u + (t.u - l.u) * k, l.v + (t.v - l.v) * k), zoom: MIN_FRAME_ZOOM };
 }
 
 // In 2D the map stays flat and keeps its bearing: no gesture tilts or turns it (and
@@ -254,6 +337,7 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
       );
       pin.addEventListener("keydown", (e) => pinKey(e as KeyboardEvent, p.id));
       pin.addEventListener("focus", () => showFocused(p));
+      pin.after(nameLabel(p.name));
       const marker = new lib.Marker({ element: root, anchor: "center" }).setLngLat([p.lng, p.lat]).addTo(map);
       return { marker, pin, placeId: p.id };
     };
@@ -327,7 +411,13 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
       }
       return;
     }
-    map.flyTo({ ...camera, center: [target.lng, target.lat], zoom: 16.6, padding });
+    if (quest && target.id !== quest.place.id) {
+      const q = quest.place;
+      const size = { w: map.getContainer().clientWidth, h: map.getContainer().clientHeight };
+      map.flyTo({ ...camera, ...leadCamera(target, [[q, meRef.current], [q]], size, padding, camera.bearing), padding });
+      return;
+    }
+    map.flyTo({ ...camera, center: [target.lng, target.lat], zoom: LEAD_ZOOM, padding });
     // bottomInset is read through its ref, so a height change alone doesn't land here.
   }, [ready, selectedId, quest, deck]);
 
@@ -383,6 +473,28 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
     // unless 3D was picked again meanwhile.
     if (next === "2d") map.once("moveend", () => viewRef.current === "2d" && map.setMaxPitch(0));
   };
+
+  // Buildings follow the view: extruded in 3D, flat outlines in 2D (extrusions seen from
+  // straight above lean outward and hide the streets and pins). Swapped as the toggle
+  // starts its ease, so the tilt animates over the new layer. Before the style has
+  // loaded, the swap waits for it.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    const apply = () => {
+      for (const [id, visibility] of Object.entries(buildingVisibility(view))) {
+        if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visibility);
+      }
+    };
+    if (map.getLayer(BUILDINGS_3D)) {
+      apply();
+      return;
+    }
+    map.once("load", apply);
+    return () => {
+      map.off("load", apply);
+    };
+  }, [ready, view]);
 
   // The compass: its needle always points to true north (it turns against the bearing),
   // and a click puts the map north-up at the view's tilt, however it was turned or

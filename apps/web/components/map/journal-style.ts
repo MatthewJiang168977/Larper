@@ -1,6 +1,7 @@
 import type { StyleSpecification } from "maplibre-gl";
 
-// A field-journal map: paper ground, ink-line streets, pale extruded buildings.
+// A field-journal map: paper ground, ink-line streets, pale extruded buildings
+// (flat footprints in 2D).
 // OpenFreeMap serves OpenStreetMap vector tiles in the OpenMapTiles schema, free and
 // keyless. Place POIs are left out on purpose: the only points of interest are quests.
 const C = {
@@ -15,9 +16,18 @@ const C = {
   inkPath: "#a89f8c",
   building: "#e6dcc6",
   buildingTop: "#dacfb5",
+  buildingEdge: "#cdbf9f",
   label: "#5d574c",
   labelHalo: "#f2ead8",
 };
+
+export const BUILDINGS_3D = "buildings-3d";
+export const BUILDINGS_2D = "buildings-2d";
+
+// Which building layer each view shows (below zoom 15 both use the flat one).
+export function buildingVisibility(view: "3d" | "2d"): Record<string, "visible" | "none"> {
+  return view === "2d" ? { [BUILDINGS_3D]: "none", [BUILDINGS_2D]: "visible" } : { [BUILDINGS_3D]: "visible", [BUILDINGS_2D]: "none" };
+}
 
 export const journalStyle: StyleSpecification = {
   version: 8,
@@ -114,8 +124,19 @@ export const journalStyle: StyleSpecification = {
       maxzoom: 15,
       paint: { "fill-color": C.building, "fill-outline-color": C.paperDeep },
     },
+    // 2D's buildings: the footprints, flat, with a crisp edge. Hidden until the map goes
+    // 2D (buildingVisibility), where they take over from the extrusions.
     {
-      id: "buildings-3d",
+      id: BUILDINGS_2D,
+      type: "fill",
+      source: "omt",
+      "source-layer": "building",
+      minzoom: 15,
+      layout: { visibility: "none" },
+      paint: { "fill-color": C.building, "fill-outline-color": C.buildingEdge },
+    },
+    {
+      id: BUILDINGS_3D,
       type: "fill-extrusion",
       source: "omt",
       "source-layer": "building",

@@ -380,8 +380,10 @@ function Peek({
           <div className="flex shrink-0 gap-2">
             <PrimaryAction status={quest.status} onAction={onAction} busy={busy} />
             {done && <DoneStamp slam={stampSlam} onSlammed={onStampSlammed} onImpact={onImpact} />}
-            {/* Wide screens: Skip / Not today beside it. Phones keep it in full. */}
+            {/* Skip / Not today beside it on every screen: a stamped button on wide
+                ones, quiet text on phones, where the row is tight. */}
             <SecondaryAction status={quest.status} onAction={onAction} busy={busy} className="hidden lg:inline-flex" />
+            <SecondaryAction status={quest.status} onAction={onAction} busy={busy} quiet className="lg:hidden" />
           </div>
         )}
       </div>
@@ -461,14 +463,12 @@ function DoneForToday({ demo }: { demo?: boolean }) {
   );
 }
 
-// Full: the leads, why this place, its tags, the links, and the quieter action.
+// Full: the leads, why this place, its tags and the links. (The quest's actions are all in peek.)
 function Rest({
   quest,
   deck,
   selectedId,
   onSelect,
-  onAction,
-  busy,
   focused,
   isQuest,
 }: Props & { focused: QuestView | DeckItem; isQuest: boolean }) {
@@ -518,16 +518,10 @@ function Rest({
         )}
         <Links place={place} />
 
-        <div className={`mt-4 flex flex-wrap gap-2 ${isQuest ? "lg:hidden" : ""}`}>
-          {isQuest && quest ? (
-            // Wide screens show it in peek, beside the main action.
-            <SecondaryAction status={quest.status} onAction={onAction} busy={busy} />
-          ) : (
-            <p className="text-sm text-ink-soft">
-              A lead, not your quest. Skip today&apos;s quest and the best remaining lead takes its place.
-            </p>
-          )}
-        </div>
+        {!isQuest && (
+          // Lead 1 is the best remaining one: a skip offers it next.
+          <p className="mt-4 text-sm text-ink-soft">A backup nearby. If you skip today&apos;s quest, lead 1 moves up.</p>
+        )}
       </div>
     </div>
   );
@@ -582,7 +576,7 @@ function Tab({
       onClick={onClick}
       aria-pressed={active}
       aria-label={label}
-      className={`hit-target shrink-0 max-w-[11rem] rounded-full border px-3 py-1 font-mono text-xs lg:flex lg:w-full lg:max-w-full lg:items-start lg:gap-2 lg:rounded-md lg:border-0 lg:px-2 lg:py-1 lg:text-left lg:font-sans ${tone}`}
+      className={`hit-target shrink-0 max-w-[11rem] rounded-full border px-3 py-1 font-mono text-xs lg:flex lg:w-full lg:max-w-full lg:items-start lg:gap-2 lg:rounded-md lg:border-0 lg:px-2 lg:py-1 lg:text-left lg:font-serif ${tone}`}
     >
       <span className="block truncate lg:hidden">{label}</span>
       <span aria-hidden className="hidden w-5 shrink-0 pt-0.5 text-right font-mono text-xs lg:block">
@@ -590,7 +584,7 @@ function Tab({
       </span>
       <span aria-hidden className="hidden min-w-0 flex-1 lg:block">
         <span className="block text-sm font-medium leading-snug">{place.name}</span>
-        <span className="block truncate text-xs leading-snug opacity-75">
+        <span className="block truncate font-mono text-xs leading-snug opacity-75">
           {humanize(place.category)} · {formatDistance(place.distanceM)}
         </span>
       </span>
@@ -657,6 +651,7 @@ function Links({ place }: { place: PlaceView }) {
 
 const PRIMARY = "stamp-btn shrink-0 rounded-md bg-oxblood px-4 py-2 font-medium text-paper disabled:opacity-50";
 const SECONDARY = "stamp-btn rounded-md bg-paper px-4 py-2 text-ink disabled:opacity-50";
+const QUIET = "hit-target px-2 py-2 text-ink-soft underline underline-offset-4 disabled:opacity-50";
 
 function PrimaryAction({ status, onAction, busy }: { status: QuestView["status"]; onAction: (a: QuestAction) => void; busy: boolean }) {
   if (status === "offered") {
@@ -681,22 +676,26 @@ function SecondaryAction({
   onAction,
   busy,
   className = "",
+  quiet,
 }: {
   status: QuestView["status"];
   onAction: (a: QuestAction) => void;
   busy: boolean;
   className?: string;
+  /** Plain underlined text (with a 44 px hit area) instead of a stamped button. */
+  quiet?: boolean;
 }) {
+  const look = quiet ? QUIET : SECONDARY;
   if (status === "offered") {
     return (
-      <button className={`${SECONDARY} ${className}`} disabled={busy} onClick={() => onAction("skip")}>
+      <button className={`${look} ${className}`} disabled={busy} onClick={() => onAction("skip")}>
         Skip
       </button>
     );
   }
   if (status === "accepted") {
     return (
-      <button className={`${SECONDARY} ${className}`} disabled={busy} onClick={() => onAction("not-today")}>
+      <button className={`${look} ${className}`} disabled={busy} onClick={() => onAction("not-today")}>
         Not today
       </button>
     );
