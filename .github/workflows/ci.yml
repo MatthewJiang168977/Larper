@@ -331,3 +331,10 @@ jobs:
           node -e "const r = require('./apps/web/.next/routes-manifest.json').rewrites;
             const n = [r.beforeFiles, r.afterFiles, r.fallback].flat().length;
             if (n) { console.error('production build has rewrites:', JSON.stringify(r)); process.exit(1); }"
+      # .next/static is what Vercel serves publicly. Source maps never belong there:
+      # outside a Vercel production build Sentry turns them off, and there they're
+      # uploaded to Sentry and deleted (apps/web/next.config.ts).
+      - name: No public source maps
+        run: |
+          maps=$(find apps/web/.next/static -name '*.map')
+          if [[ -n $maps ]]; then echo "source maps in .next/static:"; echo "$maps" | head; exit 1; fi
