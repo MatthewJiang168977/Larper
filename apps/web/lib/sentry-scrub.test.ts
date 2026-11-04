@@ -80,10 +80,17 @@ describe("scrubEvent", () => {
 });
 
 describe("sentryOptions", () => {
-  it("is off without a DSN, samples 10%, sends no PII and no trace headers", () => {
+  it("is off without a DSN, samples 10%, collects no user data and sends no trace headers", () => {
     expect(sentryOptions.enabled).toBe(false);
     expect(sentryOptions.tracesSampleRate).toBe(0.1);
-    expect(sentryOptions.sendDefaultPii).toBe(false);
+    expect(sentryOptions.dataCollection).toMatchObject({
+      userInfo: false,
+      cookies: false,
+      httpHeaders: false,
+      httpBodies: [],
+      urlQueryParams: false,
+      stackFrameVariables: false,
+    });
     expect(sentryOptions.tracePropagationTargets).toEqual([]);
   });
 
