@@ -77,6 +77,7 @@ RAM**: the stack takes ~7.5 GB in Docker's VM.
 ```bash
 git clone https://github.com/MatthewJiang168977/Larper.git && cd Larper
 pnpm install                                     # ~2 min the first time
+git config core.hooksPath .githooks                # pre-commit: gitleaks blocks staged secrets (needs Docker)
 cp apps/web/.env.example apps/web/.env.local     # then paste your Clerk keys
 ./scripts/up.sh
 ```
@@ -503,7 +504,7 @@ TEST_DATABASE_URL=postgres://... pnpm --filter @larper/api test candidates.db  #
 | Go workers | `gofmt -l`, `go vet ./...`, `go test ./...` (unit tests; the integration tests skip) |
 | Database | Postgres 17 + PostGIS 3.6 + pgvector 0.8 and Redis 7.4 as service containers, set up with the owner and service roles as CloudNativePG does (`db/test`), all migrations applied as the owner with the Helm Job's `migrate` image (and the last one re-run). Then, each as its service's role: the Go integration tests (queue, stats refresh, the lost-update race) as the ingest-worker's, and the API's `*.db` specs (check-in, candidates, and `roles.db`: exact grants, denials) as the API's. Then the rate limits against Redis (`throttle.redis`: shared across two API instances, one Lua script per window, failing open) |
 | Helm | `helm lint`, the chart rendered with the default, monitoring, AKS, EKS, OCI and demo values, refusing database connection limits that don't cover pool × pods, and rate limits on in every profile |
-| Secret scan | gitleaks (pinned image) over **every commit**, default rules plus [`.gitleaks.toml`](.gitleaks.toml), which allows only Clerk publishable keys (public by design). Before a commit: `scripts/secret-scan.sh` (staged changes) or `--history` (what CI runs) |
+| Secret scan | gitleaks (pinned image) over **every commit**, default rules plus [`.gitleaks.toml`](.gitleaks.toml), which allows only Clerk publishable keys (public by design). Before a commit: the [`.githooks/pre-commit`](.githooks/pre-commit) hook (`git config core.hooksPath .githooks`) scans the staged lines and blocks the commit on any finding; `scripts/secret-scan.sh --history` runs what CI runs. The hook's own test (`scripts/test/pre-commit-hook.test.sh`) runs in this job |
 | Load-test results | `loadtest/redact.js --check`: no Clerk session IDs, tokens or k6 `setup_data` in `loadtest/results` |
 
 The database is empty apart from what the tests insert, so two kinds of test skip there and run

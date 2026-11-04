@@ -1,3 +1,4 @@
+import { withSentryConfig } from "@sentry/nextjs/config";
 import type { NextConfig } from "next";
 import { PHASE_DEVELOPMENT_SERVER, PHASE_PRODUCTION_BUILD } from "next/constants";
 
@@ -20,7 +21,7 @@ export default function config(phase: string): NextConfig {
     );
   }
   const devProxy = phase === PHASE_DEVELOPMENT_SERVER && !apiUrl;
-  return {
+  const nextConfig: NextConfig = {
     ...(devProxy && {
       rewrites: async () => [
         { source: "/api/:path*", destination: `${process.env.API_URL ?? "http://localhost:8080"}/:path*` },
@@ -36,5 +37,32 @@ export default function config(phase: string): NextConfig {
         },
       },
     },
+  };
+  return withSentryConfig(nextConfig, sentryBuildOptions(phase === PHASE_PRODUCTION_BUILD && !typegen));
+}
+
+// Sentry at build time: the release is the commit, and the browser's source maps go
+// to Sentry and are then deleted from the build, so they're never served.
+//
+// A Vercel production build must upload them: without SENTRY_AUTH_TOKEN (or the DSN)
+// it fails, like a missing NEXT_PUBLIC_API_URL. Every other build (local, CI, preview)
+// turns source maps off entirely, so none are generated and none can be left behind.
+function sentryBuildOptions(build: boolean): Parameters<typeof withSentryConfig>[1] {
+  const production = build && process.env.VERCEL_ENV === "production";
+  if (production) {
+    for (const name of ["SENTRY_AUTH_TOKEN", "NEXT_PUBLIC_SENTRY_DSN", "SENTRY_ORG", "SENTRY_PROJECT"]) {
+      if (!process.env[name]) {
+        throw new Error(`${name} is not set. A Vercel production build uploads its source maps to Sentry.`);
+      }
+    }
+  }
+  return {
+    org: process.env.SENTRY_ORG,
+    project: process.env.SENTRY_PROJECT,
+    authToken: process.env.SENTRY_AUTH_TOKEN,
+    release: { name: process.env.VERCEL_GIT_COMMIT_SHA },
+    sourcemaps: production ? { deleteSourcemapsAfterUpload: true } : { disable: true },
+    telemetry: false,
+    silent: !production,
   };
 }

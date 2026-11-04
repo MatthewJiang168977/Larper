@@ -284,6 +284,10 @@ jobs:
             zricethezav/gitleaks:v8.21.2@sha256:0e99e8821643ea5b235718642b93bb32486af9c8162c8b8731f7cbdc951a7f46 \
             -c 'git config --global --add safe.directory /repo &&
                 gitleaks detect --source /repo --config /repo/.gitleaks.toml --redact --no-banner -v'
+      # The pre-commit hook (.githooks/pre-commit) blocks a staged secret and lets a
+      # clean commit through.
+      - name: pre-commit hook blocks staged secrets
+        run: bash scripts/test/pre-commit-hook.test.sh
 
   results:
     name: Load-test results (no session IDs or tokens)
@@ -331,3 +335,10 @@ jobs:
           node -e "const r = require('./apps/web/.next/routes-manifest.json').rewrites;
             const n = [r.beforeFiles, r.afterFiles, r.fallback].flat().length;
             if (n) { console.error('production build has rewrites:', JSON.stringify(r)); process.exit(1); }"
+      # .next/static is what Vercel serves publicly. Source maps never belong there:
+      # outside a Vercel production build Sentry turns them off, and there they're
+      # uploaded to Sentry and deleted (apps/web/next.config.ts).
+      - name: No public source maps
+        run: |
+          maps=$(find apps/web/.next/static -name '*.map')
+          if [[ -n $maps ]]; then echo "source maps in .next/static:"; echo "$maps" | head; exit 1; fi
