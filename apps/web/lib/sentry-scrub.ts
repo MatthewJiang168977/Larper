@@ -1,24 +1,33 @@
 // What may leave the browser (or the web server) in a Sentry event: no emails, no
 // tokens or Clerk IDs, no cookies or auth headers, no coordinates, no quest or place
-// IDs. Applied to errors, transactions and breadcrumbs (lib/sentry-options.ts).
+// IDs, no query strings. Applied to errors, transactions, spans and breadcrumbs
+// (lib/sentry-options.ts).
 //
 // It works on the whole event, not on known fields: an error message, a breadcrumb's
 // URL and a span's attributes all carry the same kinds of strings.
+//
+// The same rules as the API's apps/api/src/sentry/scrub.ts and the workers'
+// workers/internal/platform/sentry.go: change all three together.
 
 const FILTERED = "[Filtered]";
 
-/** Keys whose values are dropped wherever they appear (compared lowercased, without _ and -). */
+/**
+ * Keys whose values are dropped wherever they appear: compared lowercased, without _
+ * and -, whole or by their last dotted part (user.email, client.address).
+ */
 const DROP_KEYS = new Set(
   [
     "cookie", "cookies", "set-cookie", "authorization", "x-clerk-auth-token",
     "email", "emailaddress", "token", "ticket", "password", "secret",
-    "lat", "lng", "lon", "latitude", "longitude", "accuracy", "accuracym", "coords", "coordinates",
-    "placeid", "questid", "place", "placename", "address",
-    "ip", "ipaddress",
+    "lat", "lng", "lon", "latitude", "longitude", "accuracy", "accuracym", "coords", "coordinates", "bbox",
+    "placeid", "questid", "place", "placename", "address", "userid",
+    "ip", "ipaddress", "clientip", "query", "querystring",
   ].map((k) => k.replace(/[-_]/g, "")),
 );
 
 const PATTERNS: [RegExp, string][] = [
+  // Query strings: https://x/quests/today?lat=1&lng=2 -> https://x/quests/today.
+  [/\?[A-Za-z0-9_.~%+-]+=[^\s#"']*/g, ""],
   // Clerk IDs and secret keys (as in loadtest/redact.js), JWTs, bearer tokens.
   [/\b(sess|user|client|sms|idn|org|ins|sk_test|sk_live|pk_test|pk_live)_[A-Za-z0-9]{8,}\b/g, "$1_[Filtered]"],
   [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+/g, "[JWT]"],
@@ -39,6 +48,11 @@ export function scrubString(s: string): string {
 
 const normalizeKey = (k: string) => k.toLowerCase().replace(/[-_]/g, "");
 
+function isDropped(key: string): boolean {
+  const k = normalizeKey(key);
+  return DROP_KEYS.has(k) || DROP_KEYS.has(k.slice(k.lastIndexOf(".") + 1));
+}
+
 /** A deep copy with dropped keys filtered and every string scrubbed. */
 export function scrubValue<T>(value: T, depth = 0): T {
   if (depth > 12) return FILTERED as T;
@@ -47,7 +61,7 @@ export function scrubValue<T>(value: T, depth = 0): T {
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = DROP_KEYS.has(normalizeKey(k)) ? FILTERED : scrubValue(v, depth + 1);
+      out[k] = isDropped(k) ? FILTERED : scrubValue(v, depth + 1);
     }
     return out as T;
   }
