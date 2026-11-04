@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Blocks a commit whose staged changes add a secret: gitleaks, with the image and rules
+# CI uses (scripts/secret-scan.sh's IMAGE, .gitleaks.toml), over the added lines only.
+# Reads the diff from stdin, so it also works in a git worktree.
+#
+# Setup, once per clone:  git config core.hooksPath .githooks
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+export MSYS_NO_PATHCONV=1 # Git Bash: leave the container paths alone
+
+# The added lines, without the diff's "+++ b/file" headers (they follow a "--- " line).
+added=$(git diff --cached --no-color --no-ext-diff -U0 --diff-filter=d |
+  awk 'prev ~ /^--- / && /^\+\+\+ / { prev = $0; next } { prev = $0 } /^\+/ { print substr($0, 2) }')
+[[ -n $added ]] || exit 0
+
+blocked() { echo "pre-commit: $*" >&2; echo "pre-commit: commit blocked." >&2; exit 1; }
+
+IMAGE=$(sed -n 's/^IMAGE=//p' scripts/secret-scan.sh)
+[[ -n $IMAGE ]] || blocked "no gitleaks IMAGE= line in scripts/secret-scan.sh"
+docker info >/dev/null 2>&1 || blocked "Docker isn't running, so the secret scan can't run. Start Docker and commit again."
+
+config=$(pwd -W 2>/dev/null || pwd)/.gitleaks.toml # a Windows path for Docker Desktop under Git Bash
+if ! printf '%s\n' "$added" |
+  docker run --rm -i -v "$config:/gitleaks.toml:ro" "$IMAGE" \
+    stdin --config /gitleaks.toml --redact --no-banner -v; then
+  blocked "gitleaks found a secret in the staged changes (above). Remove it; if it's a test fixture, build it at runtime (\"sk_\" + \"live_...\")."
+fi
