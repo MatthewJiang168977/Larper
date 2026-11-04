@@ -165,6 +165,15 @@ postgres:
     enabled: false
     fromServerName: ""
 
+# Errors and 10% of traces to Sentry, scrubbed in the code (apps/api/src/instrument.ts,
+# workers/internal/platform/sentry.go). Off by default; scripts/oci-up.sh turns it on
+# when ~/.oci/larper-sentry.env exists and creates the Secret from it.
+sentry:
+  enabled: false
+  secretName: sentry
+  environment: production
+  tracesSampleRate: "0.1"
+
 migrate:
   # Built from db/Dockerfile: golang-migrate + db/migrations.
   image: larper-registry:5111/larper-migrate:dev

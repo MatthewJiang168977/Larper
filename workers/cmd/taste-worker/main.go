@@ -48,6 +48,7 @@ var errPoison = errors.New("poison record")
 
 func main() {
 	log := platform.Logger(consumer)
+	defer platform.FlushSentry()
 	ctx, stop := platform.SignalContext()
 	defer stop()
 

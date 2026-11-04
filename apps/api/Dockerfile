@@ -17,4 +17,6 @@ COPY --from=build /out/node_modules ./node_modules
 COPY --from=build /repo/apps/api/dist ./dist
 USER node
 EXPOSE 3000
-CMD ["node", "dist/main.js"]
+# Stack traces point at the TypeScript source (tsc emits the maps; they stay in the
+# image): Sentry gets readable traces with nothing to upload.
+CMD ["node", "--enable-source-maps", "dist/main.js"]

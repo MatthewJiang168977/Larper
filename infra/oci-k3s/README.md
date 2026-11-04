@@ -510,6 +510,34 @@ Its Kubernetes service account can only `get` the `pg-backups` ObjectStore.
 Check by hand: `kubectl -n larper create job --from=cronjob/backup-check backup-check-now`,
 then `kubectl -n larper logs job/backup-check-now` (one `backup-check {...}` line).
 
+## Sentry
+
+The API and the Go workers report to Sentry when `~/.oci/larper-sentry.env` exists. They
+share one Sentry project (the workers' events carry the `service` tag and the Go SDK):
+
+```
+API_DSN=https://<key>@o<org>.ingest.us.sentry.io/<project>
+# WORKERS_DSN=...   optional: a separate project for the workers (default: API_DSN)
+```
+
+`scripts/oci-up.sh` checks the DSNs before anything remote changes (a malformed or missing
+`API_DSN` stops the deploy), writes them to the Secret `sentry` (keys `apiDsn`, `workersDsn`)
+and sets `sentry.enabled=true`. No file: Sentry is off and the deploy says so.
+
+- **API** (`apps/api/src/instrument.ts`): unexpected errors (not 4xx) and 10% of traces
+  (`sentry.tracesSampleRate`); health checks, `/metrics` and CORS preflights are never
+  traced. Stack traces point at the TypeScript (`node --enable-source-maps`; nothing is
+  uploaded).
+- **Workers** (`workers/internal/platform/sentry.go`): every Error-level log line, no
+  traces.
+- **Release** = the image tag (the commit), **environment** = `sentry.environment`.
+- **What's sent:** no user, cookies, headers, bodies, query strings, SQL parameters or
+  stack-frame variables (Sentry v11 `dataCollection`), and every event goes through the
+  scrubber: no emails, tokens or Clerk IDs, coordinates, or quest and place IDs. The
+  web app's Sentry (`apps/web/lib/sentry-*.ts`) uses the same rules.
+
+To turn it off: delete the file and redeploy (the Secret stays but nothing reads it).
+
 ## On the real VM (2026-10-21)
 
 First deploy of `oci-up.sh` (demo profile) on the A1 instance (1 OCPU / 6 GB):

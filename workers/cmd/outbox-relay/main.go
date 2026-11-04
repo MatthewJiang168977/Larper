@@ -28,6 +28,7 @@ const (
 
 func main() {
 	log := platform.Logger("outbox-relay")
+	defer platform.FlushSentry()
 	ctx, stop := platform.SignalContext()
 	defer stop()
 

@@ -53,7 +53,7 @@ describe('CORS on the API', () => {
     expect(res.status).toBe(204);
     expect(res.headers.get('access-control-allow-origin')).toBe(WEB);
     expect(res.headers.get('access-control-allow-methods')).toBe('GET,POST');
-    expect(res.headers.get('access-control-allow-headers')).toBe('Authorization,Content-Type');
+    expect(res.headers.get('access-control-allow-headers')).toBe('Authorization,Content-Type,sentry-trace,baggage');
     expect(res.headers.get('access-control-max-age')).toBe('7200');
     expect(res.headers.get('access-control-allow-credentials')).toBeNull();
     expect(res.headers.get('vary')).toContain('Origin');
