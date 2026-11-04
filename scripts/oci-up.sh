@@ -398,7 +398,8 @@ if [[ -n $CHECK_PING_URL ]]; then
 else
   log "no $CHECK_ENV: the backup check will run but alert nobody (infra/oci-k3s/README.md, \"Backup check\")"
 fi
-# Sentry (values.yaml sentry): one DSN per Sentry project, larper-api and larper-workers.
+# Sentry (values.yaml sentry): one project, larper-api, for the API and the workers. The
+# workers use WORKERS_DSN if the file sets one, and API_DSN otherwise.
 sentry=(--set sentry.enabled=false)
 if [[ -n $SENTRY_API_DSN ]]; then
   kubectl -n larper create secret generic sentry --from-literal=apiDsn="$SENTRY_API_DSN" \

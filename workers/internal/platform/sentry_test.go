@@ -5,6 +5,11 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -15,7 +20,8 @@ func TestScrubString(t *testing.T) {
 		"session sess_2abcDEF345ghiJKL678":               "session sess_[Filtered]",
 		"token eyJhbGciOiJSUzI1.eyJzdWIiOiJ1c2Vy.c2lnbg": "token [JWT]",
 		"Authorization: Bearer abc.def-ghi":              "Authorization: Bearer [Filtered]",
-		"/quests/today?lat=40.7301&lng=-73.9965":         "/quests/today?lat=[Filtered]&lng=[Filtered]",
+		"/quests/today?lat=40.7301&lng=-73.9965":         "/quests/today",
+		"bad input lat=40.7301 lng=-73.9965":             "bad input lat=[Filtered] lng=[Filtered]",
 		"too far from 40.73012, -73.99651":               "too far from [coords]",
 		"POST /quests/4812/accept":                       "POST /quests/:id/accept",
 		"dial tcp 10.43.0.12:5432: connection refused":   "dial tcp 10.43.0.12:5432: connection refused",
@@ -53,6 +59,54 @@ func TestEventFromRecord(t *testing.T) {
 	job := extra["job"].(map[string]any)
 	if job["lat"] != filtered || job["attempt"] != int64(2) {
 		t.Errorf("job group = %#v", job)
+	}
+}
+
+func TestFingerprintIgnoresTheErrorText(t *testing.T) {
+	h := &sentryHandler{next: slog.NewJSONHandler(io.Discard, nil), attrs: []slog.Attr{slog.String("service", "outbox-relay")}}
+	var prints [][]string
+	for _, addr := range []string{"10.43.0.12:5432", "10.43.0.19:5432"} {
+		r := slog.NewRecord(time.Now(), slog.LevelError, "postgres", 0)
+		r.AddAttrs(slog.Any("err", errors.New("dial tcp "+addr+": connection refused")))
+		e := h.event(r)
+		if !strings.HasPrefix(e.Message, "postgres: dial tcp ") {
+			t.Errorf("message = %q", e.Message)
+		}
+		prints = append(prints, e.Fingerprint)
+	}
+	want := []string{"outbox-relay", "postgres"}
+	for _, p := range prints {
+		if !slices.Equal(p, want) {
+			t.Errorf("fingerprint = %q, want %q", p, want)
+		}
+	}
+}
+
+func TestDottedKeysAreDroppedByTheirLastPart(t *testing.T) {
+	for key, dropped := range map[string]bool{"user.email": true, "client.address": true, "url.query": true, "user.id": false, "url.path": false} {
+		if got := isDropped(key); got != dropped {
+			t.Errorf("isDropped(%q) = %v, want %v", key, got, dropped)
+		}
+	}
+}
+
+// The workers drop the same keys as the API (plus workerOnlyDropKeys): read the list
+// out of apps/api/src/sentry/scrub.ts.
+func TestDropKeysMatchTheAPI(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "..", "apps", "api", "src", "sentry", "scrub.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?s)const DROP_KEYS = new Set\(\s*\[(.*?)\]\.map`).FindSubmatch(src)
+	if m == nil {
+		t.Fatal("no DROP_KEYS list in scrub.ts")
+	}
+	var api []string
+	for _, q := range regexp.MustCompile(`'([^']+)'`).FindAllSubmatch(m[1], -1) {
+		api = append(api, string(q[1]))
+	}
+	if !slices.Equal(api, sharedDropKeys) {
+		t.Errorf("scrub.ts DROP_KEYS = %q\nsentry.go sharedDropKeys = %q", api, sharedDropKeys)
 	}
 }
 

@@ -9,7 +9,9 @@ describe('scrubString', () => {
     ['secret keys', `key ${'sk_' + 'live_'}abcdefgh12345678`, 'key sk_live_[Filtered]'],
     ['JWTs', 'token eyJhbGciOiJSUzI1.eyJzdWIiOiJ1c2Vy.c2lnbmF0dXJl', 'token [JWT]'],
     ['bearer tokens', 'Authorization: Bearer abc.def-ghi', 'Authorization: Bearer [Filtered]'],
-    ['coordinate params', '/quests/today?lat=40.7301&lng=-73.9965', '/quests/today?lat=[Filtered]&lng=[Filtered]'],
+    ['query strings', '/quests/today?lat=40.7301&lng=-73.9965', '/quests/today'],
+    ['query strings in full URLs', 'GET https://api.clerk.com/v1/users?email_address=jane%40nyu.edu&limit=1 failed', 'GET https://api.clerk.com/v1/users failed'],
+    ['coordinate params outside a URL', 'bad input lat=40.7301 lng=-73.9965', 'bad input lat=[Filtered] lng=[Filtered]'],
     ['coordinate pairs', 'too far from 40.73012, -73.99651', 'too far from [coords]'],
     ['quest IDs', 'POST https://api.playlarper.com/quests/4812/accept', 'POST https://api.playlarper.com/quests/:id/accept'],
     ['place IDs', '/places/99/photo', '/places/:id/photo'],
@@ -32,6 +34,17 @@ describe('scrubValue', () => {
     expect(out).toEqual({
       contexts: { quest: { questId: '[Filtered]', place_id: '[Filtered]', Latitude: '[Filtered]', accuracyM: '[Filtered]', distance: 300 } },
       extra: { headers: { Cookie: '[Filtered]', Authorization: '[Filtered]' } },
+    });
+  });
+
+  it('drops a dotted key by its last part', () => {
+    const out = scrubValue({ 'user.email': 'a@b.co', 'client.address': '203.0.113.9', 'url.query': 'lat=1', 'user.id': 'u1', 'url.path': '/journal' });
+    expect(out).toEqual({ 'user.email': '[Filtered]', 'client.address': '[Filtered]', 'url.query': '[Filtered]', 'user.id': 'u1', 'url.path': '/journal' });
+  });
+
+  it('drops the keys the workers drop too', () => {
+    expect(scrubValue({ bbox: [1, 2, 3, 4], user_id: 'u1', client_ip: '203.0.113.9' })).toEqual({
+      bbox: '[Filtered]', user_id: '[Filtered]', client_ip: '[Filtered]',
     });
   });
 
@@ -62,7 +75,7 @@ describe('scrubEvent', () => {
       message: 'check-in failed for [email]',
       request: { url: 'https://playlarper.com/journal', headers: { 'User-Agent': 'Firefox', Cookie: '[Filtered]' } },
       breadcrumbs: [
-        { category: 'fetch', data: { method: 'GET', url: 'https://api.playlarper.com/quests/today?lat=[Filtered]&lng=[Filtered]' } },
+        { category: 'fetch', data: { method: 'GET', url: 'https://api.playlarper.com/quests/today' } },
       ],
     });
   });
@@ -74,7 +87,7 @@ describe('scrubEvent', () => {
     };
     const out = scrubEvent(transaction);
     expect(out.spans).toEqual([
-      { description: 'POST https://api.playlarper.com/quests/:id/checkin', data: { 'http.query': '?lat=[Filtered]&lng=[Filtered]' } },
+      { description: 'POST https://api.playlarper.com/quests/:id/checkin', data: { 'http.query': '[Filtered]' } },
     ]);
   });
 });

@@ -5,8 +5,10 @@ package platform
 //
 // What leaves: the log message and its attributes, scrubbed by the same rules as
 // apps/api/src/sentry/scrub.ts and apps/web/lib/sentry-scrub.ts (change all three
-// together): no emails, tokens or Clerk IDs, no coordinates, no quest or place IDs.
-// Keys like lat, place_id or bbox are dropped whatever their value.
+// together): no emails, tokens or Clerk IDs, no coordinates, no quest or place IDs, no
+// query strings. Keys like lat, place_id or bbox are dropped whatever their value.
+// The key list is the TypeScript one plus workerOnlyDropKeys; sentry_test.go checks
+// that against the API's file.
 
 import (
 	"context"
@@ -21,15 +23,25 @@ import (
 
 const filtered = "[Filtered]"
 
-// Compared lowercased, without _ and -.
+// The TypeScript scrubbers' list, in the same order.
+var sharedDropKeys = []string{
+	"cookie", "cookies", "set-cookie", "authorization", "x-clerk-auth-token",
+	"email", "emailaddress", "token", "ticket", "password", "secret",
+	"lat", "lng", "lon", "latitude", "longitude", "accuracy", "accuracym", "coords", "coordinates", "bbox",
+	"placeid", "questid", "place", "placename", "address", "userid",
+	"ip", "ipaddress", "clientip", "query", "querystring",
+}
+
+// Only here: a place's name, should a loader ever log one under "name" (none does
+// yet). The TypeScript scrubbers can't drop it: Sentry's own event fields use "name"
+// (sdk.name, os.name).
+var workerOnlyDropKeys = []string{"name"}
+
+// Compared lowercased, without _ and -, whole or by their last dotted part.
 var dropKeys = map[string]bool{}
 
 func init() {
-	for _, k := range []string{
-		"cookie", "authorization", "email", "token", "ticket", "password", "secret",
-		"lat", "lng", "lon", "latitude", "longitude", "accuracy", "coords", "coordinates", "bbox",
-		"place_id", "quest_id", "place", "place_name", "name", "address", "user_id", "ip",
-	} {
+	for _, k := range append(append([]string{}, sharedDropKeys...), workerOnlyDropKeys...) {
 		dropKeys[normalizeKey(k)] = true
 	}
 }
@@ -38,10 +50,17 @@ func normalizeKey(k string) string {
 	return strings.NewReplacer("_", "", "-", "").Replace(strings.ToLower(k))
 }
 
+func isDropped(key string) bool {
+	k := normalizeKey(key)
+	return dropKeys[k] || dropKeys[k[strings.LastIndex(k, ".")+1:]]
+}
+
 var scrubPatterns = []struct {
 	re *regexp.Regexp
 	to string
 }{
+	// Query strings: https://x/quests/today?lat=1&lng=2 -> https://x/quests/today.
+	{regexp.MustCompile(`\?[A-Za-z0-9_.~%+-]+=[^\s#"']*`), ""},
 	{regexp.MustCompile(`\b(sess|user|client|sms|idn|org|ins|sk_test|sk_live|pk_test|pk_live)_[A-Za-z0-9]{8,}\b`), "${1}_[Filtered]"},
 	{regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+`), "[JWT]"},
 	{regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+`), "Bearer [Filtered]"},
@@ -51,7 +70,7 @@ var scrubPatterns = []struct {
 	{regexp.MustCompile(`/(quests|places)/\d+`), "/${1}/:id"},
 }
 
-// ScrubString removes emails, tokens, coordinates and quest/place IDs from s.
+// ScrubString removes emails, tokens, coordinates, quest/place IDs and query strings from s.
 func ScrubString(s string) string {
 	for _, p := range scrubPatterns {
 		s = p.re.ReplaceAllString(s, p.to)
@@ -62,7 +81,7 @@ func ScrubString(s string) string {
 // scrubAttr is one attribute's value as it may be sent: dropped keys filtered,
 // strings scrubbed, groups flattened into a map.
 func scrubAttr(a slog.Attr) any {
-	if dropKeys[normalizeKey(a.Key)] {
+	if isDropped(a.Key) {
 		return filtered
 	}
 	v := a.Value.Resolve()
@@ -137,6 +156,9 @@ func (h *sentryHandler) event(r slog.Record) *sentry.Event {
 		add(a)
 	}
 	r.Attrs(add)
+	// Grouped by worker and log message only: the error text below varies (addresses,
+	// ports, row counts), and Sentry's default grouping would make one issue per variant.
+	e.Fingerprint = []string{e.Tags["service"], e.Message}
 	// The error is the most useful line in the Sentry list: "postgres: dial tcp ...".
 	if err, ok := extra["err"].(string); ok {
 		e.Message += ": " + err
