@@ -284,6 +284,10 @@ jobs:
             zricethezav/gitleaks:v8.21.2@sha256:0e99e8821643ea5b235718642b93bb32486af9c8162c8b8731f7cbdc951a7f46 \
             -c 'git config --global --add safe.directory /repo &&
                 gitleaks detect --source /repo --config /repo/.gitleaks.toml --redact --no-banner -v'
+      # The pre-commit hook (.githooks/pre-commit) blocks a staged secret and lets a
+      # clean commit through.
+      - name: pre-commit hook blocks staged secrets
+        run: bash scripts/test/pre-commit-hook.test.sh
 
   results:
     name: Load-test results (no session IDs or tokens)
