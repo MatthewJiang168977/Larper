@@ -91,6 +91,27 @@ describe("scrubEvent", () => {
       { description: "POST https://api.playlarper.com/quests/:id/checkin", data: { "http.query": "[Filtered]" } },
     ]);
   });
+
+  it("doesn't copy the SDK's scopes in the processing metadata", () => {
+    // Sentry removes them before sending; copying them is what made scrubbing slow.
+    const capturedSpanScope = { big: "scope" };
+    const out = scrubEvent({ message: "/quests/5", sdkProcessingMetadata: { capturedSpanScope } });
+    expect(out.message).toBe("/quests/:id");
+    expect(out.sdkProcessingMetadata.capturedSpanScope).toBe(capturedSpanScope);
+  });
+
+  it("scrubs the dynamic sampling context, which is sent as the trace header", () => {
+    const dynamicSamplingContext = { trace_id: "abc", transaction: "clerk users.get user_2xyzXYZ123abcABC456 for a@b.co" };
+    const out = scrubEvent({ sdkProcessingMetadata: { dynamicSamplingContext } });
+    expect(out.sdkProcessingMetadata.dynamicSamplingContext).toEqual({
+      trace_id: "abc",
+      transaction: "clerk users.get user_[Filtered] for [email]",
+    });
+  });
+
+  it("adds no processing metadata to an event without any", () => {
+    expect(scrubEvent({ message: "x" })).toEqual({ message: "x" });
+  });
 });
 
 describe("sentryOptions", () => {

@@ -2,8 +2,13 @@
 //
 // - No SENTRY_DSN (local, tests, k3d, CI): off, nothing is sent.
 // - Release: SENTRY_RELEASE, the image's commit (Helm sets it from the image tag).
-// - 10% of traces (SENTRY_TRACES_SAMPLE_RATE), following the caller's decision when a
-//   trace comes in from the web app; health checks, metrics and CORS preflights never.
+// - 10% of traces (SENTRY_TRACES_SAMPLE_RATE); health checks, metrics and CORS
+//   preflights never. Callers can't change that: their trace headers are dropped before
+//   Sentry sees them (incoming-trace.ts).
+// - No trace headers on outgoing requests (tracePropagationTargets: []): Clerk and the
+//   other services we call get none.
+// - The User-Agent is kept (request headers, user_agent.original): it says which
+//   browsers and devices an error happens on.
 // - Collects no user data at the source (DATA_COLLECTION: Sentry v11's defaults take
 //   bodies, headers, cookies, query strings, bound SQL parameters and stack-frame
 //   variables), and everything that is sent still goes through scrub.ts:
@@ -73,6 +78,7 @@ export function sentryOptions(env: NodeJS.ProcessEnv = process.env): Sentry.Node
     environment: env.SENTRY_ENVIRONMENT || 'development',
     dataCollection: DATA_COLLECTION,
     tracesSampler: (ctx) => tracesSampler(ctx, rate),
+    tracePropagationTargets: [],
     traceLifecycle: 'static',
     beforeSend: scrubEvent,
     beforeSendSpan: scrubSpan,

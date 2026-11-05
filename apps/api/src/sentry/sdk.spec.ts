@@ -1,7 +1,8 @@
 // What the real Sentry SDK would send, with the API's options: sdk.harness.ts sends a
 // request for /quests/123/accept?lat=..&lng=.. (with a bearer token and a session
-// cookie), sets a user, looks the user up "in Clerk" by their Clerk ID, and reports an
-// error. Every envelope it would have sent is checked here.
+// cookie, and a caller's trace headers), sets a user, looks the user up "in Clerk" by
+// their Clerk ID, and reports an error. Every envelope it would have sent is checked
+// here, and the headers Clerk got.
 //
 // The harness runs in a Node process of its own (see its header), compiled from
 // TypeScript into a temporary directory.
@@ -13,6 +14,7 @@ import * as ts from 'typescript';
 
 const CLERK_USER = 'user_2xyzXYZ123abcABC456';
 const MARKER = '--- envelopes ---';
+const CALLER_TRACE = 'c0ffee00c0ffee00c0ffee00c0ffee00';
 const HARNESS_ENV = {
   HARNESS_CLERK_USER: CLERK_USER,
   HARNESS_EMAIL: 'jane.doe@nyu.edu',
@@ -20,6 +22,7 @@ const HARNESS_ENV = {
   HARNESS_TOKEN: 'secret-token-abc',
   HARNESS_SESSION: 'secret-session-abc',
   HARNESS_QUERY: 'lat=40.7301&lng=-73.9965',
+  HARNESS_CALLER_TRACE: CALLER_TRACE,
 };
 
 // Nothing of these may leave, in any envelope (headers included).
@@ -34,13 +37,19 @@ const NEVER_SENT = [
 const QUERY_STRING = /\?[A-Za-z0-9_.~%+-]+=/;
 
 type Item = { type: string; payload: Record<string, unknown> };
-type Run = { traceLifecycle: string; envelopes: [unknown, [{ type: string }, unknown][]][]; items: Item[]; text: string };
+type Run = {
+  traceLifecycle: string;
+  clerkHeaders: string[][]; // the header names of each request Clerk got
+  envelopes: [unknown, [{ type: string }, unknown][]][];
+  items: Item[];
+  text: string;
+};
 
 let dir: string;
 
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), 'larper-sentry-sdk-'));
-  for (const name of ['scrub', 'options', 'sdk.harness']) {
+  for (const name of ['scrub', 'options', 'incoming-trace', 'sdk.harness']) {
     const source = readFileSync(join(__dirname, `${name}.ts`), 'utf8');
     const { outputText } = ts.transpileModule(source, {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
@@ -51,7 +60,7 @@ beforeAll(() => {
 
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-function run(mode: 'all' | 'span-hook-only' | 'transaction-hook-only'): Run {
+function run(mode: 'all' | 'span-hook-only' | 'transaction-hook-only' | 'not-sampled'): Run {
   const out = spawnSync(process.execPath, [join(dir, 'sdk.harness.js'), mode], {
     // The temporary directory has no node_modules: resolve @sentry/nestjs from the API's.
     env: { ...process.env, ...HARNESS_ENV, NODE_PATH: resolve(__dirname, '../../node_modules'), SENTRY_DSN: '' },
@@ -99,6 +108,35 @@ describe('the Sentry SDK with the API options', () => {
   it('sends no user', () => {
     for (const i of all.items) expect(i.payload.user).toBeUndefined();
   });
+
+  it("scrubs a code-named root span's name in the envelopes' trace header", () => {
+    // The trace header comes from the event's processing metadata, not from its body.
+    const names = all.envelopes
+      .map(([header]) => (header as { trace?: { transaction?: string } }).trace?.transaction)
+      .filter((name) => name?.startsWith('sync clerk user'));
+    expect(names.length).toBeGreaterThan(0); // the error's and the transaction's
+    for (const name of names) expect(name).toBe('sync clerk user user_[Filtered] [email]');
+  });
+
+  it("doesn't continue the caller's trace or take its baggage", () => {
+    expect(all.text).not.toContain(CALLER_TRACE);
+    expect(all.text).not.toContain('caller'); // the baggage's sentry-environment
+  });
+
+  it('sends no trace headers to Clerk', () => {
+    expect(all.clerkHeaders.length).toBeGreaterThan(0);
+    for (const names of all.clerkHeaders) {
+      expect(names).toContain('host'); // it did see the request's headers
+      for (const name of ['sentry-trace', 'baggage', 'traceparent']) expect(names).not.toContain(name);
+    }
+  });
+
+  it("lets no caller force a trace: a sampled flag and a sample_rand of 0 don't beat a rate of 0", () => {
+    const r = run('not-sampled');
+    expect(r.items.map((i) => i.type)).toContain('event');
+    expect(transactions(r)).toEqual([]);
+    expect(r.text).not.toContain(CALLER_TRACE);
+  }, 60_000);
 
   it('scrubs the spans with beforeSendSpan alone', () => {
     const r = run('span-hook-only');

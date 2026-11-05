@@ -51,9 +51,9 @@ export const sentryOptions = {
   environment: process.env.NEXT_PUBLIC_VERCEL_ENV || "development",
   tracesSampleRate: 0.1,
   dataCollection: DATA_COLLECTION,
-  // No trace headers on any request. The API's CORS doesn't allow sentry-trace and
-  // baggage yet, so sending them would break every API call at the preflight. They
-  // get turned on once the API side (Sentry API PR) is deployed.
+  // No trace headers on any request: the API ignores them (anyone could send them to
+  // force a trace; apps/api/src/sentry/incoming-trace.ts), so web and API traces
+  // aren't linked.
   tracePropagationTargets: [] as (string | RegExp)[],
   // Browser noise that isn't ours.
   ignoreErrors: [/ResizeObserver loop/, /^AbortError/, /Load failed/, /NetworkError when attempting to fetch/],
