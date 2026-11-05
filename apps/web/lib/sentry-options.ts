@@ -6,9 +6,27 @@
 // - 10% of traces, no session replay.
 // - Collects no user data at the source (DATA_COLLECTION: Sentry v11's defaults take
 //   bodies, headers, cookies, query strings and stack-frame variables).
-// - Every event, transaction and breadcrumb goes through lib/sentry-scrub.ts.
-import type * as Sentry from "@sentry/nextjs";
+// - Everything that is sent goes through lib/sentry-scrub.ts:
+//   - errors: beforeSend;
+//   - traces: traceLifecycle "static", so a trace is sent as one transaction and
+//     beforeSendTransaction runs on it. (v11's default, "stream", sends spans one by
+//     one and skips beforeSendTransaction.) beforeSendSpan scrubs each span as well;
+//   - breadcrumbs: beforeBreadcrumb.
+//   sentry-sdk.test.ts (browser) and sentry-sdk-server.test.ts (Node) run the real SDK
+//   and check what would leave.
+import * as Sentry from "@sentry/nextjs";
 import { scrubEvent, scrubValue } from "./sentry-scrub";
+
+type StaticSpanCallback = Parameters<typeof Sentry.withStaticSpan>[0];
+
+/** Each span of a transaction (static lifecycle), before it is sent. */
+export const scrubStaticSpan: StaticSpanCallback = (span) => scrubValue(span);
+
+/**
+ * scrubStaticSpan, marked for the static lifecycle. Without withStaticSpan, Sentry
+ * ignores a beforeSendSpan when traceLifecycle is "static".
+ */
+export const scrubSpan = Sentry.withStaticSpan(scrubStaticSpan);
 
 export const SENTRY_DSN = process.env.NEXT_PUBLIC_SENTRY_DSN || undefined;
 
@@ -39,7 +57,9 @@ export const sentryOptions = {
   tracePropagationTargets: [] as (string | RegExp)[],
   // Browser noise that isn't ours.
   ignoreErrors: [/ResizeObserver loop/, /^AbortError/, /Load failed/, /NetworkError when attempting to fetch/],
+  traceLifecycle: "static" as const,
   beforeSend: scrubEvent,
+  beforeSendSpan: scrubSpan,
   beforeSendTransaction: scrubEvent,
   beforeBreadcrumb: <B>(breadcrumb: B): B => scrubValue(breadcrumb),
 } satisfies Parameters<typeof Sentry.init>[0];
