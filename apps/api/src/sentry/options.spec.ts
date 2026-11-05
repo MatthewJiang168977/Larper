@@ -50,6 +50,10 @@ describe('sentryOptions', () => {
     });
   });
 
+  it('sends no trace headers to the services the API calls (Clerk)', () => {
+    expect(sentryOptions({}).tracePropagationTargets).toEqual([]);
+  });
+
   it('sends each trace as one transaction, so beforeSendTransaction runs on it', () => {
     // v11's default, 'stream', sends spans one by one and skips beforeSendTransaction.
     const o = sentryOptions({});

@@ -71,14 +71,20 @@ export function scrubValue<T>(value: T, depth = 0): T {
 type Scrubbable = {
   user?: unknown;
   request?: { url?: string; query_string?: unknown; cookies?: unknown; headers?: Record<string, string>; data?: unknown };
+  sdkProcessingMetadata?: { dynamicSamplingContext?: unknown };
 };
 
 /**
  * For beforeSend and beforeSendTransaction: no user (Sentry would add the IP), no
  * cookies, no request body or query, then every string scrubbed.
+ *
+ * sdkProcessingMetadata isn't copied whole: it holds the SDK's scopes, which are large,
+ * and Sentry removes it from the event before sending. All but one part of it: its
+ * dynamicSamplingContext becomes the envelope's trace header, with the root span's
+ * name in it (a span named in code can carry anything), so that part is scrubbed.
  */
 export function scrubEvent<E extends object>(event: E): E {
-  const e: Scrubbable = { ...event };
+  const { sdkProcessingMetadata, ...e }: Scrubbable = { ...event };
   delete e.user;
   if (e.request) {
     const { url, headers } = e.request;
@@ -87,5 +93,13 @@ export function scrubEvent<E extends object>(event: E): E {
       ...(headers && { headers }),
     };
   }
-  return scrubValue(e) as E;
+  const out: Scrubbable = scrubValue(e);
+  if (sdkProcessingMetadata) {
+    const { dynamicSamplingContext } = sdkProcessingMetadata;
+    out.sdkProcessingMetadata = {
+      ...sdkProcessingMetadata,
+      ...(dynamicSamplingContext !== undefined && { dynamicSamplingContext: scrubValue(dynamicSamplingContext) }),
+    };
+  }
+  return out as E;
 }
