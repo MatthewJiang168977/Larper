@@ -27,7 +27,8 @@ func SignalContext() (context.Context, context.CancelFunc) {
 }
 
 func Logger(service string) *slog.Logger {
-	l := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", service)
+	// Error-level lines also go to Sentry when SENTRY_DSN is set (sentry.go).
+	l := slog.New(withSentry(slog.NewJSONHandler(os.Stdout, nil))).With("service", service)
 	slog.SetDefault(l)
 	return l
 }
@@ -36,6 +37,7 @@ func Logger(service string) *slog.Logger {
 // (CrashLoopBackOff) instead of a clean exit.
 func Fatal(log *slog.Logger, msg string, err error) {
 	log.Error(msg, "err", err)
+	FlushSentry()
 	os.Exit(1)
 }
 

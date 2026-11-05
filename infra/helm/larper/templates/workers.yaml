@@ -110,6 +110,7 @@ spec:
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           env:
             {{- include "larper.dbEnv" (dict "root" . "role" "ingest") | nindent 12 }}
+            {{- include "larper.sentryEnv" (dict "root" . "key" "workersDsn" "image" .Values.ingest.image) | nindent 12 }}
             - { name: OVERTURE_RELEASE, value: {{ .Values.ingest.overtureRelease | quote }} }
             - { name: JOB_LEASE_SECONDS, value: {{ .Values.ingest.leaseSeconds | quote }} }
             - { name: DUCKDB_MEMORY_LIMIT, value: {{ .Values.ingest.duckdbMemory | quote }} }

@@ -25,7 +25,7 @@ FAKE_SQS_SECRET=$(printf 'abcdefghij%.0s' 1 2 3 4) # 40 characters
 FAKE_S3_SECRET=$(printf 'Zyxwvutsrq%.0s' 1 2 3 4)
 FAKE_S3_ID=$(printf '0123456789%.0s' 1 2 3 4)
 FAKE_CLERK_KEY=$(printf 'sk_%s_%s' test FakeFakeFake123)
-FAKE_TF=good FAKE_S3=none FAKE_CHECK=none FAKE_DEMO=none
+FAKE_TF=good FAKE_S3=none FAKE_CHECK=none FAKE_DEMO=none FAKE_SENTRY=none
 check() { # description, command...
   local what=$1; shift
   if "$@"; then echo "ok   $what"; else echo "FAIL $what"; fails=$((fails + 1)); fi
@@ -95,6 +95,12 @@ REGION=us-sanjose-1"
     http) echo 'pingURL=http://hc-ping.com/00000000' >"$BOX/check.env" ;;
     empty) : >"$BOX/check.env" ;;
   esac
+  local dsn="https://0123456789abcdef0123456789abcdef@o4500000000000001.ingest.us.sentry.io/4500000000000002"
+  case $FAKE_SENTRY in
+    good) printf 'API_DSN="%s"\n' "$dsn" >"$BOX/sentry.env" ;; # the workers reuse it
+    bad-api) printf 'API_DSN=%s\nWORKERS_DSN=%s\n' "${dsn/https/http}" "$dsn" >"$BOX/sentry.env" ;;
+    bad-workers) printf 'API_DSN=%s\nWORKERS_DSN=%s\n' "$dsn" "${dsn/https/http}" >"$BOX/sentry.env" ;;
+  esac
   case $FAKE_DEMO in
     good | no-key | bad-key) echo 'DEMO_USER_ID=user_3KZtest' >"$BOX/demo.env" ;;
     bad-user) echo 'DEMO_USER_ID=3KZtest' >"$BOX/demo.env" ;;
@@ -127,6 +133,7 @@ run_up() { # FAKE_OCI mode, FAKE_GIT_STATUS, oci-up.sh arguments...
     FAKE_GIT_STATUS="$status" OCI_ENV_FILE="$BOX/instance.env" OCI_CLI_CONFIG_FILE="$BOX/home/.oci/config" \
     PUBLIC_ENV=/nonexistent SSH_KEY="$BOX/no-key" FAKE_TF="$FAKE_TF" FAKE_SQS_SECRET="$FAKE_SQS_SECRET" \
     S3_ENV="$BOX/s3.env" CHECK_ENV="$BOX/check.env" DEMO_ENV="$BOX/demo.env" WEB_ENV="$BOX/web.env" \
+    SENTRY_ENV="$BOX/sentry.env" \
     timeout 60 "$BASH_BIN" "$UP" "$@" >"$BOX/out" 2>&1
   RC=$?; [[ -n ${DEBUG:-} ]] && { echo "--- rc=$RC"; cat "$BOX/out"; }
 }
@@ -208,13 +215,13 @@ check "clean tree: gets past the guard to the first remote step" grep -q 'networ
 #    and where it comes from, and prints no secret.
 no_remote() { [[ ! -s $BOX/oci-calls ]] && no_deploy; }
 reached_remote() { grep -q 'network vcn list' "$BOX/oci-calls"; }
-prints_no_secret() { ! grep -qE "TESTTESTTEST1234|$FAKE_SQS_SECRET|$FAKE_S3_SECRET|FakeFakeFake123" "$BOX/out"; }
+prints_no_secret() { ! grep -qE "TESTTESTTEST1234|$FAKE_SQS_SECRET|$FAKE_S3_SECRET|FakeFakeFake123|0123456789abcdef0123456789abcdef" "$BOX/out"; }
 broken() { # description, expected message, FAKE_*=value..., -- oci-up.sh arguments...
   local what=$1 msg=$2 kv; shift 2
   while [[ $# -gt 0 && $1 != -- ]]; do printf -v "${1%%=*}" '%s' "${1#*=}"; shift; done
   [[ ${1:-} == -- ]] && shift
   run_up good "" "$@"
-  FAKE_TF=good FAKE_S3=none FAKE_CHECK=none FAKE_DEMO=none
+  FAKE_TF=good FAKE_S3=none FAKE_CHECK=none FAKE_DEMO=none FAKE_SENTRY=none
   check "$what: exits non-zero" test "$RC" -ne 0
   check "$what: says which value, from where" said "$msg"
   check "$what: nothing remote, no deploy step" no_remote
@@ -228,15 +235,17 @@ broken "pg-backup-s3, no secret key in the file" "pg-backup-s3 ACCESS_SECRET_KEY
 broken "pg-backup-s3, region malformed" "pg-backup-s3 REGION (.*s3.env) isn't in the expected shape" FAKE_S3=bad-region
 broken "backup-check, not an https URL" "backup-check pingURL (.*check.env) isn't in the expected shape" FAKE_CHECK=http
 broken "backup-check, empty file" "backup-check pingURL (.*check.env) is empty" FAKE_CHECK=empty
+broken "sentry, API DSN not https" "sentry API_DSN (.*sentry.env) isn't in the expected shape" FAKE_SENTRY=bad-api
+broken "sentry, workers DSN not https" "sentry WORKERS_DSN (.*sentry.env) isn't in the expected shape" FAKE_SENTRY=bad-workers
 broken "clerk-demo, key missing (no longer turns the demo off quietly)" "clerk-demo secretKey (CLERK_SECRET_KEY in .*web.env) is empty" FAKE_DEMO=no-key
 broken "clerk-demo, not a secret key" "clerk-demo secretKey (CLERK_SECRET_KEY in .*web.env) isn't in the expected shape" FAKE_DEMO=bad-key
 broken "clerk-demo, user id malformed" "clerk-demo userId (DEMO_USER_ID in .*demo.env) isn't in the expected shape" FAKE_DEMO=bad-user
 
 # 10. All of them present and well-formed (a quoted Clerk key too): past the checks to
 #     the first remote step, with nothing printed.
-FAKE_S3=good FAKE_CHECK=good FAKE_DEMO=good
+FAKE_S3=good FAKE_CHECK=good FAKE_DEMO=good FAKE_SENTRY=good
 run_up good ""
-FAKE_TF=good FAKE_S3=none FAKE_CHECK=none FAKE_DEMO=none
+FAKE_TF=good FAKE_S3=none FAKE_CHECK=none FAKE_DEMO=none FAKE_SENTRY=none
 check "all Secrets well-formed: gets past the checks to the first remote step" reached_remote
 check "all Secrets well-formed: prints no secret" prints_no_secret
 

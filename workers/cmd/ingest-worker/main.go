@@ -47,6 +47,7 @@ type config struct {
 
 func main() {
 	log := platform.Logger(queueName + "-worker")
+	defer platform.FlushSentry()
 	ctx, stop := platform.SignalContext()
 	defer stop()
 

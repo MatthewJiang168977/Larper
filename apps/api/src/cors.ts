@@ -27,7 +27,9 @@ export function corsOptions(env: NodeJS.ProcessEnv = process.env): CorsOptions |
   return {
     origin: origins, // exact matches only; the response echoes the one that matched
     methods: ['GET', 'POST'],
-    allowedHeaders: ['Authorization', 'Content-Type'],
+    // sentry-trace and baggage: the web app's Sentry links its traces to ours (only
+    // trace IDs and sampling, no user data; apps/web/lib/sentry-options.ts).
+    allowedHeaders: ['Authorization', 'Content-Type', 'sentry-trace', 'baggage'],
     // A 429's wait, which the web app also reads from the body.
     exposedHeaders: ['Retry-After'],
     credentials: false,

@@ -1,3 +1,5 @@
+// Sentry first: it has to patch http, express and pg before they're imported.
+import './instrument';
 import 'reflect-metadata';
 import { type LogLevel } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';

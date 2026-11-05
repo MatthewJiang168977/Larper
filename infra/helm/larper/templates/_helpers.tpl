@@ -59,6 +59,25 @@ Call with (dict "root" $ "role" "api").
 {{- define "larper.workerEnv" -}}
 - { name: KAFKA_BROKERS, value: "redpanda:9092" }
 {{ include "larper.dbEnv" . }}
+{{- include "larper.sentryEnv" (dict "root" .root "key" "workersDsn" "image" .root.Values.workers.image) }}
+{{- end -}}
+
+{{/*
+Sentry (sentry.enabled): the DSN from the Secret scripts/oci-up.sh creates (keys
+apiDsn, workersDsn; the same project unless WORKERS_DSN says otherwise), the release = the image's tag (the commit),
+and the environment. Off: no SENTRY_DSN, so the SDKs send nothing.
+Call with (dict "root" $ "key" "apiDsn" "image" .Values.api.image).
+*/}}
+{{- define "larper.sentryEnv" -}}
+{{- with .root.Values.sentry }}
+{{- if .enabled }}
+- name: SENTRY_DSN
+  valueFrom: { secretKeyRef: { name: {{ .secretName }}, key: {{ $.key }} } }
+- { name: SENTRY_RELEASE, value: {{ splitList ":" $.image | last | quote }} }
+- { name: SENTRY_ENVIRONMENT, value: {{ required "sentry.environment is required with sentry.enabled" .environment | quote }} }
+- { name: SENTRY_TRACES_SAMPLE_RATE, value: {{ .tracesSampleRate | quote }} }
+{{- end }}
+{{- end }}
 {{- end -}}
 
 {{/*

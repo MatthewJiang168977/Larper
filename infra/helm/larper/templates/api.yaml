@@ -52,6 +52,7 @@ spec:
             - { name: CPU_PROFILING, value: "1" }
             {{- end }}
             {{- include "larper.dbEnv" (dict "root" . "role" "api") | nindent 12 }}
+            {{- include "larper.sentryEnv" (dict "root" . "key" "apiDsn" "image" .Values.api.image) | nindent 12 }}
           # On delete, SIGTERM and endpoint removal happen concurrently; without this
           # pause the ingress can still route to a pod that already closed its server
           # (seen as a 504 during rollouts).

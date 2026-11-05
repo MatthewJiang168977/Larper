@@ -56,6 +56,7 @@ ENV_FILE=${OCI_ENV_FILE:-$HOME/larper-oci-instance.env}
 SSH_KEY=${SSH_KEY:-$HOME/.ssh/larper_oci}
 S3_ENV=${S3_ENV:-$HOME/.oci/larper-pg-backup-s3.env} # the CNPG backup key; needed again to restore
 CHECK_ENV=${CHECK_ENV:-$HOME/.oci/larper-backup-check.env} # the backup check's ping URL
+SENTRY_ENV=${SENTRY_ENV:-$HOME/.oci/larper-sentry.env} # Sentry DSNs: API_DSN=... (WORKERS_DSN=... optional, defaults to API_DSN)
 KUBECONFIG_OCI=${KUBECONFIG_OCI:-$HOME/.kube/larper-oci.yaml}
 TUNNEL_PORT=${TUNNEL_PORT:-16443}
 REGION=${OCI_REGION:-us-sanjose-1}
@@ -153,6 +154,17 @@ if [[ $CLOSE == 0 ]]; then
   if [[ -e $CHECK_ENV ]]; then
     CHECK_PING_URL=$(env_value "$CHECK_ENV" pingURL)
     secret_shape "backup-check pingURL ($CHECK_ENV)" "$PING_URL_RE" "$CHECK_PING_URL"
+  fi
+  # sentry: optional (without it Sentry is off: no DSN, nothing sent), but a file that
+  # exists must hold the API's DSN. The workers report to the same project unless
+  # WORKERS_DSN names another one.
+  SENTRY_API_DSN= SENTRY_WORKERS_DSN=
+  if [[ -e $SENTRY_ENV ]]; then
+    SENTRY_API_DSN=$(env_value "$SENTRY_ENV" API_DSN)
+    secret_shape "sentry API_DSN ($SENTRY_ENV)" "$SENTRY_DSN_RE" "$SENTRY_API_DSN"
+    SENTRY_WORKERS_DSN=$(env_value "$SENTRY_ENV" WORKERS_DSN)
+    SENTRY_WORKERS_DSN=${SENTRY_WORKERS_DSN:-$SENTRY_API_DSN}
+    secret_shape "sentry WORKERS_DSN ($SENTRY_ENV)" "$SENTRY_DSN_RE" "$SENTRY_WORKERS_DSN"
   fi
   # clerk-demo: the demo account is configured once DEMO_ENV names its user; then the
   # Clerk key must be there too. (Before, a missing key quietly turned "Try the demo"
@@ -386,6 +398,16 @@ if [[ -n $CHECK_PING_URL ]]; then
 else
   log "no $CHECK_ENV: the backup check will run but alert nobody (infra/oci-k3s/README.md, \"Backup check\")"
 fi
+# Sentry (values.yaml sentry): one project, larper-api, for the API and the workers. The
+# workers use WORKERS_DSN if the file sets one, and API_DSN otherwise.
+sentry=(--set sentry.enabled=false)
+if [[ -n $SENTRY_API_DSN ]]; then
+  kubectl -n larper create secret generic sentry --from-literal=apiDsn="$SENTRY_API_DSN" \
+    --from-literal=workersDsn="$SENTRY_WORKERS_DSN" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  sentry=(--set sentry.enabled=true)
+else
+  log "no $SENTRY_ENV: Sentry is off (infra/oci-k3s/README.md, \"Sentry\")"
+fi
 
 # The demo account (values-oci.yaml demo.enabled; infra/oci-k3s/README.md, "The public
 # demo"): the Clerk secret key, for "Try the demo" sign-in tokens and the nightly reset,
@@ -472,7 +494,7 @@ helm upgrade --install larper infra/helm/larper -n larper -f infra/helm/larper/v
   --set api.image="$REG/larper-api:$TAG" \
   --set postgres.backup.endpointURL="$ENDPOINT" \
   --set postgres.backup.serverName="$SERVER_NAME" \
-  "${restore[@]}" "${monitoring[@]}" "${public[@]}" "${demo[@]}" \
+  "${restore[@]}" "${monitoring[@]}" "${public[@]}" "${demo[@]}" "${sentry[@]}" \
   --wait --timeout 20m
 
 log "backups"

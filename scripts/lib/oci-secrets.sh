@@ -23,6 +23,7 @@ S3_REGION_RE='^[a-z]{2,}-[a-z]+-[0-9]+$'        # us-sanjose-1, us-east-1
 PING_URL_RE='^https://[^[:space:]]+$'
 CLERK_SECRET_KEY_RE='^sk_(test|live)_[A-Za-z0-9]+$'
 CLERK_USER_ID_RE='^user_[A-Za-z0-9]+$'
+SENTRY_DSN_RE='^https://[0-9a-f]{32}@o[0-9]+\.ingest(\.[a-z]{2})?\.sentry\.io/[0-9]+$' # a Sentry project's DSN
 
 secret_shape() { # what (and where it comes from), regex, value
   if [[ -z $3 ]]; then
