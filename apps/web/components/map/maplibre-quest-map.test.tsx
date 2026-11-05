@@ -142,10 +142,11 @@ const props = (over: Partial<QuestMapProps> = {}): QuestMapProps => ({
 
 const map = () => fake.maps.at(-1)!;
 // The map gets ready after an async import, outside act(), so React can put the render
-// on screen before it runs that render's effects: the pins' handlers, the first fly-to,
-// the compass's rotate listener. They all run together, so once the rotate listener is
-// there, the rest are too. (Waiting only for the toggle or a pin made tests flaky under
-// load: they fired events or checked calls before the effects had run.)
+// on screen, the toggle and compass included, before it runs that render's effects: the
+// pins, the first fly-to, the compass's rotate listener. They all run together, and the
+// rotate listener's effect comes last, so once it is there, the rest are too. (Waiting
+// only for the toggle made tests flaky under load: they fired events or checked calls
+// before the effects had run. A pin is enough on its own: the effects make the pins.)
 const mapReady = () => waitFor(() => expect(map()?.listeners.get("rotate")?.size).toBeGreaterThan(0));
 const toggleButton = async () => {
   const button = await screen.findByRole("button", { name: /^Switch to/ });
@@ -251,7 +252,6 @@ describe("pins from the keyboard", () => {
     const onSelect = vi.fn();
     const view = render(<MapLibreQuestMap {...props({ deck: deck3, selectedId, onSelect })} />);
     await screen.findByRole("button", { name: "Cafe Uno" });
-    await mapReady();
     onSelect.mockImplementation((id: string) => view.rerender(<MapLibreQuestMap {...props({ deck: deck3, selectedId: id, onSelect })} />));
     return onSelect;
   };
