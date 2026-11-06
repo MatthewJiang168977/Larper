@@ -4,6 +4,7 @@ import Link from "next/link";
 import { RequireSignIn } from "@/components/require-sign-in";
 import { humanize } from "@/components/quest/why-lines";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { setDemo, track } from "@/lib/analytics";
 import { describeError, useApi, type Me, type VibeCard } from "@/lib/api";
 
 const SWIPE_PX = 90;
@@ -77,7 +78,14 @@ function Onboarding() {
     api<Me>("/onboarding", {
       method: "POST",
       body: JSON.stringify({ liked: likedKey.split(","), passed: passedKey ? passedKey.split(",") : [] }),
-    }).then(setResult, (e: unknown) => setSaveError(describeError(e, SAVE_FAILED)));
+    }).then(
+      (m) => {
+        setDemo(!!m.demo);
+        track("onboarding_finished");
+        setResult(m);
+      },
+      (e: unknown) => setSaveError(describeError(e, SAVE_FAILED)),
+    );
   }, [done, likedKey, passedKey, result, saveError, api]);
 
   const restart = () => {

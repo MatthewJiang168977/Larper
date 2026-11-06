@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { RequireSignIn } from "@/components/require-sign-in";
 import { humanize } from "@/components/quest/why-lines";
+import { TrackView } from "@/components/track-view";
 import { useEffect, useState } from "react";
 import { describeError, useApi, type JournalEntry } from "@/lib/api";
 
@@ -49,6 +50,7 @@ function Journal() {
 
   return (
     <main className="mx-auto w-full max-w-xl flex-1 px-4 py-8">
+      <TrackView event="journal_opened" />
       <Link href="/" className="hit-target font-mono text-xs uppercase tracking-wider text-ink-soft underline-offset-4 hover:underline">
         ← Map
       </Link>

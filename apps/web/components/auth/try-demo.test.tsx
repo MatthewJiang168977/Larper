@@ -12,6 +12,13 @@ const signIn = {
 const push = vi.fn();
 vi.mock("@clerk/nextjs", () => ({ useSignIn: () => ({ signIn, errors: {}, fetchStatus: "idle" }) }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+// Analytics (lib/analytics.ts): what would be recorded.
+const tracked = vi.hoisted(() => ({ events: [] as string[], demo: [] as boolean[] }));
+vi.mock("@/lib/analytics", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/analytics")>()),
+  track: (event: string) => void tracked.events.push(event),
+  setDemo: (d: boolean) => void tracked.demo.push(d),
+}));
 const demoTicket = vi.fn();
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
@@ -20,6 +27,8 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  tracked.events.length = 0;
+  tracked.demo.length = 0;
   signIn.status = "needs_identifier";
   signIn.ticket.mockImplementation(async () => {
     signIn.status = "complete";
@@ -39,6 +48,23 @@ describe("TryDemoButton", () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith("/"));
     expect(signIn.ticket).toHaveBeenCalledWith({ ticket: "ticket-1" });
     expect(signIn.finalize).toHaveBeenCalledTimes(1);
+  });
+
+  it("records the click, then the sign-in (as the demo account) before it leaves the page", async () => {
+    demoTicket.mockResolvedValue("ticket-1");
+    push.mockImplementationOnce(() => expect(tracked.events).toEqual(["demo_clicked", "demo_signed_in"]));
+    render(<TryDemoButton />);
+    fireEvent.click(screen.getByRole("button", { name: "Try the demo" }));
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    expect(tracked.demo).toEqual([true]);
+  });
+
+  it("records only the click when the demo doesn't start", async () => {
+    demoTicket.mockRejectedValue(new ApiError("x", 503));
+    render(<TryDemoButton />);
+    fireEvent.click(screen.getByRole("button", { name: "Try the demo" }));
+    await screen.findByRole("alert");
+    expect(tracked.events).toEqual(["demo_clicked"]);
   });
 
   it("says why when the API refuses, and lets the visitor try again", async () => {

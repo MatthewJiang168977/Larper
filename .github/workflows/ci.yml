@@ -325,16 +325,23 @@ jobs:
           grep -q "NEXT_PUBLIC_API_URL is not set" <<<"$out" || { echo "$out"; exit 1; }
       # A production build: with Cache Components, a request-time read outside
       # <Suspense> is a build error that dev mode and tsc don't catch (it broke
-      # /sign-in). Needs no Clerk keys: nothing at build time talks to Clerk. Then: no
-      # rewrites in it, so nothing proxies to the API.
+      # /sign-in). Needs no Clerk keys: nothing at build time talks to Clerk. Then: its
+      # only rewrites are the three /ingest ones to PostHog (analytics), so nothing
+      # proxies to the API.
       - name: Build
         env:
           NEXT_PUBLIC_API_URL: https://api.example.invalid
         run: |
           pnpm --filter @larper/web build
           node -e "const r = require('./apps/web/.next/routes-manifest.json').rewrites;
-            const n = [r.beforeFiles, r.afterFiles, r.fallback].flat().length;
-            if (n) { console.error('production build has rewrites:', JSON.stringify(r)); process.exit(1); }"
+            const all = [r.beforeFiles, r.afterFiles, r.fallback].flat();
+            const got = JSON.stringify(all.map((x) => [x.source, x.destination]));
+            const want = JSON.stringify([
+              ['/ingest/static/:path*', 'https://us-assets.i.posthog.com/static/:path*'],
+              ['/ingest/array/:path*', 'https://us-assets.i.posthog.com/array/:path*'],
+              ['/ingest/:path*', 'https://us.i.posthog.com/:path*'],
+            ]);
+            if (got !== want) { console.error('production build rewrites:', got, 'expected:', want); process.exit(1); }"
       # .next/static is what Vercel serves publicly. Source maps never belong there:
       # outside a Vercel production build Sentry turns them off, and there they're
       # uploaded to Sentry and deleted (apps/web/next.config.ts).

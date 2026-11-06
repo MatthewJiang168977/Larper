@@ -16,6 +16,14 @@ const CARDS = [
   { id: "a", title: "Old bookshops", blurb: "Dust and finds." },
   { id: "b", title: "Late-night noodles", blurb: "Steam." },
 ];
+// Analytics (lib/analytics.ts): what would be recorded.
+const tracked = vi.hoisted(() => ({ events: [] as string[], demo: [] as boolean[] }));
+vi.mock("@/lib/analytics", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/analytics")>()),
+  track: (event: string) => void tracked.events.push(event),
+  setDemo: (d: boolean) => void tracked.demo.push(d),
+}));
+
 let cards: () => Promise<unknown>;
 let save: () => Promise<unknown>;
 const posts: unknown[] = [];
@@ -35,6 +43,8 @@ const notReally = () => fireEvent.click(screen.getByRole("button", { name: "← 
 
 beforeEach(() => {
   posts.length = 0;
+  tracked.events.length = 0;
+  tracked.demo.length = 0;
   cards = () => Promise.resolve(CARDS);
   save = () => Promise.resolve({ topTags: ["hand-pulled-noodles"] });
 });
@@ -73,6 +83,24 @@ describe("Onboarding", () => {
     expect(screen.getByRole("heading", { name: "Your quest log is open" })).toBeTruthy();
     expect(screen.getByText("hand pulled noodles")).toBeTruthy();
     expect(screen.getByRole("link", { name: "See today's quest" }).getAttribute("href")).toBe("/");
+    expect(tracked.events).toEqual(["onboarding_finished"]);
+    expect(tracked.demo).toEqual([false]);
+  });
+
+  it("records onboarding as finished only once it's saved, with the demo flag from the answer", async () => {
+    save = () => Promise.reject(new ApiError("Internal server error", 500));
+    render(<OnboardingPage />);
+    await settle();
+    into();
+    notReally();
+    await settle();
+    expect(tracked.events).toEqual([]);
+
+    save = () => Promise.resolve({ topTags: [], demo: true });
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await settle();
+    expect(tracked.events).toEqual(["onboarding_finished"]);
+    expect(tracked.demo).toEqual([true]);
   });
 
   it("can undo the last pass after passing on everything", async () => {

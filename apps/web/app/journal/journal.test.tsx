@@ -12,6 +12,14 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+// Analytics (lib/analytics.ts): what would be recorded.
+const tracked = vi.hoisted(() => ({ events: [] as string[], demo: [] as boolean[] }));
+vi.mock("@/lib/analytics", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/analytics")>()),
+  track: (event: string) => void tracked.events.push(event),
+  setDemo: (d: boolean) => void tracked.demo.push(d),
+}));
+
 let answer: () => Promise<unknown>;
 const api = vi.fn(() => answer());
 vi.mock("@/lib/api", async (importOriginal) => ({
@@ -33,9 +41,17 @@ const entry = (over: Partial<JournalEntry>): JournalEntry => ({
 
 beforeEach(() => {
   api.mockClear();
+  tracked.events.length = 0;
 });
 
 describe("Journal", () => {
+  it("records that it was opened, once", async () => {
+    answer = () => Promise.resolve([]);
+    render(<JournalPage />);
+    await settle();
+    expect(tracked.events).toEqual(["journal_opened"]);
+  });
+
   it("writes tags and categories in plain words, and dates in New York time", async () => {
     answer = () => Promise.resolve([entry({})]);
     render(<JournalPage />);
