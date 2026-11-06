@@ -11,16 +11,8 @@ import { PHASE_DEVELOPMENT_SERVER, PHASE_PRODUCTION_BUILD } from "next/constants
 // Local dev may leave it unset: then, under `next dev` only, /api/* is proxied to
 // API_URL (the k3d ingress, http://localhost:8080 by default).
 //
-// The one proxy in production is /ingest, to PostHog (lib/analytics.ts): analytics
-// goes to this site rather than to a tracker's domain. CI checks that a production
-// build has exactly these rewrites and nothing else.
-export const POSTHOG_REWRITES = [
-  // The two asset paths before the catch-all, as PostHog's Next.js proxy guide has them.
-  { source: "/ingest/static/:path*", destination: "https://us-assets.i.posthog.com/static/:path*" },
-  { source: "/ingest/array/:path*", destination: "https://us-assets.i.posthog.com/array/:path*" },
-  { source: "/ingest/:path*", destination: "https://us.i.posthog.com/:path*" },
-];
-
+// /ingest (analytics, to PostHog) is a route handler, not a rewrite:
+// app/ingest/[...path]/route.ts says why. CI checks a production build has no rewrites.
 export default function config(phase: string): NextConfig {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
   // `next typegen` (pnpm typecheck) loads this in the build phase too, but builds nothing.
@@ -33,13 +25,12 @@ export default function config(phase: string): NextConfig {
   }
   const devProxy = phase === PHASE_DEVELOPMENT_SERVER && !apiUrl;
   const nextConfig: NextConfig = {
-    rewrites: async () => [
-      ...POSTHOG_REWRITES,
-      ...(devProxy
-        ? [{ source: "/api/:path*", destination: `${process.env.API_URL ?? "http://localhost:8080"}/:path*` }]
-        : []),
-    ],
-    // PostHog's endpoints end in a slash (/e/, /flags/): no redirect that drops it.
+    ...(devProxy && {
+      rewrites: async () => [
+        { source: "/api/:path*", destination: `${process.env.API_URL ?? "http://localhost:8080"}/:path*` },
+      ],
+    }),
+    // posthog-js posts to /ingest/e/: no redirect that drops the slash.
     skipTrailingSlashRedirect: true,
     cacheComponents: true,
     partialPrefetching: true,

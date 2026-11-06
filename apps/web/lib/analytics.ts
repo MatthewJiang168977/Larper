@@ -7,7 +7,7 @@
 //   The PostHog project must have "Enable cookieless tracking" on, or it drops these.
 // - No autocapture, page views, page leaves, session replay, surveys, heatmaps, web
 //   vitals, exceptions, feature flags or remote scripts.
-// - Sent through this site (/ingest, next.config.ts), not straight to PostHog.
+// - Sent through this site (app/ingest/[...path]/route.ts), not straight to PostHog.
 // - What leaves: the event name, the properties below, and PostHog's own (browser,
 //   OS, screen size, the page). scrubCapture() takes the query and the fragment off
 //   every URL (/?at=lat,lng is a position; Clerk can put tokens there), drops any
