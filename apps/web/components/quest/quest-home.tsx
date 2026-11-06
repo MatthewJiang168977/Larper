@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { avatarInitialsAppearance } from "@/components/auth/clerk-appearance";
 import { useLocation, type Located } from "@/hooks/use-location";
+import { type CheckinResult, questProps, setDemo, track } from "@/lib/analytics";
 import { ApiError, describeError, useApi, type DeckItem, type Me, type QuestView, type SkipReason, type Today } from "@/lib/api";
 import { DEMO_MIDTOWN, DEMO_SPOT } from "@/lib/demo-spot";
 import { getPreciseFix } from "@/lib/precise-fix";
@@ -136,6 +137,7 @@ export function QuestHome() {
   useEffect(() => {
     api<Me>("/me").then(
       (m) => {
+        setDemo(!!m.demo);
         setMe(m);
         setMeError(null);
         meReady.resolve(m);
@@ -265,6 +267,15 @@ export function QuestHome() {
     if (setAside) firstReasonRef.current?.focus();
   }, [setAside]);
 
+  // Each quest offered, once (refreshes and survey polls hand back the same one).
+  const offered = useRef(new Set<string>());
+  const offer = today?.quest?.status === "offered" ? today.quest : null;
+  useEffect(() => {
+    if (!offer || offered.current.has(offer.id)) return;
+    offered.current.add(offer.id);
+    track("quest_offered", questProps(offer.place));
+  }, [offer]);
+
   const reload = () => setReloads((n) => n + 1);
   const retryMe = () => {
     setMeError(null);
@@ -304,6 +315,10 @@ export function QuestHome() {
         method: "POST",
         body: body && JSON.stringify(body),
       });
+      if (action === "accept") track("quest_accepted", questProps(quest.place));
+      if (action === "skip") track("quest_skipped", questProps(quest.place));
+      if (action === "not-today") track("quest_not_today", questProps(quest.place));
+      if (action === "complete") track("checkin_attempted", { result: "checked_in", simulated: !!res?.simulated });
       if (action === "not-today") setSetAside(questId);
       if (action === "complete") {
         setCheckIn(checkedIn(placeName, res));
@@ -312,6 +327,7 @@ export function QuestHome() {
       }
       reload();
     } catch (e) {
+      if (action === "complete") track("checkin_attempted", { result: checkinFailure(e), simulated: false });
       // A rejected check-in (too far, or a fix too rough to tell) shows in the sheet, by
       // "I went", and is worth another go after a few steps or with precise location on.
       if (action === "complete" && e instanceof ApiError && e.status === 422) {
@@ -335,6 +351,7 @@ export function QuestHome() {
     setBusy(true);
     try {
       await api(`/quests/${setAside}/reason`, { method: "POST", body: JSON.stringify({ reason }) });
+      track("not_today_reason", { reason });
     } catch (e) {
       setActionError({ text: describeError(e), retry: null });
     } finally {
@@ -598,6 +615,13 @@ export function checkedIn(place: string, res: { simulated?: boolean; distanceM?:
     };
   }
   return { tone: "done", label: "Checked in", text: `${place} is in your journal.` };
+}
+
+// Why a check-in didn't go through, for analytics: the geofence's two refusals (a 422
+// with the API's code), or anything else.
+export function checkinFailure(e: unknown): CheckinResult {
+  if (e instanceof ApiError && e.status === 422 && (e.code === "too_far" || e.code === "too_rough")) return e.code;
+  return "failed";
 }
 
 function Centered({ children }: { children: React.ReactNode }) {

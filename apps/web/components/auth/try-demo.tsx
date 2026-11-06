@@ -4,6 +4,7 @@
 import { useSignIn } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { setDemo, track } from "@/lib/analytics";
 import { ApiError, demoTicket, describeError } from "@/lib/api";
 import { demoEnabled } from "./demo-account";
 
@@ -28,6 +29,7 @@ export function TryDemoButton({ className, redirectTo = "/" }: { className?: str
   async function start() {
     setBusy(true);
     setError(null);
+    track("demo_clicked");
     try {
       const ticket = await demoTicket();
       const signedIn = await signIn.ticket({ ticket });
@@ -35,6 +37,10 @@ export function TryDemoButton({ className, redirectTo = "/" }: { className?: str
       if (signIn.status !== "complete") throw new Error(`demo sign-in is ${signIn.status}`);
       const done = await signIn.finalize({
         navigate: ({ decorateUrl }) => {
+          // Signed in: recorded before leaving the page. "demo signed in" is the main
+          // count of people trying Larper.
+          setDemo(true);
+          track("demo_signed_in");
           const url = decorateUrl(redirectTo);
           if (url.startsWith("http")) window.location.href = url;
           else router.push(url);

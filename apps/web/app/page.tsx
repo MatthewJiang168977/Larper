@@ -1,8 +1,10 @@
 import { Show, SignInButton, SignUpButton } from "@clerk/nextjs";
+import Link from "next/link";
 import { Suspense } from "react";
 import { demoEnabled } from "@/components/auth/demo-account";
 import { TryDemoButton } from "@/components/auth/try-demo";
 import { QuestHome } from "@/components/quest/quest-home";
+import { TrackView } from "@/components/track-view";
 
 export default function Home() {
   // Show reads the auth cookie, which is request-time data: with cacheComponents it
@@ -11,6 +13,7 @@ export default function Home() {
     <Suspense fallback={<main className="flex-1" />}>
       <Show when="signed-out">
         <main className="flex flex-1 flex-col items-center justify-center gap-8 px-4 text-center">
+          <TrackView event="landing_viewed" />
           <div className="space-y-3">
             <p className="field-label">A field journal for side quests</p>
             <h1 className="text-6xl font-semibold tracking-tight [font-variation-settings:'opsz'_144,'SOFT'_50]">
@@ -40,6 +43,9 @@ export default function Home() {
               </SignUpButton>
             )}
           </div>
+          <Link href="/privacy" className="hit-target font-mono text-xs uppercase tracking-wider text-ink-label underline-offset-4 hover:underline">
+            Privacy
+          </Link>
         </main>
       </Show>
 

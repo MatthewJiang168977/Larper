@@ -19,6 +19,7 @@
     "maplibre-gl": "^6.14.0",
     "motion": "^14.1.0",
     "next": "16.4.1",
+    "posthog-js": "1.438.13",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "tailwind-merge": "^3.7.0"
