@@ -136,6 +136,11 @@ describe('the Sentry SDK with the API options', () => {
     expect(r.items.map((i) => i.type)).toContain('event');
     expect(transactions(r)).toEqual([]);
     expect(r.text).not.toContain(CALLER_TRACE);
+    // Unsampled, the SDK would still send sentry-trace (…-0) and baggage to Clerk.
+    expect(r.clerkHeaders.length).toBeGreaterThan(0);
+    for (const names of r.clerkHeaders) {
+      for (const name of ['sentry-trace', 'baggage', 'traceparent']) expect(names).not.toContain(name);
+    }
   }, 60_000);
 
   it('scrubs the spans with beforeSendSpan alone', () => {

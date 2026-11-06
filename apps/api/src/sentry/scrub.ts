@@ -83,6 +83,8 @@ type Scrubbable = {
  * and Sentry removes it from the event before sending. All but one part of it: its
  * dynamicSamplingContext becomes the envelope's trace header, with the root span's
  * name in it (a span named in code can carry anything), so that part is scrubbed.
+ * That holds for Sentry 11.8.0 (pinned): re-check on an SDK upgrade that nothing else
+ * in it is sent (the SDK tests read whole envelopes, headers included).
  */
 export function scrubEvent<E extends object>(event: E): E {
   const { sdkProcessingMetadata, ...e }: Scrubbable = { ...event };

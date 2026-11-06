@@ -82,6 +82,8 @@ export function sentryOptions(env: NodeJS.ProcessEnv = process.env): Sentry.Node
     traceLifecycle: 'static',
     beforeSend: scrubEvent,
     beforeSendSpan: scrubSpan,
+    // Not only a second pass over the spans: it is the one hook that scrubs a
+    // transaction's trace header (scrub.ts, sdkProcessingMetadata). Keep both.
     beforeSendTransaction: scrubEvent,
     beforeBreadcrumb: (breadcrumb) => scrubValue(breadcrumb),
   };
