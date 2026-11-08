@@ -153,10 +153,13 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
       // "Not today" leaves the reason 'unstated' until the user gives one (giveReason).
       // A simulated demo check-in is marked in the quest's reasons, so the journal can
       // say so: a flag there needs no migration (no column, no grant), and old pods
-      // leave it alone.
+      // leave it alone. accepted_at and completed_at are the quest's facts for the profile
+      // stats (migration 0016); a simulated check-in sets completed_at like any other.
       const { rows } = await tx.query<{ status: QuestStatus; placeId: string }>(
-        `UPDATE quests SET status = $4, updated_at = now(), skip_reason = coalesce($5::skip_reason, skip_reason),
-                reasons = CASE WHEN $6 THEN reasons || '{"simulated": true}'::jsonb ELSE reasons END
+        `UPDATE quests SET status = $4::quest_status, updated_at = now(), skip_reason = coalesce($5::skip_reason, skip_reason),
+                reasons = CASE WHEN $6 THEN reasons || '{"simulated": true}'::jsonb ELSE reasons END,
+                accepted_at = CASE WHEN $4::quest_status = 'accepted' THEN now() ELSE accepted_at END,
+                completed_at = CASE WHEN $4::quest_status = 'completed' THEN now() ELSE completed_at END
          WHERE id = $1 AND user_id = $2 AND status = ANY($3::quest_status[])
          RETURNING status, place_id::text AS "placeId"`,
         [questId, userId, t.from, t.to, action === 'not-today' ? 'unstated' : null, !!checkIn?.simulated],
@@ -479,12 +482,13 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     // answer. It can still be missing: a concurrent request from far away may expire
     // the winner's offer between our INSERT and SELECT. Then the slot is free again,
     // so try again (found by the k6 load test: 2.7% of requests failed here).
+    // The rarity is kept from this moment: the area's changes when places are reloaded.
     for (let attempt = 0; attempt < 3; attempt++) {
       await this.pg.query(
-        `INSERT INTO quests (user_id, place_id, score, reasons, origin)
-         VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326)::geography)
+        `INSERT INTO quests (user_id, place_id, score, reasons, origin, rarity)
+         VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326)::geography, $7)
          ON CONFLICT (user_id) WHERE status IN ('offered', 'accepted') DO NOTHING`,
-        [userId, pick.id, pick.score, JSON.stringify(pick.reasons), lng, lat],
+        [userId, pick.id, pick.score, JSON.stringify(pick.reasons), lng, lat, pick.parts.rarity],
       );
       const quest = await this.active(userId, lat, lng);
       if (quest) return quest;
