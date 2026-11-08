@@ -56,7 +56,8 @@ describe("TryDemoButton", () => {
     render(<TryDemoButton />);
     fireEvent.click(screen.getByRole("button", { name: "Try the demo" }));
     await waitFor(() => expect(push).toHaveBeenCalled());
-    expect(tracked.demo).toEqual([true]);
+    // Not yet the demo account at the click (demo: false), then signed in as it.
+    expect(tracked.demo).toEqual([false, true]);
   });
 
   it("records only the click when the demo doesn't start", async () => {

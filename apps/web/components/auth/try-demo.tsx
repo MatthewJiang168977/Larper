@@ -29,6 +29,8 @@ export function TryDemoButton({ className, redirectTo = "/" }: { className?: str
   async function start() {
     setBusy(true);
     setError(null);
+    // Not signed in yet, so not the demo account (this button is also on /sign-in).
+    setDemo(false);
     track("demo_clicked");
     try {
       const ticket = await demoTicket();

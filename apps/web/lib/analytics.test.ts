@@ -2,6 +2,8 @@ import type { CaptureResult, PostHog } from "posthog-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   analyticsConfig,
+  clearDemo,
+  demoKnown,
   distanceBucket,
   initAnalytics,
   questProps,
@@ -178,6 +180,27 @@ describe("initAnalytics and track", () => {
       ["not_today_reason", { demo: true, reason: "too_far" }],
       ["checkin_attempted", { demo: false, result: "checked_in", simulated: false }],
     ]);
+  });
+
+  it("forgets the flag on clearDemo: later events carry none, and it's unknown again", async () => {
+    const ph = fakePostHog();
+    await initAnalytics(PROD, ph.load);
+    expect(demoKnown()).toBe(false);
+    setDemo(true);
+    expect(demoKnown()).toBe(true);
+    track("journal_opened");
+    clearDemo();
+    expect(demoKnown()).toBe(false);
+    track("journal_opened");
+    expect(ph.capture.mock.calls).toEqual([
+      ["journal_opened", { demo: true }],
+      ["journal_opened", {}],
+    ]);
+  });
+
+  it("knows false as an answer, so a signed-out visitor's flag isn't asked for again", () => {
+    setDemo(false);
+    expect(demoKnown()).toBe(true);
   });
 
   it("survives posthog-js failing to load or to capture", async () => {

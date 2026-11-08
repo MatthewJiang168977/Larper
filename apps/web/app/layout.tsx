@@ -1,6 +1,7 @@
 import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata, Viewport } from "next";
 import { Fraunces, JetBrains_Mono } from "next/font/google";
+import { AnalyticsAuth } from "@/components/analytics-auth";
 import { CLERK_APPEARANCE } from "@/components/auth/clerk-appearance";
 import { WebAnalytics } from "@/components/web-analytics";
 import "./globals.css";
@@ -34,7 +35,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${fraunces.variable} ${jetbrains.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col">
-        <ClerkProvider appearance={CLERK_APPEARANCE}>{children}</ClerkProvider>
+        <ClerkProvider appearance={CLERK_APPEARANCE}>
+          <AnalyticsAuth />
+          {children}
+        </ClerkProvider>
         <WebAnalytics />
       </body>
     </html>

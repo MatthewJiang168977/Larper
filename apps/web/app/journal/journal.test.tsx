@@ -13,15 +13,17 @@ vi.mock("next/link", () => ({
 }));
 
 // Analytics (lib/analytics.ts): what would be recorded.
-const tracked = vi.hoisted(() => ({ events: [] as string[], demo: [] as boolean[] }));
+const tracked = vi.hoisted(() => ({ events: [] as string[], known: false }));
 vi.mock("@/lib/analytics", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/analytics")>()),
   track: (event: string) => void tracked.events.push(event),
-  setDemo: (d: boolean) => void tracked.demo.push(d),
+  setDemo: (d: boolean) => void tracked.events.push(`demo=${d}`),
+  demoKnown: () => tracked.known,
 }));
 
 let answer: () => Promise<unknown>;
-const api = vi.fn(() => answer());
+let answerMe: () => Promise<unknown>;
+const api = vi.fn((path: string) => (path === "/me" ? answerMe() : answer()));
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
   useApi: () => api,
@@ -42,14 +44,49 @@ const entry = (over: Partial<JournalEntry>): JournalEntry => ({
 beforeEach(() => {
   api.mockClear();
   tracked.events.length = 0;
+  tracked.known = false;
+  answerMe = () => Promise.resolve({ demo: false });
 });
 
 describe("Journal", () => {
-  it("records that it was opened, once", async () => {
+  it("coming from the map: records that it was opened, once, without asking /me", async () => {
+    tracked.known = true;
     answer = () => Promise.resolve([]);
+    const { rerender } = render(<JournalPage />);
+    rerender(<JournalPage />);
+    await settle();
+    expect(tracked.events).toEqual(["journal_opened"]);
+    expect(api).not.toHaveBeenCalledWith("/me");
+  });
+
+  it.each([true, false])("on a fresh load: gets the demo flag (%s) from /me before recording", async (demo) => {
+    answer = () => Promise.resolve([]);
+    answerMe = () => Promise.resolve({ demo });
+    render(<JournalPage />);
+    await settle();
+    expect(tracked.events).toEqual([`demo=${demo}`, "journal_opened"]);
+    expect(api.mock.calls.filter(([path]) => path === "/me")).toHaveLength(1);
+  });
+
+  it("still records the visit, with no flag and no error shown, when /me fails", async () => {
+    answer = () => Promise.resolve([entry({})]);
+    answerMe = () => Promise.reject(new ApiError("nope", 503));
     render(<JournalPage />);
     await settle();
     expect(tracked.events).toEqual(["journal_opened"]);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText("Tasty Noodles")).toBeTruthy();
+  });
+
+  it("doesn't record a second visit or ask /me again when the list is retried", async () => {
+    answer = () => Promise.reject(new ApiError("x", 400));
+    render(<JournalPage />);
+    await settle();
+    answer = () => Promise.resolve([]);
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await settle();
+    expect(tracked.events).toEqual(["demo=false", "journal_opened"]);
+    expect(api.mock.calls.filter(([path]) => path === "/me")).toHaveLength(1);
   });
 
   it("writes tags and categories in plain words, and dates in New York time", async () => {

@@ -165,6 +165,16 @@ export function setDemo(value: boolean) {
   demo = value;
 }
 
+/** Whether setDemo() has an answer yet, so a page can skip asking the API. */
+export function demoKnown(): boolean {
+  return demo !== undefined;
+}
+
+/** Forgets the account's flag: someone signed out or switched accounts. */
+export function clearDemo() {
+  demo = undefined;
+}
+
 /** Records one event. Does nothing where analytics is off. */
 export function track<E extends AnalyticsEvent>(
   event: E,

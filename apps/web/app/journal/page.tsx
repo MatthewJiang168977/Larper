@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { RequireSignIn } from "@/components/require-sign-in";
 import { humanize } from "@/components/quest/why-lines";
-import { TrackView } from "@/components/track-view";
-import { useEffect, useState } from "react";
-import { describeError, useApi, type JournalEntry } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { demoKnown, setDemo, track } from "@/lib/analytics";
+import { describeError, useApi, type JournalEntry, type Me } from "@/lib/api";
 
 const STAMP: Record<JournalEntry["status"], { label: string; cls: string }> = {
   completed: { label: "Done", cls: "border-moss text-moss" },
@@ -48,9 +48,26 @@ function Journal() {
     );
   }, [api, tries]);
 
+  // Recorded once per visit. Coming from the map the demo flag is known; on a fresh load
+  // of this page it isn't, so ask /me first. A failed /me only leaves the flag out.
+  const opened = useRef(false);
+  useEffect(() => {
+    if (opened.current) return;
+    opened.current = true;
+    if (demoKnown()) {
+      track("journal_opened");
+      return;
+    }
+    api<Me>("/me")
+      .then(
+        (m) => setDemo(!!m.demo),
+        () => {},
+      )
+      .then(() => track("journal_opened"));
+  }, [api]);
+
   return (
     <main className="mx-auto w-full max-w-xl flex-1 px-4 py-8">
-      <TrackView event="journal_opened" />
       <Link href="/" className="hit-target font-mono text-xs uppercase tracking-wider text-ink-soft underline-offset-4 hover:underline">
         ← Map
       </Link>

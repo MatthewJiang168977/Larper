@@ -33,14 +33,14 @@ function request(path: string, init: { body?: string; headers?: Record<string, s
 
 describe("/ingest", () => {
   it("passes an event batch on to PostHog with only the body, the query, the type, the UA and the IP", async () => {
-    const res = await POST(request("/ingest/e/?ip=0&_=1793936139&ver=1.438.13&compression=gzip-js", { body: "BATCH" }));
+    const res = await POST(request("/ingest/e/?compression=gzip-js&retry_count=2", { body: "BATCH" }));
     expect(res.status).toBe(200);
     expect(await res.text()).toBe('{"status":"Ok"}');
     expect(res.headers.get("set-cookie")).toBeNull();
 
     expect(upstream).toHaveBeenCalledTimes(1);
     const [url, init] = upstream.mock.calls[0];
-    expect(url).toBe("https://us.i.posthog.com/e/?ip=0&_=1793936139&ver=1.438.13&compression=gzip-js");
+    expect(url).toBe("https://us.i.posthog.com/e/?compression=gzip-js&retry_count=2");
     expect(init.method).toBe("POST");
     expect(new TextDecoder().decode(init.body as ArrayBuffer)).toBe("BATCH");
     expect(Object.fromEntries(new Headers(init.headers))).toEqual({
@@ -56,6 +56,16 @@ describe("/ingest", () => {
     for (const never of [SESSION, "__session", "__client_uat", "Bearer", "40.7301", "playlarper.com"]) {
       expect(sent).not.toContain(never);
     }
+  });
+
+  it("forwards only the SDK's own query parameters", async () => {
+    await POST(request("/ingest/e/?compression=gzip-js&at=40.7301,-73.9965&token=abc&api_key=x&retry_count=1"));
+    expect(upstream.mock.calls[0][0]).toBe("https://us.i.posthog.com/e/?compression=gzip-js&retry_count=1");
+  });
+
+  it("sends no query at all when none of it is the SDK's", async () => {
+    await POST(request("/ingest/e?at=40.7301,-73.9965"));
+    expect(upstream.mock.calls[0][0]).toBe("https://us.i.posthog.com/e/");
   });
 
   it.each(["/ingest/e", "/ingest/i/v0/e/", "/ingest/batch/"])("accepts %s", async (path) => {
