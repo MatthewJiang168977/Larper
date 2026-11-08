@@ -6,8 +6,75 @@
 > per-service database roles (0010, decision 0003) are live: every M9 migration grants its
 > tables to the roles that need them and updates `apps/api/src/db/roles.db.spec.ts`.
 > Other parts of this plan predate the public demo (restricted sign-ups, the shared demo
-> account and its nightly reset, rate limits already in place, the web app on Vercel); the
-> profile proposal of 2026-10-25 covers those and should be folded in before building.
+> account and its nightly reset, rate limits already in place, the web app on Vercel). The
+> next section folds in the owner's decisions of 2026-10-25; where it and the older text
+> below disagree, it wins.
+
+## Phases and decisions (2026-10-25, checked against `main` on 2026-11-08)
+
+Each phase is its own PR, and each deploy is approved separately.
+
+| Phase | What | Migration |
+|---|---|---|
+| 1 | Quest facts: `accepted_at`, `completed_at`, `rarity` on `quests` | `0016_quest_facts` |
+| 2 | `profile_stats`, the profile-stats consumer, rebuild, lag metric, demo-reset change | `0017_profile_stats` |
+| 3 | Tag families, palette, archetypes | `0018_tag_families` |
+| 4 | `GET /me/profile`, web profile page | none |
+| 5 | Share cards | `0019_share_cards` |
+
+The star sign (build step 16, migration 0020, open question 11) is **dropped**.
+
+Decisions, which close the matching open questions below:
+
+1. **Consumer (open question 1).** Keep the separate profile-stats consumer, the spec's
+   two-consumer design.
+2. **Demo account.** It gets a profile but no share cards (the API answers 403). The
+   nightly reset **restores a baseline profile**, so a visitor never sees an empty
+   "surveying" page, and the demo skips the 5-accept archetype cold start.
+3. **Streaks (open question 2).** Days are counted in the metro time zone
+   (`America/New_York`), with no per-user zone column: the shared demo account would flip
+   between its visitors' zones. **Expansion must use each region's own time zone.**
+4. **Percentile (open question 3).** Shown only once at least 20 users have at least 3
+   check-ins each.
+5. **Connections.** The owner chose to raise `max_connections` to 60 rather than shrink
+   the API's pool, when the demo profile was full at 50 of 50. See the first item below.
+
+Skips, also from the 2026-10-25 proposal: `status = 'skipped'` where `skip_reason` is NULL
+(a plain Skip) or `not_my_thing`. The other "Not today" reasons, and `unstated`, are
+neutral, as #25 decided. `not-today` is only allowed from `accepted`, so those quests
+still count as accepts.
+
+### To settle in Phase 2 (found 2026-11-08)
+
+None of these affects Phase 1.
+
+- **`max_connections`.** The live VM runs `values-oci-a1max.yaml` at **100**, with 70 used
+  (60 of role limits plus 10 reserved), so the new role fits with no change, and 60 would
+  make the chart refuse to render. The raise to 60 only applies to `values-demo.yaml` on
+  its own, the 1 OCPU / 6 GB VM.
+- **The baseline demo profile and per-user recompute conflict.** The consumer recomputes
+  a user from `quests`, and the reset deletes the demo's quests, so the first event after
+  a reset would overwrite the baseline with near-empty stats. Phase 2 needs a way to keep
+  it, such as a baseline flag on the row that the recompute respects.
+- **Simulated check-ins** are `completed` quests marked `reasons.simulated`, only on the
+  demo account, and they skip the geofence. Their facts are stored as for any check-in.
+  They must stay out of the percentile, along with the demo's row, and out of anything
+  that says a user was really somewhere. `reasons || '{"simulated": true}'` leaves
+  `reasons->'rarest'` intact.
+- **`places.location_suspect`** can be set by a reload after a check-in. The recompute
+  shouldn't read it: a flag changing would alter stats with no event, and `rebuild
+  -compare` would report differences. A real check-in passed the geofence at that point
+  anyway. It already keeps suspect places out of decks and of `area_stats`, so rarity
+  stored at offer time isn't computed from them.
+- **One quest a day** means at most one check-in per metro day except on the demo, so
+  streak days and check-ins nearly coincide, and the 5-accept cold start takes at least
+  five days. The streak boundary must match `doneToday`'s (`DAY_TIME_ZONE` in
+  `quests.service.ts`), and the Go consumer will need the same constant.
+- **`rarity` can be 0** for a real offer (fewer than two places in the area, or no tag
+  rarer than the rest). The niche score treats 0 as a value and NULL as unknown.
+- **PostHog** stays separate: its events are client-side funnel counts with no user id, so
+  they can't feed `profile_stats`. Phase 4 adds any profile events to `lib/analytics.ts`
+  and keeps `/privacy` in step; Phase 1 sends none.
 
 Plan for the spec in [`M9-profile.md`](M9-profile.md), written 2026-10-17 against commit
 `b843f4e`. Nothing here is built yet. File paths are real unless marked **new**. Decisions
