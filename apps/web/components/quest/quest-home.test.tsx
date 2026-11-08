@@ -586,7 +586,7 @@ describe("QuestHome: touch targets", () => {
     render(<QuestHome />);
     await settle();
     expect(userButton).toHaveBeenLastCalledWith({
-      appearance: { elements: { userButtonTrigger: "hit-target" } },
+      appearance: { elements: { userButtonTrigger: "quest-inline hit-target" } },
       userProfileProps: { appearance: undefined },
     });
     expect(screen.getByRole("link", { name: "Journal" }).classList).toContain("hit-target");
@@ -604,7 +604,7 @@ describe("QuestHome: touch targets", () => {
       appearance: { elements: Record<string, unknown> };
       userProfileProps: { appearance: { elements: Record<string, unknown> } };
     };
-    expect(appearance.elements.userButtonTrigger).toBe("hit-target");
+    expect(appearance.elements.userButtonTrigger).toBe("quest-inline hit-target");
     expect(appearance.elements.avatarImage).toEqual({ display: "none" });
     expect(appearance.elements.avatarBox).toMatchObject({ "&::after": { content: '"AB"' } });
     // The profile modal ("Manage account") draws the same avatar.

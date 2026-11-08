@@ -79,6 +79,28 @@ describe("QuestSheet on a phone: peek", () => {
 });
 
 describe("QuestSheet on a phone: the handle", () => {
+  it("shows the hint once per browser and clears it when the sheet opens", async () => {
+    const storage = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+    });
+    try {
+      const first = sheet("offered");
+      const hint = await screen.findByText("Tap or drag up for details");
+      expect(handle().getAttribute("aria-describedby")).toBe(hint.id);
+      expand();
+      expect(screen.queryByText("Tap or drag up for details")).toBeNull();
+      first.unmount();
+
+      sheet("offered");
+      await act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+      expect(screen.queryByText("Tap or drag up for details")).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("is a real button that says what it will do and whether the sheet is open", () => {
     sheet("offered");
     expect(handle().getAttribute("aria-expanded")).toBe("false");
@@ -363,12 +385,12 @@ describe("QuestSheet on a wide screen", () => {
     expect(within(details).getByRole("link", { name: "Check hours" })).toBeTruthy();
   });
 
-  it("shows each lead as a compact borderless row: name over category and distance; the selected one stays filled", () => {
+  it("shows each lead as a compact raised row: name over category and distance; the selected one stays filled", () => {
     sheet("offered", { selectedId: "p2" });
     const row = screen.getByRole("button", { name: "1. A Very Long Lead Name That Truncates" });
     const classes = row.className.split(" ");
     expect(classes).toEqual(expect.arrayContaining(["rounded-full", "border", "max-w-[11rem]"])); // phones: the pill
-    expect(classes).toEqual(expect.arrayContaining(["lg:border-0", "lg:flex", "lg:w-full", "lg:py-1"]));
+    expect(classes).toEqual(expect.arrayContaining(["quest-raised", "lg:flex", "lg:w-full", "lg:py-1"]));
     expect(row.getAttribute("aria-pressed")).toBe("true");
     expect(classes).toContain("bg-ink"); // the highlight, on every screen
     expect(row.textContent).toContain("A Very Long Lead Name That Truncates");

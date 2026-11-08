@@ -65,6 +65,7 @@ const WALK_M_PER_MIN = 80;
 // Whole metres, as the count-up shows them when it lands.
 const DISTANCE = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const SPRING = { type: "spring", stiffness: 420, damping: 40 } as const;
+const HANDLE_HINT_KEY = "larper:quest-handle-hint-seen";
 /** Peek's share of the screen, at most. */
 export const PEEK_MAX = 0.5;
 
@@ -92,6 +93,22 @@ function BottomSheet(props: Props) {
   const { focused, isQuest, label } = useFocused(props);
   const reduce = useReducedMotion();
   const restId = useId();
+  const hintId = useId();
+  const [showHandleHint, setShowHandleHint] = useState(false);
+  const hasPlace = !!focused;
+  useEffect(() => {
+    if (!hasPlace) return;
+    const frame = requestAnimationFrame(() => {
+      try {
+        if (window.localStorage.getItem(HANDLE_HINT_KEY)) return;
+        window.localStorage.setItem(HANDLE_HINT_KEY, "1");
+        setShowHandleHint(true);
+      } catch {
+        // The handle still has its grip and direction cue if storage is blocked.
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [hasPlace]);
   const sectionRef = useRef<HTMLElement>(null);
   const peekRef = useRef<HTMLDivElement>(null);
   const peekContentRef = useRef<HTMLDivElement>(null);
@@ -189,6 +206,7 @@ function BottomSheet(props: Props) {
     (next: Snap) => {
       setSnap(next);
       setAnnounce(next === "full" ? "Quest details expanded" : "Quest details collapsed");
+      if (next === "full") setShowHandleHint(false);
       if (next !== "peek") return;
       // Collapsing hides the rest: don't leave focus on something you can't see.
       if (restRef.current?.contains(document.activeElement)) handleRef.current?.focus();
@@ -241,6 +259,7 @@ function BottomSheet(props: Props) {
           aria-expanded={snap === "full"}
           aria-controls={restId}
           aria-label={snap === "full" ? "Show less" : "Show more about this place"}
+          aria-describedby={showHandleHint && snap === "peek" ? hintId : undefined}
           aria-keyshortcuts="ArrowUp ArrowDown Home End"
           onPointerDown={(e) => {
             pressDragged.current = false;
@@ -259,9 +278,17 @@ function BottomSheet(props: Props) {
               go(next);
             }
           }}
-          className="-mx-5 flex h-11 w-[calc(100%+2.5rem)] touch-none items-center justify-center"
+          className="quest-handle -mx-5 flex min-h-11 w-[calc(100%+2.5rem)] touch-none flex-col items-center justify-center gap-0.5 rounded-t-2xl px-3 py-1"
         >
-          <span aria-hidden className="h-1 w-10 rounded-full bg-rule" />
+          <span aria-hidden className="flex items-center gap-2">
+            <span className="h-1.5 w-12 rounded-full bg-ink-soft" />
+            <svg width="12" height="8" viewBox="0 0 12 8" fill="none" className={snap === "full" ? "rotate-180" : undefined}>
+              <path d="M2 6L6 2l4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          {showHandleHint && snap === "peek" && (
+            <span id={hintId} className="font-mono text-xs text-ink-soft">Tap or drag up for details</span>
+          )}
         </button>
       </div>
 
@@ -320,13 +347,13 @@ function NoteBlock({ note, onDismiss }: { note: SheetNote; onDismiss?: () => voi
         <button
           onClick={note.action.onClick}
           disabled={note.action.pending}
-          className="hit-target shrink-0 self-center font-medium underline disabled:opacity-50"
+          className="quest-inline hit-target shrink-0 self-center font-medium underline disabled:opacity-50"
         >
           {note.action.pending ? "Checking…" : note.action.label}
         </button>
       )}
       {onDismiss && (
-        <button onClick={onDismiss} aria-label="Dismiss" className="hit-target shrink-0 px-1">
+        <button onClick={onDismiss} aria-label="Dismiss" className="quest-inline hit-target shrink-0 px-1">
           ×
         </button>
       )}
@@ -566,17 +593,17 @@ function Tab({
       : "text-oxblood border-oxblood"
     : active
       ? "bg-ink text-paper border-ink"
-      : "text-ink border-ink-faint lg:hover:bg-rule/40";
+      : "text-ink border-ink-faint";
   // Phones: a pill whose text truncates in its own span (overflow on the button would
   // clip its hit area; the strip's vertical padding leaves room for that hit area inside
-  // its scroll box). Wide screens: a compact row with no border, the name (wrapping) over
+  // its scroll box). Wide screens: a compact row with the name (wrapping) over
   // its category and distance; the selected one stays filled.
   return (
     <button
       onClick={onClick}
       aria-pressed={active}
       aria-label={label}
-      className={`hit-target shrink-0 max-w-[11rem] rounded-full border px-3 py-1 font-mono text-xs lg:flex lg:w-full lg:max-w-full lg:items-start lg:gap-2 lg:rounded-md lg:border-0 lg:px-2 lg:py-1 lg:text-left lg:font-serif ${tone}`}
+      className={`quest-raised hit-target shrink-0 max-w-[11rem] rounded-full border px-3 py-1 font-mono text-xs lg:flex lg:w-full lg:max-w-full lg:items-start lg:gap-2 lg:rounded-md lg:px-2 lg:py-1 lg:text-left lg:font-serif ${tone}`}
     >
       <span className="block truncate lg:hidden">{label}</span>
       <span aria-hidden className="hidden w-5 shrink-0 pt-0.5 text-right font-mono text-xs lg:block">
@@ -618,7 +645,7 @@ function Links({ place }: { place: PlaceView }) {
           when they wrap onto a second line. */}
       <div className="mt-4 flex flex-wrap gap-x-6 gap-y-6 text-sm">
         <a
-          className="hit-target underline decoration-oxblood underline-offset-4"
+          className="quest-inline hit-target rounded underline decoration-oxblood underline-offset-4"
           href={`https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}&travelmode=walking`}
           target="_blank"
           rel="noreferrer"
@@ -626,21 +653,21 @@ function Links({ place }: { place: PlaceView }) {
           Directions
         </a>
         {place.website && (
-          <a className="hit-target underline underline-offset-4" href={place.website} target="_blank" rel="noreferrer">
+          <a className="quest-inline hit-target rounded underline underline-offset-4" href={place.website} target="_blank" rel="noreferrer">
             Website
           </a>
         )}
         {place.instagram && (
-          <a className="hit-target underline underline-offset-4" href={place.instagram} target="_blank" rel="noreferrer">
+          <a className="quest-inline hit-target rounded underline underline-offset-4" href={place.instagram} target="_blank" rel="noreferrer">
             Instagram
           </a>
         )}
         {place.phone && (
-          <a className="hit-target underline underline-offset-4" href={`tel:${place.phone.replace(/[^\d+]/g, "")}`}>
+          <a className="quest-inline hit-target rounded underline underline-offset-4" href={`tel:${place.phone.replace(/[^\d+]/g, "")}`}>
             Call
           </a>
         )}
-        <a className="hit-target underline underline-offset-4" href={hoursSearchUrl(place)} target="_blank" rel="noreferrer">
+        <a className="quest-inline hit-target rounded underline underline-offset-4" href={hoursSearchUrl(place)} target="_blank" rel="noreferrer">
           Check hours
         </a>
       </div>
@@ -651,7 +678,7 @@ function Links({ place }: { place: PlaceView }) {
 
 const PRIMARY = "stamp-btn shrink-0 rounded-md bg-oxblood px-4 py-2 font-medium text-paper disabled:opacity-50";
 const SECONDARY = "stamp-btn rounded-md bg-paper px-4 py-2 text-ink disabled:opacity-50";
-const QUIET = "hit-target px-2 py-2 text-ink-soft underline underline-offset-4 disabled:opacity-50";
+const QUIET = "quest-inline hit-target rounded-md px-2 py-2 text-ink-soft underline underline-offset-4 disabled:opacity-50";
 
 function PrimaryAction({ status, onAction, busy }: { status: QuestView["status"]; onAction: (a: QuestAction) => void; busy: boolean }) {
   if (status === "offered") {

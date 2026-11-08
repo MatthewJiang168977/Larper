@@ -59,7 +59,7 @@ export function DemoNotice({ loc, demo, onRetry, retrying }: Props) {
     <button
       onClick={onRetry}
       disabled={retrying}
-      className="hit-target field-label whitespace-nowrap px-1.5 py-1.5 text-oxblood! underline underline-offset-2 disabled:opacity-50"
+      className="quest-inline hit-target field-label rounded whitespace-nowrap px-1.5 py-1.5 text-oxblood! underline underline-offset-2 disabled:opacity-50"
     >
       {retrying ? "Looking…" : "Use my location"}
     </button>
@@ -72,7 +72,7 @@ export function DemoNotice({ loc, demo, onRetry, retrying }: Props) {
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
           aria-controls={detailsId}
-          className="hit-target field-label flex items-center gap-1 whitespace-nowrap py-1.5 pl-2 pr-1.5"
+          className="quest-inline hit-target field-label rounded flex items-center gap-1 whitespace-nowrap py-1.5 pl-2 pr-1.5"
         >
           {demo ? `Demo · ${spot}` : spot}
           <span aria-hidden>{open ? "▴" : "▾"}</span>
@@ -85,7 +85,7 @@ export function DemoNotice({ loc, demo, onRetry, retrying }: Props) {
             setHidden(true);
           }}
           aria-label="Hide for this visit"
-          className="hit-target ml-auto min-w-9 py-1 text-ink-soft"
+          className="quest-inline hit-target ml-auto rounded min-w-9 py-1 text-ink-soft"
         >
           ×
         </button>
