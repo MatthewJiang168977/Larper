@@ -10,6 +10,9 @@ import { PHASE_DEVELOPMENT_SERVER, PHASE_PRODUCTION_BUILD } from "next/constants
 //
 // Local dev may leave it unset: then, under `next dev` only, /api/* is proxied to
 // API_URL (the k3d ingress, http://localhost:8080 by default).
+//
+// /ingest (analytics, to PostHog) is a route handler, not a rewrite:
+// app/ingest/[...path]/route.ts says why. CI checks a production build has no rewrites.
 export default function config(phase: string): NextConfig {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
   // `next typegen` (pnpm typecheck) loads this in the build phase too, but builds nothing.

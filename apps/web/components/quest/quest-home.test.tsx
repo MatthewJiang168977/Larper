@@ -60,6 +60,14 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   useApi: () => api,
 }));
 
+// Analytics (lib/analytics.ts): what would be recorded.
+const tracked = vi.hoisted(() => ({ events: [] as [string, unknown?][], demo: [] as boolean[] }));
+vi.mock("@/lib/analytics", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/analytics")>()),
+  track: (event: string, props?: unknown) => void tracked.events.push(props === undefined ? [event] : [event, props]),
+  setDemo: (d: boolean) => void tracked.demo.push(d),
+}));
+
 // The fresh check-in reading: each test decides what it returns (default: none).
 const preciseFix = vi.fn<() => Promise<{ lat: number; lng: number; accuracyM: number } | null>>();
 vi.mock("@/lib/precise-fix", () => ({ getPreciseFix: () => preciseFix() }));
@@ -109,6 +117,7 @@ vi.mock("./quest-sheet", () => ({
         <p>demo: {String(!!demo)}</p>
         <p>slam: {String(!!stampSlam)}</p>
         <button onClick={onStampSlammed}>Slammed</button>
+        <button onClick={() => onAction("accept")}>Accept</button>
         <button onClick={() => onAction("complete")}>I went</button>
         <button onClick={() => onAction("not-today")}>Set aside</button>
         <button onClick={() => onAction("skip")}>Skip</button>
@@ -177,6 +186,8 @@ beforeEach(() => {
   preciseFix.mockResolvedValue(null);
   bodies.length = 0;
   calls.length = 0;
+  tracked.events.length = 0;
+  tracked.demo.length = 0;
   for (const k of Object.keys(routes)) delete routes[k];
   routes["/me"] = ok(ME);
 });
@@ -1038,5 +1049,80 @@ describe("QuestHome: keyboard and screen readers", () => {
     const pill = screen.getAllByRole("status").find((el) => /Surveying the area/.test(el.textContent ?? ""))!;
     expect(pill.className.split(" ")).toContain("motion-safe:animate-pulse");
     expect(pill.className.split(" ")).not.toContain("animate-pulse");
+  });
+});
+
+describe("QuestHome: analytics", () => {
+  // place() is a cafe 100 m away: that's all a quest is to analytics.
+  const CAFE = { category: "cafe", distance_bucket: "<0.5km" };
+
+  beforeEach(() => {
+    routes["/quests/today"] = ok(withQuest);
+  });
+
+  it("records the demo flag from /me, and today's offer once, however often it's refreshed", async () => {
+    routes["/me"] = ok({ ...ME, demo: true });
+    routes["/quests/q1/skip"] = fail(new ApiError("Internal server error", 500));
+    render(<QuestHome />);
+    await settle();
+    expect(tracked.demo).toEqual([true]);
+    expect(tracked.events).toEqual([["quest_offered", CAFE]]);
+
+    fireEvent.click(screen.getByText("Skip")); // fails: no event, and no refresh
+    await settle();
+    expect(tracked.events).toEqual([["quest_offered", CAFE]]);
+  });
+
+  it("records no offer for a quest that's already accepted", async () => {
+    routes["/quests/today"] = ok({ ...withQuest, quest: { ...withQuest.quest!, status: "accepted" } });
+    render(<QuestHome />);
+    await settle();
+    expect(tracked.events).toEqual([]);
+  });
+
+  it.each([
+    ["Accept", "accept", "quest_accepted"],
+    ["Skip", "skip", "quest_skipped"],
+    ["Set aside", "not-today", "quest_not_today"],
+  ])("records %s with only the category and distance bucket", async (button, action, event) => {
+    routes[`/quests/q1/${action}`] = ok({});
+    render(<QuestHome />);
+    await settle();
+    fireEvent.click(screen.getByText(button));
+    await settle();
+    expect(tracked.events).toContainEqual([event, CAFE]);
+    expect(JSON.stringify(tracked.events)).not.toContain("Cafe Uno");
+  });
+
+  it("records the reason after 'Not today' as a second event, and nothing when there's none", async () => {
+    routes["/quests/q1/not-today"] = ok({});
+    routes["/quests/q1/reason"] = ok({});
+    render(<QuestHome />);
+    await settle();
+    fireEvent.click(screen.getByText("Set aside"));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Too far" }));
+    await settle();
+    expect(tracked.events.filter(([e]) => e === "not_today_reason")).toEqual([["not_today_reason", { reason: "too_far" }]]);
+
+    fireEvent.click(screen.getByText("Set aside"));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "No reason" }));
+    expect(tracked.events.filter(([e]) => e === "not_today_reason")).toHaveLength(1);
+  });
+
+  it.each([
+    ["a check-in", ok({}), { result: "checked_in", simulated: false }],
+    ["a simulated (demo) check-in", ok({ simulated: true, distanceM: 4000 }), { result: "checked_in", simulated: true }],
+    ["too far", fail(new ApiError("You're 110 m away", 422, "http", "too_far")), { result: "too_far", simulated: false }],
+    ["too rough a fix", fail(new ApiError("Too rough", 422, "http", "too_rough")), { result: "too_rough", simulated: false }],
+    ["a server error", fail(new ApiError("Internal server error", 500)), { result: "failed", simulated: false }],
+  ])("records %s", async (_name, answer, props) => {
+    routes["/quests/q1/complete"] = answer;
+    render(<QuestHome />);
+    await settle();
+    fireEvent.click(screen.getByText("I went"));
+    await settle();
+    expect(tracked.events.filter(([e]) => e === "checkin_attempted")).toEqual([["checkin_attempted", props]]);
   });
 });
