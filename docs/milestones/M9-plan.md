@@ -36,40 +36,44 @@ Decisions, which close the matching open questions below:
    between its visitors' zones. **Expansion must use each region's own time zone.**
 4. **Percentile (open question 3).** Shown only once at least 20 users have at least 3
    check-ins each.
-5. **Connections.** The owner chose to raise `max_connections` to 60 rather than shrink
-   the API's pool, when the demo profile was full at 50 of 50. See the first item below.
+5. **Connections.** Raise `max_connections` rather than shrink the API's pool, but only
+   where it's needed: 60 in `values-demo.yaml` for the 1 OCPU / 6 GB VM, which is full at
+   50 of 50. The live VM stays at 100 (below).
 
 Skips, also from the 2026-10-25 proposal: `status = 'skipped'` where `skip_reason` is NULL
 (a plain Skip) or `not_my_thing`. The other "Not today" reasons, and `unstated`, are
 neutral, as #25 decided. `not-today` is only allowed from `accepted`, so those quests
 still count as accepts.
 
-### To settle in Phase 2 (found 2026-11-08)
+### For Phase 2 (2026-11-08)
 
-None of these affects Phase 1.
+None of these affects Phase 1. The owner decided the first two, and the rules on
+`places.location_suspect` and the day boundary.
 
-- **`max_connections`.** The live VM runs `values-oci-a1max.yaml` at **100**, with 70 used
-  (60 of role limits plus 10 reserved), so the new role fits with no change, and 60 would
-  make the chart refuse to render. The raise to 60 only applies to `values-demo.yaml` on
-  its own, the 1 OCPU / 6 GB VM.
-- **The baseline demo profile and per-user recompute conflict.** The consumer recomputes
+- **`max_connections` (decided).** `values-oci-a1max.yaml`, the live VM, stays at **100**:
+  70 are used (60 of role limits plus 10 reserved), so the new role fits with no change,
+  and 60 there would make the chart refuse to render. `values-demo.yaml` goes to **60**.
+- **Baseline demo profile (decided): a baseline flag on the row.** The consumer recomputes
   a user from `quests`, and the reset deletes the demo's quests, so the first event after
-  a reset would overwrite the baseline with near-empty stats. Phase 2 needs a way to keep
-  it, such as a baseline flag on the row that the recompute respects.
+  a reset would otherwise overwrite the baseline with near-empty stats. `profile_stats`
+  gets a baseline flag, the nightly reset writes the demo's baseline row with it set, and
+  the recompute leaves a flagged row alone. Rebuild, and so `rebuild -compare`, must treat
+  a flagged row the same way.
 - **Simulated check-ins** are `completed` quests marked `reasons.simulated`, only on the
   demo account, and they skip the geofence. Their facts are stored as for any check-in.
   They must stay out of the percentile, along with the demo's row, and out of anything
   that says a user was really somewhere. `reasons || '{"simulated": true}'` leaves
   `reasons->'rarest'` intact.
-- **`places.location_suspect`** can be set by a reload after a check-in. The recompute
-  shouldn't read it: a flag changing would alter stats with no event, and `rebuild
+- **`places.location_suspect` (decided): the recompute doesn't read it.** A reload can set
+  it after a check-in, and a flag changing would alter stats with no event, so `rebuild
   -compare` would report differences. A real check-in passed the geofence at that point
   anyway. It already keeps suspect places out of decks and of `area_stats`, so rarity
   stored at offer time isn't computed from them.
 - **One quest a day** means at most one check-in per metro day except on the demo, so
   streak days and check-ins nearly coincide, and the 5-accept cold start takes at least
-  five days. The streak boundary must match `doneToday`'s (`DAY_TIME_ZONE` in
-  `quests.service.ts`), and the Go consumer will need the same constant.
+  five days. **Shared day boundary (decided):** streak days use the same boundary as
+  `doneToday` (`DAY_TIME_ZONE` in `quests.service.ts`), and the Go consumer has to match
+  it, with a test that fails if the two differ.
 - **`rarity` can be 0** for a real offer (fewer than two places in the area, or no tag
   rarer than the rest). The niche score treats 0 as a value and NULL as unknown.
 - **PostHog** stays separate: its events are client-side funnel counts with no user id, so
