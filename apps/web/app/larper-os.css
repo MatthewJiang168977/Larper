@@ -1,0 +1,34 @@
+.larper-os {
+  --larper-os-ink: #000000;
+  --larper-os-window: #f9efe4;
+  --larper-os-paper: #fffdf8;
+  --larper-os-pink: #f6d5d5;
+  --larper-os-butter: #f7e2a4;
+  --larper-os-pool: #1e95a1;
+  --larper-os-pool-hover: #2aa7b4;
+  --larper-os-red: #b8323f;
+  --larper-os-coral: #e8756f;
+  --larper-os-aqua: #b9e3e6;
+  --larper-os-mint: #d5e7c8;
+  --larper-os-disabled: #e9e1d8;
+  --larper-os-disabled-ink: #5c5552;
+
+  --larper-os-radius-window: 7px;
+  --larper-os-radius-tag: 5px;
+  --larper-os-shadow-raised: 1px 2px 0 var(--larper-os-ink);
+  --larper-os-shadow-primary: 2px 3px 0 var(--larper-os-ink);
+  --larper-os-shadow-window: 0 10px 26px rgb(120 64 64 / 30%);
+  --larper-os-tap-min: 44px;
+  --larper-os-dock-width: 520px;
+  --larper-os-dur-pop: 160ms;
+  --larper-os-dur-press: 90ms;
+}
+
+/* Wrap only numerals in pixel text below 28px. Large lead numbers use Jersey 20. */
+.larper-os .num {
+  font-family: var(--larper-os-font-body), system-ui, sans-serif;
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0;
+  vertical-align: 0.06em;
+}
