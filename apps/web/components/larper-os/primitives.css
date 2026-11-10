@@ -87,7 +87,7 @@
 .larper-os-button { min-height: 46px; padding: 5px 16px; font-size: 25px; }
 .larper-os-icon { width: var(--larper-os-tap-min); font-size: 40px; }
 
-.larper-os-button[data-primary="true"]:not(:disabled) {
+.larper-os-button-primary:not(:disabled) {
   background: var(--larper-os-pool);
   border-width: 2px;
   box-shadow: var(--larper-os-shadow-primary);
@@ -101,11 +101,11 @@
 @media (hover: hover) {
   .larper-os-button:not(:disabled):hover,
   .larper-os-icon:not(:disabled):hover { background: var(--larper-os-butter); }
-  .larper-os-button[data-primary="true"]:not(:disabled):hover { background: var(--larper-os-pool-hover); }
+  .larper-os-button-primary:not(:disabled):hover { background: var(--larper-os-pool-hover); }
 }
 
 .larper-os-button:not(:disabled):active,
-.larper-os-button[data-primary="true"]:not(:disabled):active,
+.larper-os-button-primary:not(:disabled):active,
 .larper-os-icon:not(:disabled):active {
   background: var(--larper-os-ink);
   color: var(--larper-os-window);
