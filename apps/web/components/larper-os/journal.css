@@ -1,0 +1,59 @@
+.larper-journal {
+  flex: 1;
+  min-height: 100svh;
+  background: var(--larper-os-pink);
+  color: var(--larper-os-ink);
+  font: 17px/1.4 var(--larper-os-font-body), system-ui, sans-serif;
+}
+
+.larper-journal-stage {
+  width: min(100%, 740px);
+  margin-inline: auto;
+  padding: clamp(12px, 4vw, 36px) 12px max(20px, env(safe-area-inset-bottom));
+}
+
+.larper-journal-heading { padding: 2px 2px 4px; }
+.larper-journal-heading h1 {
+  font: 400 clamp(38px, 8vw, 56px)/1 var(--larper-os-font-pixel), system-ui, sans-serif;
+  margin-block-end: 4px;
+}
+
+.larper-journal-list { list-style: none; }
+.larper-journal-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding-block: 10px;
+}
+.larper-journal-row + .larper-journal-row { border-top: 1px solid var(--larper-os-ink); }
+.larper-journal-row:first-child { padding-top: 2px; }
+.larper-journal-row:last-child { padding-bottom: 2px; }
+.larper-journal-file { display: flex; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+.larper-journal-file svg { flex: none; }
+.larper-journal-name { font-weight: 650; }
+.larper-journal-detail, .larper-journal-meta { font-size: 15px; }
+.larper-journal-meta { display: grid; flex: none; justify-items: end; gap: 3px; }
+
+.larper-journal-stamp {
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+  border-radius: var(--larper-os-radius-tag);
+  text-transform: lowercase;
+}
+.larper-journal-stamp[data-state="offered"] { background: var(--larper-os-butter); }
+.larper-journal-stamp[data-state="accepted"] { background: var(--larper-os-aqua); }
+.larper-journal-stamp[data-state="completed"] { background: var(--larper-os-mint); }
+.larper-journal-stamp[data-state="skipped"],
+.larper-journal-stamp[data-state="expired"] {
+  background: var(--larper-os-disabled);
+  color: var(--larper-os-disabled-ink);
+}
+
+.larper-journal-retry { margin-block-start: 8px; }
+.larper-journal-back { justify-self: start; }
+.larper-journal-preview select { min-height: var(--larper-os-tap-min); padding-inline: 8px; }
+.larper-journal-preview select:focus-visible {
+  outline: 2px solid var(--larper-os-ink);
+  outline-offset: 2px;
+}

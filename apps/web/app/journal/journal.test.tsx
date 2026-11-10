@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, type JournalEntry } from "@/lib/api";
 import JournalPage from "./page";
 
+vi.mock("@/app/larper-os", () => ({ larperOsClassName: "larper-os" }));
 vi.mock("@/components/require-sign-in", () => ({ RequireSignIn: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
@@ -97,12 +98,11 @@ describe("Journal", () => {
     expect(screen.getByText("Oct 24")).toBeTruthy(); // not the 25th, whatever the device's zone
   });
 
-  it("stamps today's open quest TODAY in oxblood", async () => {
+  it("labels today's open quest Today", async () => {
     answer = () => Promise.resolve([entry({ status: "offered" })]);
     render(<JournalPage />);
     await settle();
-    const stamp = screen.getByText("Today");
-    expect(stamp.className).toContain("text-oxblood");
+    expect(screen.getByText("Today")).toBeTruthy();
     expect(screen.queryByText("Offered")).toBeNull();
   });
 
@@ -121,7 +121,7 @@ describe("Journal", () => {
     await settle();
     expect(screen.getByText("Blank pages. Your first quest is on the map.")).toBeTruthy();
     expect(document.querySelector("ol")).toBeNull();
-    expect(screen.getByRole("link", { name: "← Back to the map" }).getAttribute("href")).toBe("/");
+    expect(screen.getByRole("link", { name: "Back to the map" }).getAttribute("href")).toBe("/");
   });
 
   it("says what went wrong in plain words, never the server's, and tries again", async () => {
