@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api";
 import OnboardingPage from "./page";
 
+vi.mock("@/app/larper-os", () => ({ larperOsClassName: "larper-os" }));
 vi.mock("@/components/require-sign-in", () => ({ RequireSignIn: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
@@ -54,7 +55,7 @@ describe("Onboarding", () => {
     render(<OnboardingPage />);
     await settle();
     expect(screen.getByText(/Swipe right on what you're into/)).toBeTruthy();
-    const counter = screen.getByText(/Vibe 1 of 2/);
+    const counter = screen.getByRole("status");
     expect(counter.getAttribute("aria-live")).toBe("polite");
     expect(counter.textContent).toBe("Vibe 1 of 2: Old bookshops");
     into();
@@ -141,6 +142,6 @@ describe("Onboarding", () => {
     cards = () => Promise.resolve(CARDS);
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await settle();
-    expect(screen.getByText(/Vibe 1 of 2/)).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("Vibe 1 of 2");
   });
 });
