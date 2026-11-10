@@ -8,6 +8,8 @@
 }
 
 .larper-lab-selector { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.larper-lab-review-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.larper-lab-review-controls button[aria-pressed="true"] { background: var(--larper-os-butter); }
 .larper-lab-selector select {
   min-height: var(--larper-os-tap-min);
   padding-inline: 8px;
@@ -35,7 +37,46 @@
   mask-image: linear-gradient(black 30%, transparent);
 }
 
-.larper-lab-dock { width: min(100%, var(--larper-os-dock-width)); margin-inline: auto; }
+.larper-lab-dock { position: relative; z-index: 1; width: min(100%, var(--larper-os-dock-width)); margin-inline: auto; }
+.larper-lab-day-map { position: absolute; inset: 0; }
+.larper-lab-day-map .pin-quest,
+.larper-lab-day-map .pin-lead {
+  width: var(--larper-os-tap-min);
+  height: var(--larper-os-tap-min);
+  border: 1px solid var(--larper-os-ink);
+  border-radius: var(--larper-os-radius-window);
+  background: var(--larper-os-window);
+  color: var(--larper-os-ink);
+  box-shadow: var(--larper-os-shadow-raised);
+  font: 400 40px/1 var(--larper-os-font-pixel), system-ui, sans-serif;
+}
+.larper-lab-day-map .pin-quest { width: 52px; height: 52px; }
+.larper-lab-day-map .pin-quest,
+.larper-lab-day-map .pin-lead[data-selected="true"] { background: var(--larper-os-butter); }
+.larper-lab-day-map .pin-quest[data-selected="true"],
+.larper-lab-day-map .pin-lead[data-selected="true"] {
+  outline: 2px solid var(--larper-os-ink);
+  outline-offset: 2px;
+  transform: none;
+}
+.larper-lab-day-map .pin-quest:focus-visible,
+.larper-lab-day-map .pin-lead:focus-visible {
+  outline: 2px solid var(--larper-os-ink);
+  outline-offset: 2px;
+}
+.larper-lab-day-map .pin-me { background: var(--larper-os-pool); }
+.larper-lab-day-map .pin-name {
+  background: var(--larper-os-window);
+  color: var(--larper-os-ink);
+  border-color: var(--larper-os-ink);
+  font-family: var(--larper-os-font-body), system-ui, sans-serif;
+}
+@media (hover: hover) {
+  .larper-lab-day-map .pin-lead:hover { background: var(--larper-os-butter); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .larper-lab-day-map .pin-quest, .larper-lab-day-map .pin-lead { transition: none; }
+}
 .larper-lab-heading {
   font: 400 42px/0.98 var(--larper-os-font-pixel), system-ui, sans-serif;
   overflow-wrap: anywhere;
@@ -48,4 +89,7 @@
 
 @media (min-width: 1024px) {
   .larper-lab-dock { margin-inline: auto 0; }
+  .larper-lab-day-map .maplibregl-ctrl-bottom-right {
+    right: calc(var(--larper-os-dock-width) + 10px);
+  }
 }
