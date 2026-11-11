@@ -72,7 +72,7 @@ export function JournalView({ entries, error, retry, previewControls, mapHref = 
                           {entry.reasons.liked.length > 0 && ` · for ${entry.reasons.liked.slice(0, 2).map(humanize).join(" + ")}`}
                         </p>
                         {entry.status === "completed" && entry.simulated && (
-                          <p className="larper-journal-detail">Simulated check-in · demo account</p>
+                          <p className="larper-journal-detail">simulated check-in · demo account</p>
                         )}
                       </div>
                     </div>

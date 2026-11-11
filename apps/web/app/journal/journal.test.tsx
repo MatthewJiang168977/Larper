@@ -111,8 +111,8 @@ describe("Journal", () => {
       Promise.resolve([entry({ id: "1", name: "Pretend", simulated: true }), entry({ id: "2", name: "Real", simulated: false })]);
     render(<JournalPage />);
     await settle();
-    expect(screen.getAllByText("Simulated check-in · demo account")).toHaveLength(1);
-    expect(screen.getByText("Pretend").parentElement!.textContent).toContain("Simulated check-in");
+    expect(screen.getAllByText("simulated check-in · demo account")).toHaveLength(1);
+    expect(screen.getByText("Pretend").parentElement!.textContent).toContain("simulated check-in");
   });
 
   it("draws no rules around an empty journal, and offers the way back to the map", async () => {
