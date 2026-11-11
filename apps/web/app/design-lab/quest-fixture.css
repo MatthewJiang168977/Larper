@@ -8,7 +8,7 @@
 }
 
 .larper-lab-selector { display: flex; align-items: center; gap: 8px; font-size: 15px; }
-.larper-lab-review-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.larper-lab-review-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding-block: 4px; }
 .larper-lab-review-controls button[aria-pressed="true"] { background: var(--larper-os-butter); }
 .larper-lab-selector select {
   min-height: var(--larper-os-tap-min);
