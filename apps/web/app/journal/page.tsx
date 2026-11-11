@@ -30,7 +30,7 @@ function Journal() {
         setEntries(e);
         setError(null);
       },
-      (e: unknown) => setError(describeError(e, LOAD_FAILED)),
+      (e: unknown) => setError(describeError(e, LOAD_FAILED).toLowerCase()),
     );
   }, [api, tries]);
 
