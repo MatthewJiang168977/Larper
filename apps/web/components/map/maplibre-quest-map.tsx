@@ -194,7 +194,10 @@ function allowRotation(map: MLMap, on: boolean) {
 export default function MapLibreQuestMap({
   me, quest, deck, selectedId, onSelect, bottomInset, rightInset = 0, bottomCovered = false,
   controlsHost, initialStyle = journalStyle,
-}: QuestMapProps & { initialStyle?: StyleSpecification }) {
+}: QuestMapProps & {
+  /** Read once when the map mounts. Remount to use a different initial style. */
+  initialStyle?: StyleSpecification;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const markersRef = useRef<{ marker: Marker; pin: HTMLElement; placeId: string }[]>([]);
