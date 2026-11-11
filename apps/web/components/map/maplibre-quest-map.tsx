@@ -1,7 +1,7 @@
 "use client";
 
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { Map as MLMap, Marker } from "maplibre-gl";
+import type { Map as MLMap, Marker, StyleSpecification } from "maplibre-gl";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { homeBearingAt } from "@/lib/regions";
@@ -191,7 +191,13 @@ function allowRotation(map: MLMap, on: boolean) {
   }
 }
 
-export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect, bottomInset, rightInset = 0, bottomCovered = false, controlsHost }: QuestMapProps) {
+export default function MapLibreQuestMap({
+  me, quest, deck, selectedId, onSelect, bottomInset, rightInset = 0, bottomCovered = false,
+  controlsHost, initialStyle = journalStyle,
+}: QuestMapProps & {
+  /** Read once when the map mounts. Remount to use a different initial style. */
+  initialStyle?: StyleSpecification;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const markersRef = useRef<{ marker: Marker; pin: HTMLElement; placeId: string }[]>([]);
@@ -232,7 +238,7 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
       libRef.current = lib;
       const map = new lib.Map({
         container: containerRef.current,
-        style: journalStyle,
+        style: initialStyle,
         center: [me.lng, me.lat],
         zoom: 15.6,
         pitch: PITCH,
@@ -255,7 +261,7 @@ export default function MapLibreQuestMap({ me, quest, deck, selectedId, onSelect
       markersRef.current = [];
       pinOrderRef.current = [];
     };
-    // Center is only the initial camera; later moves go through fly-to.
+    // Style and camera are set on mount. Later camera moves go through fly-to.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -4,13 +4,14 @@ import type { StyleSpecification } from "maplibre-gl";
 // (flat footprints in 2D).
 // OpenFreeMap serves OpenStreetMap vector tiles in the OpenMapTiles schema, free and
 // keyless. Place POIs are left out on purpose: the only points of interest are quests.
-const C = {
+const journalColors = {
   paper: "#f2ead8",
   paperDeep: "#e7dcc3",
   park: "#d3d6b4",
   wood: "#c6cba3",
   water: "#b8c2bd",
   waterLine: "#8e9c97",
+  waterLabel: "#8e9c97",
   inkMajor: "#4a453d",
   inkMinor: "#8f8676",
   inkPath: "#a89f8c",
@@ -29,13 +30,16 @@ export function buildingVisibility(view: "3d" | "2d"): Record<string, "visible" 
   return view === "2d" ? { [BUILDINGS_3D]: "none", [BUILDINGS_2D]: "visible" } : { [BUILDINGS_3D]: "visible", [BUILDINGS_2D]: "none" };
 }
 
-export const journalStyle: StyleSpecification = {
+export const makeQuestMapStyle = (
+  C: typeof journalColors,
+  light: StyleSpecification["light"],
+): StyleSpecification => ({
   version: 8,
   sources: {
     omt: { type: "vector", url: "https://tiles.openfreemap.org/planet" },
   },
   glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
-  light: { anchor: "viewport", color: "#fff6e6", intensity: 0.35, position: [1.4, 210, 40] },
+  light,
   layers: [
     { id: "paper", type: "background", paint: { "background-color": C.paper } },
     {
@@ -172,7 +176,7 @@ export const journalStyle: StyleSpecification = {
       source: "omt",
       "source-layer": "water_name",
       layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Italic"], "text-size": 12 },
-      paint: { "text-color": C.waterLine, "text-halo-color": C.labelHalo, "text-halo-width": 1 },
+      paint: { "text-color": C.waterLabel, "text-halo-color": C.labelHalo, "text-halo-width": 1 },
     },
     {
       id: "neighbourhoods",
@@ -190,4 +194,8 @@ export const journalStyle: StyleSpecification = {
       paint: { "text-color": C.label, "text-halo-color": C.labelHalo, "text-halo-width": 2, "text-opacity": 0.75 },
     },
   ],
-};
+});
+
+export const journalStyle = makeQuestMapStyle(journalColors, {
+  anchor: "viewport", color: "#fff6e6", intensity: 0.35, position: [1.4, 210, 40],
+});
