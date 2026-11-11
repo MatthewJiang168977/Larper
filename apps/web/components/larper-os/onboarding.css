@@ -58,5 +58,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .larper-onboarding-card { transform: none !important; transition: none; }
+  .larper-onboarding-card { transition: none; }
 }
