@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, type JournalEntry } from "@/lib/api";
 import JournalPage from "./page";
 
+vi.mock("@/app/larper-os", () => ({ larperOsClassName: "larper-os" }));
 vi.mock("@/components/require-sign-in", () => ({ RequireSignIn: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
@@ -33,7 +34,7 @@ const settle = () => act(async () => {});
 const entry = (over: Partial<JournalEntry>): JournalEntry => ({
   id: "1",
   status: "completed",
-  createdAt: "2026-10-25T02:30:00Z", // 10:30 pm on Oct 24 in New York
+  createdAt: "2026-10-25T02:30:00Z", // 10:30 pm on oct 24 in New York
   updatedAt: "2026-10-25T02:30:00Z",
   name: "Tasty Noodles",
   category: "noodle_shop",
@@ -83,7 +84,7 @@ describe("Journal", () => {
     render(<JournalPage />);
     await settle();
     answer = () => Promise.resolve([]);
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    fireEvent.click(screen.getByRole("button", { name: "try again" }));
     await settle();
     expect(tracked.events).toEqual(["demo=false", "journal_opened"]);
     expect(api.mock.calls.filter(([path]) => path === "/me")).toHaveLength(1);
@@ -94,15 +95,14 @@ describe("Journal", () => {
     render(<JournalPage />);
     await settle();
     expect(screen.getByText("noodle shop · for hand pulled noodles + ramen")).toBeTruthy();
-    expect(screen.getByText("Oct 24")).toBeTruthy(); // not the 25th, whatever the device's zone
+    expect(screen.getByText("oct 24")).toBeTruthy(); // not the 25th, whatever the device's zone
   });
 
-  it("stamps today's open quest TODAY in oxblood", async () => {
+  it("labels today's open quest Today", async () => {
     answer = () => Promise.resolve([entry({ status: "offered" })]);
     render(<JournalPage />);
     await settle();
-    const stamp = screen.getByText("Today");
-    expect(stamp.className).toContain("text-oxblood");
+    expect(screen.getByText("today").getAttribute("data-state")).toBe("offered");
     expect(screen.queryByText("Offered")).toBeNull();
   });
 
@@ -111,17 +111,17 @@ describe("Journal", () => {
       Promise.resolve([entry({ id: "1", name: "Pretend", simulated: true }), entry({ id: "2", name: "Real", simulated: false })]);
     render(<JournalPage />);
     await settle();
-    expect(screen.getAllByText("Simulated check-in · demo account")).toHaveLength(1);
-    expect(screen.getByText("Pretend").parentElement!.textContent).toContain("Simulated check-in");
+    expect(screen.getAllByText("simulated check-in · demo account")).toHaveLength(1);
+    expect(screen.getByText("Pretend").parentElement!.textContent).toContain("simulated check-in");
   });
 
   it("draws no rules around an empty journal, and offers the way back to the map", async () => {
     answer = () => Promise.resolve([]);
     render(<JournalPage />);
     await settle();
-    expect(screen.getByText("Blank pages. Your first quest is on the map.")).toBeTruthy();
+    expect(screen.getByText("blank pages. your first quest is on the map.")).toBeTruthy();
     expect(document.querySelector("ol")).toBeNull();
-    expect(screen.getByRole("link", { name: "← Back to the map" }).getAttribute("href")).toBe("/");
+    expect(screen.getByRole("link", { name: "back to the map" }).getAttribute("href")).toBe("/");
   });
 
   it("says what went wrong in plain words, never the server's, and tries again", async () => {
@@ -129,11 +129,12 @@ describe("Journal", () => {
     render(<JournalPage />);
     await settle();
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("Couldn't open the journal.");
+    expect(screen.getByRole("heading", { name: "couldn't open the journal" })).toBeTruthy();
+    expect(alert.textContent).toContain("try again to reopen your quest history.");
     expect(alert.textContent).not.toContain("column");
 
     answer = () => Promise.resolve([entry({})]);
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    fireEvent.click(screen.getByRole("button", { name: "try again" }));
     await settle();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByText("Tasty Noodles")).toBeTruthy();
@@ -143,6 +144,6 @@ describe("Journal", () => {
     answer = () => Promise.reject(new ApiError("Failed to fetch", 0, "network"));
     render(<JournalPage />);
     await settle();
-    expect(screen.getByRole("alert").textContent).toContain("Can't reach the server. Check your connection.");
+    expect(screen.getByRole("alert").textContent).toContain("can't reach the server. check your connection.");
   });
 });
