@@ -1,6 +1,10 @@
 "use client";
 
 import { UserButton, useUser } from "@clerk/nextjs";
+import { larperOsClassName } from "@/app/larper-os";
+import "./quest-screen.css";
+import "@/components/larper-os/primitives.css";
+import { OSWindow } from "@/components/larper-os/primitives";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -60,7 +64,7 @@ export const SKIP_REASONS: { reason: SkipReason; label: string }[] = [
 ];
 
 // WebGL map: client only, and loaded after the shell so first paint isn't blocked on it.
-const QuestMap = dynamic(() => import("@/components/map/maplibre-quest-map"), { ssr: false });
+const QuestMap = dynamic(() => import("@/components/map/larper-os-quest-map"), { ssr: false });
 // The map's start-up (the MapLibre module, then WebGL) holds the main thread for a good
 // while, so it waits for the first answer to be on screen: the sheet, or the card in its
 // place. Without one by this long, it starts anyway rather than leave the page blank.
@@ -69,11 +73,21 @@ export const MAP_WAIT_MS = 3000;
 export function QuestHome() {
   const api = useApi();
   const { user } = useUser();
-  const userButton = useMemo(
-    () => ({ appearance: userButtonAppearance(user), userProfileProps: { appearance: avatarInitialsAppearance(user) } }),
-    [user],
-  );
-  const { loc: located, retry: retryLocation, retrying: locating } = useLocation();
+  const location = useLocation();
+  const userButton = useMemo(() => ({
+    appearance: userButtonAppearance(user),
+    userProfileProps: { appearance: avatarInitialsAppearance(user) },
+  }), [user]);
+  return <QuestScreen api={api} location={location} accountControl={<UserButton {...userButton} />} />;
+}
+
+export function QuestScreen({ api, location, accountControl, previewControls }: {
+  api: ReturnType<typeof useApi>;
+  location: ReturnType<typeof useLocation>;
+  accountControl?: React.ReactNode;
+  previewControls?: React.ReactNode;
+}) {
+  const { loc: located, retry: retryLocation, retrying: locating } = location;
   const [me, setMe] = useState<Me | null>(null);
   // The demo account's GPS position turned out to be outside the demo region.
   const [outside, setOutside] = useState(false);
@@ -238,9 +252,17 @@ export function QuestHome() {
   useEffect(() => {
     const el = cardEl;
     if (!el) return;
-    const ro = new ResizeObserver(() => onCoveredChange({ bottom: el.offsetHeight, right: 0 }));
+    const measure = () => onCoveredChange(window.innerWidth >= 1024
+      ? { bottom: 0, right: 530 }
+      : { bottom: el.offsetHeight + (Number.parseFloat(getComputedStyle(el).bottom) || 10), right: 0 });
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
+    window.addEventListener("resize", measure);
+    measure();
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
   }, [cardEl, onCoveredChange]);
 
   useEffect(() => {
@@ -261,7 +283,7 @@ export function QuestHome() {
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [noticesTop]);
 
   useEffect(() => {
     if (setAside) firstReasonRef.current?.focus();
@@ -366,7 +388,7 @@ export function QuestHome() {
         <p className="field-label">New field journal</p>
         <h1 className="text-3xl font-semibold">First, what are you into?</h1>
         <p className="max-w-sm text-ink-soft">Swipe through a few vibes so the quests fit you.</p>
-        <Link href="/onboarding" className="stamp-btn rounded-md bg-oxblood px-5 py-2 text-paper">
+        <Link href="/onboarding" className="larper-os-button larper-os-button-primary">
           Set your vibes
         </Link>
       </Centered>
@@ -386,26 +408,27 @@ export function QuestHome() {
       : null;
 
   return (
-    <main className="relative h-dvh w-full overflow-hidden">
+    <main className={`${larperOsClassName} larper-quest-screen relative h-dvh w-full overflow-hidden`}>
       {/* The pill and the map's buttons side by side, or the buttons on a second line
           (right-aligned) when both don't fit: large text, zoom, a narrow screen. */}
       <header
         ref={headerRef}
-        className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-wrap items-start justify-between gap-2 px-3 pt-3"
+        className="larper-quest-menu"
       >
         {/* Wraps too, at the narrowest (200% zoom on a phone): rounded-3xl looks the same as
             rounded-full on one line and stays a card on two. */}
-        <div className="pointer-events-auto flex max-w-full flex-wrap items-center gap-x-3 rounded-3xl border border-paper-edge bg-paper/90 py-1 pl-4 pr-1 shadow-sm backdrop-blur">
-          <h1 className="text-lg font-semibold tracking-tight">Larper</h1>
+        <div className="larper-quest-navigation">
+          <h1 className="larper-quest-brand">larper</h1>
           <Link
             href="/journal"
-            className="hit-target font-mono text-xs uppercase tracking-wider text-ink-soft underline-offset-4 hover:underline"
+            className="larper-quest-menu-link"
           >
-            Journal
+            journal
           </Link>
-          <UserButton {...userButton} />
+          {accountControl}
         </div>
-        <div ref={setControlsHost} data-testid="map-controls" className="pointer-events-auto ml-auto" />
+        {previewControls}
+        <div ref={setControlsHost} data-testid="map-controls" className="larper-quest-map-controls" />
       </header>
 
       {/* Notices under the header, stacked so they never overlap. They stop above the
@@ -587,17 +610,21 @@ export function QuestHome() {
 
       {/* After the header and the sheet, so the Tab order reaches today's quest before the
           map's pins and credit (the map draws underneath them all the same). */}
-      {loc && mapOn && <QuestMap
-        me={loc}
-        quest={quest}
-        deck={deck}
-        selectedId={selected}
-        onSelect={setSelectedId}
-        bottomInset={covered.bottom}
-        rightInset={covered.right}
-        bottomCovered={sheetOpen && covered.right === 0}
-        controlsHost={controlsHost}
-      />}
+      {loc && mapOn && (
+        <div className="absolute inset-x-0 bottom-0" style={{ top: Math.max(0, noticesTop - 8) }}>
+          <QuestMap
+            me={loc}
+            quest={quest}
+            deck={deck}
+            selectedId={selected}
+            onSelect={setSelectedId}
+            bottomInset={covered.bottom}
+            rightInset={covered.right}
+            bottomCovered={sheetOpen && covered.right === 0}
+            controlsHost={controlsHost}
+          />
+        </div>
+      )}
     </main>
   );
 }
@@ -625,5 +652,9 @@ export function checkinFailure(e: unknown): CheckinResult {
 }
 
 function Centered({ children }: { children: React.ReactNode }) {
-  return <main className="flex flex-1 flex-col items-center justify-center gap-4 px-4 text-center">{children}</main>;
+  return (
+    <main className={`${larperOsClassName} larper-quest-screen larper-quest-welcome`}>
+      <OSWindow title="welcome.txt">{children}</OSWindow>
+    </main>
+  );
 }

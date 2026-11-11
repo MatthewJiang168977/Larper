@@ -2,7 +2,7 @@
 
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Map as MLMap, Marker, StyleSpecification } from "maplibre-gl";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { homeBearingAt } from "@/lib/regions";
 import { haloDiameterPx } from "./accuracy-halo";
@@ -198,6 +198,7 @@ export default function MapLibreQuestMap({
   /** Read once when the map mounts. Remount to use a different initial style. */
   initialStyle?: StyleSpecification;
 }) {
+  const markerDescriptionId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const markersRef = useRef<{ marker: Marker; pin: HTMLElement; placeId: string }[]>([]);
@@ -344,6 +345,14 @@ export default function MapLibreQuestMap({
       pin.addEventListener("keydown", (e) => pinKey(e as KeyboardEvent, p.id));
       pin.addEventListener("focus", () => showFocused(p));
       pin.after(nameLabel(p.name));
+      if (typeof content === "string") {
+        const description = document.createElement("span");
+        description.id = `${markerDescriptionId}-${p.id}`;
+        description.className = "sr-only";
+        description.textContent = `lead ${content}`;
+        root.appendChild(description);
+        pin.setAttribute("aria-describedby", description.id);
+      }
       const marker = new lib.Marker({ element: root, anchor: "center" }).setLngLat([p.lng, p.lat]).addTo(map);
       return { marker, pin, placeId: p.id };
     };
@@ -378,7 +387,7 @@ export default function MapLibreQuestMap({
     markersRef.current = markers;
     pinOrderRef.current = quest ? [markers[markers.length - 1], ...markers.slice(0, -1)] : markers;
     return () => markers.forEach((m) => m.marker.remove());
-  }, [ready, quest, deck]);
+  }, [ready, quest, deck, markerDescriptionId]);
 
   // Focus: highlight the pin and fly to it, leaving room for the sheet.
   useEffect(() => {

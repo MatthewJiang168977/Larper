@@ -3,8 +3,6 @@
 import { animate, motion, useDragControls, useMotionValue, useReducedMotion, type PanInfo } from "motion/react";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { BlurFade } from "@/components/ui/blur-fade";
-import { NumberTicker } from "@/components/ui/number-ticker";
 import type { DeckItem, PlaceView, QuestView, Reasons } from "@/lib/api";
 import { formatDistance } from "@/lib/format";
 import { fullHeight, offsetFor, resolveSnap, type Snap, snapForKey } from "./sheet-snap";
@@ -48,33 +46,21 @@ interface Props {
   onSnapChange?: (snap: Snap) => void;
 }
 
-/**
- * The map the sheet covers: its height at the bottom, or, open on a wide screen, the
- * width from its left edge to the right of the screen (pins then go in the strip of map
- * left of the centred card).
- */
+/** Map space reserved for the bottom sheet on a phone or the right dock on desktop. */
 export interface Covered {
   bottom: number;
   right: number;
 }
 
-/** On a screen with at least this much map either side of the open sheet, pins go beside it. */
-export const SIDE_GUTTER_PX = 240;
-
 const WALK_M_PER_MIN = 80;
 // Whole metres, as the count-up shows them when it lands.
 const DISTANCE = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+const HANDLE_HINT_KEY = "larper:quest-handle-hint-seen";
 const SPRING = { type: "spring", stiffness: 420, damping: 40 } as const;
 /** Peek's share of the screen, at most. */
 export const PEEK_MAX = 0.5;
 
-// The focused place's field notes, links and quest actions, as a bottom sheet with two
-// snaps: peek (name, distance, category and the main action) and full (everything,
-// scrollable, stopping below the notices). The same sheet on every screen; on a wide one
-// it's a card centred at the bottom, 60% of the screen (at most 960 px), sized to its
-// content, and full lays out in two columns: the details, and the leads as a list.
-// Peek never takes more than half the screen (large text, zoom, a short landscape
-// phone): past that it scrolls inside, and full then scrolls as one, peek and all.
+// Peek shows the place and primary actions. Full opens the scrollable facts and leads.
 export function QuestSheet(props: Props) {
   return <BottomSheet {...props} />;
 }
@@ -92,6 +78,21 @@ function BottomSheet(props: Props) {
   const { focused, isQuest, label } = useFocused(props);
   const reduce = useReducedMotion();
   const restId = useId();
+  const titleId = useId();
+  const hintId = useId();
+  const [showHint, setShowHint] = useState(false);
+  const hasPlace = !!focused;
+  useEffect(() => {
+    if (!hasPlace) return;
+    const frame = requestAnimationFrame(() => {
+      try {
+        if (window.localStorage.getItem(HANDLE_HINT_KEY)) return;
+        window.localStorage.setItem(HANDLE_HINT_KEY, "1");
+        setShowHint(true);
+      } catch {}
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [hasPlace]);
   const sectionRef = useRef<HTMLElement>(null);
   const peekRef = useRef<HTMLDivElement>(null);
   const peekContentRef = useRef<HTMLDivElement>(null);
@@ -117,7 +118,7 @@ function BottomSheet(props: Props) {
   const [restH, setRestH] = useState(0);
   const [viewH, setViewH] = useState(0);
   const [viewW, setViewW] = useState(0);
-  const [sheetLeft, setSheetLeft] = useState(0);
+  const [dockGap, setDockGap] = useState(10);
   const [announce, setAnnounce] = useState("");
   // Peek as shown: the handle and its content, up to PEEK_MAX of the screen. Past that,
   // peek's content scrolls; open, the whole sheet scrolls as one (a peek that fills the
@@ -128,7 +129,7 @@ function BottomSheet(props: Props) {
   const capPeek = overflows && snap === "peek";
   const asOne = overflows && snap === "full";
   // Full is as tall as its content, up to just below the notices (then it scrolls).
-  const fullH = Math.min(fullHeight(viewH, topLimit, peekH), handleH + peekContentH + restH);
+  const fullH = Math.min(fullHeight(viewH - dockGap, topLimit, peekH), handleH + peekContentH + restH);
   const range = Math.max(0, fullH - peekH);
 
   // Measure peek (the visible part when collapsed) and the screen it sits on.
@@ -144,7 +145,7 @@ function BottomSheet(props: Props) {
       setRestH(content?.offsetHeight ?? 0);
       setViewH(host?.clientHeight || window.innerHeight);
       setViewW(host?.clientWidth || window.innerWidth);
-      setSheetLeft(sectionRef.current?.offsetLeft ?? 0);
+      setDockGap(Number.parseFloat(getComputedStyle(sectionRef.current!).bottom) || 10);
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -170,15 +171,12 @@ function BottomSheet(props: Props) {
     y.set(to);
   }, [snap, fullH, peekH, reduce, y]);
 
-  // The map only hears about settled snaps. At peek: its height. Open on a wide screen:
-  // the card's left edge, so a chosen pin lands in the map beside it, not behind it. Open
-  // on a phone it keeps the peek inset: the map is mostly hidden then, and dropping back
-  // to peek shouldn't jump.
+  // Keep pins left of the dock on desktop and above the collapsed sheet on phones.
   useEffect(() => {
     if (peekH <= 0) return;
-    if (snap === "peek") onCoveredChange({ bottom: peekH, right: 0 });
-    else if (sheetLeft >= SIDE_GUTTER_PX) onCoveredChange({ bottom: 0, right: viewW - sheetLeft + 24 });
-  }, [snap, peekH, sheetLeft, viewW, onCoveredChange]);
+    if (viewW >= 1024) onCoveredChange({ bottom: 0, right: 530 });
+    else if (snap === "peek") onCoveredChange({ bottom: peekH + dockGap, right: 0 });
+  }, [snap, peekH, viewW, dockGap, onCoveredChange]);
 
   useEffect(() => {
     onSnapChange?.(snap);
@@ -188,6 +186,7 @@ function BottomSheet(props: Props) {
   const go = useCallback(
     (next: Snap) => {
       setSnap(next);
+      if (next === "full") setShowHint(false);
       setAnnounce(next === "full" ? "Quest details expanded" : "Quest details collapsed");
       if (next !== "peek") return;
       // Collapsing hides the rest: don't leave focus on something you can't see.
@@ -212,7 +211,7 @@ function BottomSheet(props: Props) {
   return (
     <motion.section
       ref={sectionRef}
-      aria-label="Quest details"
+      aria-labelledby={titleId}
       drag="y"
       dragListener={false}
       dragControls={dragControls}
@@ -230,16 +229,17 @@ function BottomSheet(props: Props) {
       }}
       style={{ x, y, height: fullH || undefined }}
       data-snap={snap}
-      className="absolute inset-x-0 bottom-0 z-10 mx-auto flex max-w-xl flex-col rounded-t-2xl lg:w-[60vw] lg:max-w-[960px] border-x border-t border-paper-edge bg-paper shadow-[0_-6px_24px_rgba(43,41,37,0.12)]"
+      className="larper-quest-dock larper-quest-sheet"
     >
       {/* The handle strip: drag it, tap it, or use the keyboard on it. Outside the
           scrolling part, so it's always there to close the sheet. */}
-      <div className="shrink-0 px-5">
+      <div className="larper-quest-titlebar shrink-0 px-5">
         <button
           ref={handleRef}
           type="button"
           aria-expanded={snap === "full"}
           aria-controls={restId}
+          aria-describedby={showHint ? hintId : undefined}
           aria-label={snap === "full" ? "Show less" : "Show more about this place"}
           aria-keyshortcuts="ArrowUp ArrowDown Home End"
           onPointerDown={(e) => {
@@ -259,10 +259,15 @@ function BottomSheet(props: Props) {
               go(next);
             }
           }}
-          className="-mx-5 flex h-11 w-[calc(100%+2.5rem)] touch-none items-center justify-center"
+          className="larper-quest-handle -mx-5 flex min-h-11 w-[calc(100%+2.5rem)] touch-none items-center justify-center"
         >
-          <span aria-hidden className="h-1 w-10 rounded-full bg-rule" />
+          <span className="larper-quest-grille" aria-hidden />
+          <span id={titleId}>Quest details</span>
+          <span className="larper-quest-grille" aria-hidden />
+          <svg width="14" height="10" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden
+            style={{ rotate: snap === "full" ? "180deg" : undefined }}><path d="m2 8 5-5 5 5" /></svg>
         </button>
+        {showHint && snap === "peek" && <p id={hintId} className="larper-quest-hint">tap or drag up for details</p>}
       </div>
 
       {/* Peek over the rest. Usually only the rest scrolls; when peek overflows, peek
@@ -353,26 +358,19 @@ function Peek({
 }: Props & { place: PlaceView; label: string; isQuest: boolean; onImpact: () => void }) {
   const done = isQuest && quest?.status === "completed";
   const walkMin = Math.max(1, Math.round(place.distanceM / WALK_M_PER_MIN));
-  // Reduced motion: the new place just fades in (no blur, no slide), and its distance is
-  // a plain number rather than one that counts up.
-  const reduce = useReducedMotion();
   return (
-    <BlurFade key={place.id} duration={0.25} offset={reduce ? 0 : 4} blur={reduce ? "0px" : undefined}>
+    <div key={place.id}>
       <p className="field-label">{label}</p>
       {/* The name gets the full width (two lines at most: names run long); the action
           sits beside the distance underneath, or below it when there isn't room (large
           text, zoom). */}
-      <h2 className="mt-1 line-clamp-2 text-2xl font-semibold leading-tight [font-variation-settings:'opsz'_96]">
+      <h2 className="larper-quest-place">
         {place.name}
       </h2>
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-2">
         <p className="min-w-[8rem] flex-1 text-ink-soft">
           {humanize(place.category)} ·{" "}
-          {reduce ? (
-            <span className="inline-block tabular-nums tracking-wider">{DISTANCE.format(place.distanceM)}</span>
-          ) : (
-            <NumberTicker value={place.distanceM} className="text-ink-soft" />
-          )}{" "}
+          <span className="tabular-nums">{DISTANCE.format(place.distanceM)}</span>{" "}
           m, about{" "}
           {walkMin} min on foot
         </p>
@@ -380,15 +378,12 @@ function Peek({
           <div className="flex shrink-0 gap-2">
             <PrimaryAction status={quest.status} onAction={onAction} busy={busy} />
             {done && <DoneStamp slam={stampSlam} onSlammed={onStampSlammed} onImpact={onImpact} />}
-            {/* Skip / Not today beside it on every screen: a stamped button on wide
-                ones, quiet text on phones, where the row is tight. */}
-            <SecondaryAction status={quest.status} onAction={onAction} busy={busy} className="hidden lg:inline-flex" />
-            <SecondaryAction status={quest.status} onAction={onAction} busy={busy} quiet className="lg:hidden" />
+            <SecondaryAction status={quest.status} onAction={onAction} busy={busy} />
           </div>
         )}
       </div>
       {done && <DoneForToday demo={demo} />}
-    </BlurFade>
+    </div>
   );
 }
 
@@ -423,7 +418,7 @@ function DoneStamp({ slam, onSlammed, onImpact }: { slam?: boolean; onSlammed?: 
     // Once per mount: a slam that's started isn't restarted by new props.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const className = "inline-block shrink-0 rounded border-2 border-moss px-2 py-0.5 font-mono text-xs uppercase text-moss";
+  const className = "larper-quest-done inline-block shrink-0";
   if (!play) {
     return (
       <span className={className} style={{ rotate: `${STAMP_REST}deg` }}>
@@ -473,17 +468,12 @@ function Rest({
   isQuest,
 }: Props & { focused: QuestView | DeckItem; isQuest: boolean }) {
   const { place, reasons } = focused;
-  // Phones: the leads as one row that scrolls sideways, above the details. Wide screens:
-  // two columns (about 55/45), the details on the left and the leads as a compact list
-  // on the right, so full stays short with nothing to scroll.
   return (
-    <div className="pt-1 lg:grid lg:grid-cols-[minmax(0,11fr)_minmax(0,9fr)] lg:gap-x-6">
+    <div className="larper-quest-rest pt-1">
       {deck.length > 0 && (
-        // Wide screens: each row is ~44 px tall (two lines), so the rows' hit areas
-        // don't overlap with only 2 px between them.
         <nav
           aria-label="Leads"
-          className="-mx-5 flex gap-2 overflow-x-auto px-5 py-2.5 [scrollbar-color:var(--rule)_transparent] [scrollbar-width:thin] lg:col-start-2 lg:row-start-1 lg:mx-0 lg:flex-col lg:gap-0.5 lg:overflow-visible lg:px-0 lg:pt-1"
+          className="larper-quest-leads"
         >
           {quest && (
             <Tab
@@ -508,7 +498,11 @@ function Rest({
         </nav>
       )}
 
-      <div className="lg:col-start-1 lg:row-start-1">
+      <div className="larper-quest-facts">
+        <dl className="larper-quest-facts-table">
+          <dt>habitat</dt><dd>{humanize(place.category)}</dd>
+          <dt>distance</dt><dd>{formatDistance(place.distanceM)}</dd>
+        </dl>
         <Why place={place} reasons={reasons} />
         {place.tags.length > 0 && (
           <p className="mt-3 font-mono text-xs text-ink-label">
@@ -534,7 +528,7 @@ function Why({ place, reasons }: { place: PlaceView; reasons: Reasons }) {
   return (
     <ul
       aria-label="Why this place"
-      className="mt-2 space-y-1 border-l-2 border-rule pl-3 font-mono text-[0.8rem] text-ink"
+      className="larper-quest-why"
     >
       {lines.map((line) => (
         <li key={line}>{line}</li>
@@ -560,33 +554,18 @@ function Tab({
   marker: React.ReactNode;
   place: PlaceView;
 }) {
-  const tone = seal
-    ? active
-      ? "bg-oxblood text-paper border-oxblood"
-      : "text-oxblood border-oxblood"
-    : active
-      ? "bg-ink text-paper border-ink"
-      : "text-ink border-ink-faint lg:hover:bg-rule/40";
-  // Phones: a pill whose text truncates in its own span (overflow on the button would
-  // clip its hit area; the strip's vertical padding leaves room for that hit area inside
-  // its scroll box). Wide screens: a compact row with no border, the name (wrapping) over
-  // its category and distance; the selected one stays filled.
   return (
     <button
       onClick={onClick}
       aria-pressed={active}
       aria-label={label}
-      className={`hit-target shrink-0 max-w-[11rem] rounded-full border px-3 py-1 font-mono text-xs lg:flex lg:w-full lg:max-w-full lg:items-start lg:gap-2 lg:rounded-md lg:border-0 lg:px-2 lg:py-1 lg:text-left lg:font-serif ${tone}`}
+      className="larper-quest-lead hit-target"
+      data-quest={seal || undefined}
     >
-      <span className="block truncate lg:hidden">{label}</span>
-      <span aria-hidden className="hidden w-5 shrink-0 pt-0.5 text-right font-mono text-xs lg:block">
-        {marker}
-      </span>
-      <span aria-hidden className="hidden min-w-0 flex-1 lg:block">
-        <span className="block text-sm font-medium leading-snug">{place.name}</span>
-        <span className="block truncate font-mono text-xs leading-snug opacity-75">
-          {humanize(place.category)} · {formatDistance(place.distanceM)}
-        </span>
+      <span className="larper-quest-lead-icon" aria-hidden>{marker}</span>
+      <span className="larper-quest-lead-copy">
+        <span className="larper-quest-lead-name">{place.name}</span>
+        <span className="larper-quest-lead-meta">{humanize(place.category)} · {formatDistance(place.distanceM)}</span>
       </span>
     </button>
   );
@@ -596,7 +575,7 @@ function Tab({
 // The quest's mark in the lead list: the map pin's pennant, small.
 function FlagMark() {
   return (
-    <svg viewBox="0 0 24 24" className="ml-auto h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M6 21V3" />
       <path d="M6 4h11l-3 4.5 3 4.5H6" />
     </svg>
@@ -616,7 +595,7 @@ function Links({ place }: { place: PlaceView }) {
     <>
       {/* Each link has a 44 px hit area; the gaps keep neighbours' areas apart, also
           when they wrap onto a second line. */}
-      <div className="mt-4 flex flex-wrap gap-x-6 gap-y-6 text-sm">
+      <div className="larper-quest-links mt-4 flex flex-wrap gap-x-6 gap-y-6 text-sm">
         <a
           className="hit-target underline decoration-oxblood underline-offset-4"
           href={`https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}&travelmode=walking`}
@@ -649,9 +628,8 @@ function Links({ place }: { place: PlaceView }) {
   );
 }
 
-const PRIMARY = "stamp-btn shrink-0 rounded-md bg-oxblood px-4 py-2 font-medium text-paper disabled:opacity-50";
-const SECONDARY = "stamp-btn rounded-md bg-paper px-4 py-2 text-ink disabled:opacity-50";
-const QUIET = "hit-target px-2 py-2 text-ink-soft underline underline-offset-4 disabled:opacity-50";
+const PRIMARY = "larper-os-button larper-os-button-primary";
+const SECONDARY = "larper-os-button";
 
 function PrimaryAction({ status, onAction, busy }: { status: QuestView["status"]; onAction: (a: QuestAction) => void; busy: boolean }) {
   if (status === "offered") {
@@ -675,30 +653,16 @@ function SecondaryAction({
   status,
   onAction,
   busy,
-  className = "",
-  quiet,
 }: {
   status: QuestView["status"];
   onAction: (a: QuestAction) => void;
   busy: boolean;
-  className?: string;
-  /** Plain underlined text (with a 44 px hit area) instead of a stamped button. */
-  quiet?: boolean;
 }) {
-  const look = quiet ? QUIET : SECONDARY;
   if (status === "offered") {
-    return (
-      <button className={`${look} ${className}`} disabled={busy} onClick={() => onAction("skip")}>
-        Skip
-      </button>
-    );
+    return <button className={SECONDARY} disabled={busy} onClick={() => onAction("skip")}>Skip</button>;
   }
   if (status === "accepted") {
-    return (
-      <button className={`${look} ${className}`} disabled={busy} onClick={() => onAction("not-today")}>
-        Not today
-      </button>
-    );
+    return <button className={SECONDARY} disabled={busy} onClick={() => onAction("not-today")}>Not today</button>;
   }
   return null;
 }
