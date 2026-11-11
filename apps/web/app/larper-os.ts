@@ -1,13 +1,18 @@
-import { Atkinson_Hyperlegible_Next, Jersey_20 } from "next/font/google";
+import { Jersey_20 } from "next/font/google";
+import localFont from "next/font/local";
 import "./larper-os.css";
 
 // SIL OFL 1.1 for both families
 // https://github.com/google/fonts/blob/main/ofl/atkinsonhyperlegiblenext/OFL.txt
 // https://github.com/google/fonts/blob/main/ofl/jersey20/OFL.txt
-const atkinson = Atkinson_Hyperlegible_Next({
+// Latin variable WOFF2 from Google Fonts, licensed in fonts/Atkinson-Hyperlegible-Next-OFL.txt.
+// Local loading computes fallback metrics from the font instead of Next's incomplete family table.
+const atkinson = localFont({
+  src: "./fonts/atkinson-hyperlegible-next-latin.woff2",
+  weight: "200 800",
+  style: "normal",
   variable: "--larper-os-font-body",
-  adjustFontFallback: false,
-  subsets: ["latin"],
+  adjustFontFallback: "Arial",
   preload: false,
 });
 
