@@ -17,7 +17,7 @@ export default function Home() {
           <>
             <TrackLanding />
             {demoEnabled(process.env.NEXT_PUBLIC_SIGNUP_MODE) ? (
-              <TryDemoButton className={osPrimaryButtonClass} />
+              <TryDemoButton className={`${osPrimaryButtonClass} larper-landing-demo-button`} />
             ) : (
               <SignUpButton>
                 <OSButton primary>start a quest log</OSButton>
