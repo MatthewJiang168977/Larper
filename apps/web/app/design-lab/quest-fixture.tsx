@@ -77,7 +77,7 @@ export function QuestFixture() {
                 {state === "offered" && <OSButton primary onClick={() => runAction("accepted")}>accept quest</OSButton>}
                 <div className="larper-lab-leads" role="group" aria-label="Nearby leads">
                   {leads.map((item, index) => (
-                    <OSDesktopIcon key={item.name} aria-label={item.name} aria-pressed={lead === index}
+                    <OSDesktopIcon key={item.name} aria-label={`${index + 1}, ${item.name}`} aria-pressed={lead === index}
                       onClick={() => setLead(lead === index ? null : index)}>
                       {index + 1}
                     </OSDesktopIcon>
