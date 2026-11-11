@@ -1,0 +1,4 @@
+ALTER TABLE quests
+  DROP COLUMN IF EXISTS accepted_at,
+  DROP COLUMN IF EXISTS completed_at,
+  DROP COLUMN IF EXISTS rarity;

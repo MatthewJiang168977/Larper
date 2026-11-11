@@ -45,7 +45,7 @@
 }
 
 .larper-landing-actions > * { flex: 1 1 auto; }
-.larper-landing-actions > span > button { width: 100%; }
+.larper-landing-demo-button { width: 100%; }
 
 .larper-landing-privacy {
   justify-self: center;
