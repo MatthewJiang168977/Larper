@@ -144,6 +144,6 @@ describe("Journal", () => {
     answer = () => Promise.reject(new ApiError("Failed to fetch", 0, "network"));
     render(<JournalPage />);
     await settle();
-    expect(screen.getByRole("alert").textContent).toContain("Can't reach the server. Check your connection.");
+    expect(screen.getByRole("alert").textContent).toContain("can't reach the server. check your connection.");
   });
 });
