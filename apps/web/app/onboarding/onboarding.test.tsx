@@ -148,7 +148,7 @@ describe("Onboarding", () => {
     cards = () => Promise.reject(new ApiError("x", 0, "timeout"));
     render(<OnboardingPage />);
     await settle();
-    expect(screen.getByRole("alert").textContent).toContain("The server is taking too long to answer.");
+    expect(screen.getByRole("alert").textContent).toContain("the server is taking too long to answer.");
     cards = () => Promise.resolve(CARDS);
     fireEvent.click(screen.getByRole("button", { name: "try again" }));
     await settle();

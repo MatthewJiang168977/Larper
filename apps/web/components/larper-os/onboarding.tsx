@@ -37,7 +37,7 @@ export function OnboardingFlow({ loadCards, saveAnswers, questHref = "/", previe
     let active = true;
     loadCards(cardsTries).then(
       (loaded) => { if (active) setCards(loaded); },
-      (e: unknown) => { if (active) setCardsError(describeError(e, CARDS_FAILED)); },
+      (e: unknown) => { if (active) setCardsError(describeError(e, CARDS_FAILED).toLowerCase()); },
     );
     return () => { active = false; };
   }, [loadCards, cardsTries]);
@@ -82,7 +82,7 @@ export function OnboardingFlow({ loadCards, saveAnswers, questHref = "/", previe
     if (!likedKey) return; // shown as a prompt to go again below
     saveAnswers({ liked: likedKey.split(","), passed: passedKey ? passedKey.split(",") : [] }).then(
       setResult,
-      (e: unknown) => setSaveError(describeError(e, SAVE_FAILED)),
+      (e: unknown) => setSaveError(describeError(e, SAVE_FAILED).toLowerCase()),
     );
   }, [done, likedKey, passedKey, result, saveError, saveAnswers]);
 
