@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from "react";
+import { useId, type ComponentProps, type ReactNode } from "react";
 import "./primitives.css";
 
 export function OSMenuBar({ children }: { children?: ReactNode }) {
@@ -15,11 +15,12 @@ export function OSWindow({ title, children, footer }: {
   children: ReactNode;
   footer?: ReactNode;
 }) {
+  const titleId = useId();
   return (
-    <section className="larper-os-window" aria-label={title}>
+    <section className="larper-os-window" aria-labelledby={titleId}>
       <div className="larper-os-titlebar">
         <span className="larper-os-grille" aria-hidden="true" />
-        <span>{title}</span>
+        <span id={titleId}>{title}</span>
         <span className="larper-os-grille" aria-hidden="true" />
       </div>
       <div className="larper-os-body">{children}</div>

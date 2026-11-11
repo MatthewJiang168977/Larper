@@ -95,12 +95,12 @@
 
 .larper-os-icon[aria-pressed="true"]:not(:disabled) {
   background: var(--larper-os-butter);
-  border-width: 2px;
+  box-shadow: inset 0 0 0 2px var(--larper-os-ink);
 }
 
 @media (hover: hover) {
   .larper-os-button:not(:disabled):hover,
-  .larper-os-icon:not(:disabled):hover { background: var(--larper-os-butter); }
+  .larper-os-icon:not(:disabled):not([aria-pressed="true"]):hover { background: var(--larper-os-butter); }
   .larper-os-button[data-primary="true"]:not(:disabled):hover { background: var(--larper-os-pool-hover); }
 }
 

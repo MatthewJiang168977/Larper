@@ -4,9 +4,10 @@
   --larper-os-paper: #fffdf8;
   --larper-os-pink: #f6d5d5;
   --larper-os-butter: #f7e2a4;
+  /* Pool and coral fills take black text only. Use coral only as a fill. */
   --larper-os-pool: #1e95a1;
-  --larper-os-pool-hover: #2aa7b4;
-  --larper-os-red: #b8323f;
+  --larper-os-pool-hover: #17838e;
+  --larper-os-red: #a32a36;
   --larper-os-coral: #e8756f;
   --larper-os-aqua: #b9e3e6;
   --larper-os-mint: #d5e7c8;
@@ -27,8 +28,8 @@
 /* Wrap only numerals in pixel text below 28px. Large lead numbers use Jersey 20. */
 .larper-os .num {
   font-family: var(--larper-os-font-body), system-ui, sans-serif;
-  font-size: 0.72em;
+  font-size: 0.86em;
   font-weight: 600;
   letter-spacing: 0;
-  vertical-align: 0.06em;
+  vertical-align: baseline;
 }

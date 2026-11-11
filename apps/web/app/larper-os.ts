@@ -7,14 +7,16 @@ import "./larper-os.css";
 const atkinson = Atkinson_Hyperlegible_Next({
   variable: "--larper-os-font-body",
   adjustFontFallback: false,
+  subsets: ["latin"],
   preload: false,
 });
 
 const jersey = Jersey_20({
   variable: "--larper-os-font-pixel",
   weight: "400",
+  subsets: ["latin"],
   preload: false,
 });
 
-// Import from redesigned surfaces so the legacy layout does not load these fonts.
+// The home route serves both landing and quests. Load these faces when their CSS is used.
 export const larperOsClassName = `larper-os ${atkinson.variable} ${jersey.variable}`;
