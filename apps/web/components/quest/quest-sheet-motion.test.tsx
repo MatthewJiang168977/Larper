@@ -42,17 +42,17 @@ beforeEach(() => {
 });
 
 describe("QuestSheet: the peek's motion", () => {
-  it("blurs and slides the new place in, and counts its distance up", () => {
+  it("renders the place and its distance immediately", () => {
     sheet();
-    expect(fade().style.filter).toBe("blur(6px)");
-    expect(fade().style.transform).toContain("translateY(-4px)");
-    expect(distance().textContent).toContain("· 0 m"); // the count starts from 0
+    expect(fade().style.filter).toBe("");
+    expect(fade().style.transform).toBe("");
+    expect(distance().textContent).toContain("· 1,340 m"); // the count starts from 0
   });
 
   it("with reduced motion: no blur, no slide, and the distance as a plain number", () => {
     reduce = true;
     sheet();
-    expect(fade().style.filter).toBe("blur(0px)");
+    expect(fade().style.filter).toBe("");
     expect(fade().style.transform).not.toContain("translateY(-4px)");
     expect(distance().textContent).toContain("cafe · 1,340 m, about 17 min on foot");
   });
