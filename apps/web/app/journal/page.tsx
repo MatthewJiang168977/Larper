@@ -7,7 +7,7 @@ import { demoKnown, setDemo, track } from "@/lib/analytics";
 import { describeError, useApi, type JournalEntry, type Me } from "@/lib/api";
 
 // For calls whose 4xx text is for developers, not people.
-const LOAD_FAILED = "Couldn't open the journal.";
+const LOAD_FAILED = "try again to reopen your quest history.";
 
 // The larp log: every quest you've been offered, newest first.
 export default function JournalPage() {

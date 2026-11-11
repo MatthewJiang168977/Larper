@@ -7,17 +7,18 @@ import { OSButton, OSMenuBar, OSQuestPanel, OSWindow } from "./primitives";
 import "./journal.css";
 
 const stamp: Record<JournalEntry["status"], string> = {
-  completed: "Done",
-  accepted: "On it",
-  offered: "Today",
-  skipped: "Skipped",
-  expired: "Expired",
+  completed: "done",
+  accepted: "on it",
+  offered: "today",
+  skipped: "skipped",
+  expired: "expired",
 };
 
 // Match the API's quest day, including when the viewer is in a different timezone.
 const journalDate = new Intl.DateTimeFormat("en-US", {
   month: "short", day: "numeric", timeZone: "America/New_York",
 });
+const errorTitle = "couldn't open the journal";
 
 export function JournalView({ entries, error, retry, previewControls, mapHref = "/" }: {
   entries: JournalEntry[] | null;
@@ -27,7 +28,7 @@ export function JournalView({ entries, error, retry, previewControls, mapHref = 
   mapHref?: string;
 }) {
   const count = entries?.length;
-  const footer = error ? "couldn’t read the journal" : count === undefined ? "reading journal…" : `${count} ${count === 1 ? "file" : "files"}`;
+  const footer = error ? errorTitle : count === undefined ? "opening the journal…" : `${count} ${count === 1 ? "file" : "files"}`;
 
   return (
     <main className={`${larperOsClassName} larper-journal`}>
@@ -35,27 +36,28 @@ export function JournalView({ entries, error, retry, previewControls, mapHref = 
       <div className="larper-journal-stage">
         <OSWindow title="quest journal" footer={footer}>
           <div className="larper-journal-heading">
-            <h1>Field journal</h1>
-            <p>Every quest you&apos;ve been handed.</p>
+            <h1>field journal</h1>
+            <p>every quest you&apos;ve been handed.</p>
           </div>
 
           {error && (
             <OSQuestPanel role="alert">
+              <h2 className="larper-journal-name">{errorTitle}</h2>
               <p>{error}</p>
               <div className="larper-journal-retry">
-                <OSButton primary onClick={retry}>Try again</OSButton>
+                <OSButton primary onClick={retry}>try again</OSButton>
               </div>
             </OSQuestPanel>
           )}
           {!entries && !error && (
-            <OSQuestPanel role="status">Opening the journal…</OSQuestPanel>
+            <OSQuestPanel role="status">opening the journal…</OSQuestPanel>
           )}
           {count === 0 && (
-            <OSQuestPanel>Blank pages. Your first quest is on the map.</OSQuestPanel>
+            <OSQuestPanel>blank pages. your first quest is on the map.</OSQuestPanel>
           )}
           {!!count && (
             <OSQuestPanel>
-              <ol className="larper-journal-list" aria-label="Quest history">
+              <ol className="larper-journal-list" role="list" aria-label="quest history">
                 {entries?.map((entry) => (
                   <li key={entry.id} className="larper-journal-row">
                     <div className="larper-journal-file">
@@ -75,7 +77,7 @@ export function JournalView({ entries, error, retry, previewControls, mapHref = 
                       </div>
                     </div>
                     <div className="larper-journal-meta">
-                      <time dateTime={entry.createdAt}>{journalDate.format(new Date(entry.createdAt))}</time>
+                      <time dateTime={entry.createdAt}>{journalDate.format(new Date(entry.createdAt)).toLowerCase()}</time>
                       <span className="larper-journal-stamp" data-state={entry.status}>{stamp[entry.status]}</span>
                     </div>
                   </li>
@@ -88,7 +90,7 @@ export function JournalView({ entries, error, retry, previewControls, mapHref = 
               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M19 12H5m6-6-6 6 6 6" />
             </svg>
-            Back to the map
+            back to the map
           </Link>
         </OSWindow>
       </div>

@@ -49,6 +49,7 @@
   background: var(--larper-os-disabled);
   color: var(--larper-os-disabled-ink);
 }
+.larper-journal-stamp[data-state="skipped"] { text-decoration: line-through; }
 
 .larper-journal-retry { margin-block-start: 8px; }
 .larper-journal-back { justify-self: start; }
