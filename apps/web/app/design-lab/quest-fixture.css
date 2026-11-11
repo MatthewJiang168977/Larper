@@ -1,0 +1,51 @@
+.larper-lab-desktop {
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh;
+  color: var(--larper-os-ink);
+  background: var(--larper-os-pink);
+  font: 17px/1.4 var(--larper-os-font-body), system-ui, sans-serif;
+}
+
+.larper-lab-selector { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.larper-lab-selector select {
+  min-height: var(--larper-os-tap-min);
+  padding-inline: 8px;
+  cursor: pointer;
+}
+.larper-lab-selector select:focus-visible { outline: 2px solid var(--larper-os-ink); outline-offset: 2px; }
+
+.larper-lab-stage {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  padding: 10px 10px max(10px, env(safe-area-inset-bottom));
+}
+
+/* A lightweight sample wallpaper behind the mock states. */
+.larper-lab-wallpaper {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    repeating-linear-gradient(120deg, transparent 0 42px, var(--larper-os-paper) 42px 45px),
+    repeating-linear-gradient(30deg, transparent 0 66px, var(--larper-os-window) 66px 69px);
+  mask-image: linear-gradient(black 30%, transparent);
+}
+
+.larper-lab-dock { width: min(100%, var(--larper-os-dock-width)); margin-inline: auto; }
+.larper-lab-heading {
+  font: 400 42px/0.98 var(--larper-os-font-pixel), system-ui, sans-serif;
+  overflow-wrap: anywhere;
+  margin-block-end: 8px;
+}
+.larper-lab-kind { display: flex; align-items: center; gap: 5px; margin-block-end: 4px; font-size: 15px; }
+.larper-lab-kind svg { width: 16px; height: 16px; }
+.larper-lab-leads { display: flex; flex-wrap: wrap; gap: 10px; }
+.larper-lab-leads + :empty { margin-block-start: -10px; }
+
+@media (min-width: 1024px) {
+  .larper-lab-dock { margin-inline: auto 0; }
+}
