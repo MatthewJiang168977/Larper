@@ -85,9 +85,66 @@ body {
   box-shadow: 2px 2px 0 var(--ink);
   transition: transform 80ms, box-shadow 80ms;
 }
-.stamp-btn:active {
+.stamp-btn:not(:disabled):active {
   transform: translate(2px, 2px);
   box-shadow: 0 0 0 var(--ink);
+}
+
+.stamp-btn:not(:disabled),
+.quest-raised:not(:disabled),
+.quest-inline:not(:disabled) {
+  cursor: pointer;
+}
+
+.quest-raised {
+  box-shadow: 0 2px 0 var(--ink-faint);
+}
+
+.quest-raised[aria-pressed="true"],
+.quest-raised:not(:disabled):active {
+  box-shadow: inset 0 2px 0 rgb(43 41 37 / 28%);
+}
+
+.quest-handle {
+  cursor: grab;
+  outline-offset: -3px;
+}
+
+.quest-handle:active {
+  cursor: grabbing;
+}
+
+.quest-handle:active,
+.quest-handle:focus-visible,
+.quest-inline:not(:disabled):active,
+.quest-inline:focus-visible {
+  background-color: var(--paper-deep);
+}
+
+@media (hover: hover) {
+  .stamp-btn:not(:disabled):hover:not(:active),
+  .quest-raised:not(:disabled):hover:not(:active):not([aria-pressed="true"]) {
+    box-shadow: 0 3px 0 var(--ink);
+  }
+
+  .quest-raised[aria-pressed="true"]:hover {
+    box-shadow: inset 0 0 0 2px var(--ink-faint);
+  }
+
+  .quest-handle:hover,
+  .quest-inline:not(:disabled):hover {
+    background-color: var(--paper-deep);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stamp-btn {
+    transition: none;
+  }
+
+  .stamp-btn:not(:disabled):active {
+    transform: none;
+  }
 }
 
 /* MapLibre's attribution control, re-inked to sit on paper. The map lifts its corner
@@ -141,6 +198,16 @@ body {
 .pin-quest[data-selected="true"],
 .pin-lead[data-selected="true"] {
   transform: scale(1.25);
+}
+.pin-quest:active,
+.pin-lead:active {
+  box-shadow: inset 0 2px 0 rgb(43 41 37 / 35%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pin-quest,
+  .pin-lead {
+    transition: none;
+  }
 }
 .pin-lead[data-selected="true"] {
   background: var(--ink);

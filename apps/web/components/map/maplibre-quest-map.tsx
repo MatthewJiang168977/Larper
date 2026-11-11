@@ -524,7 +524,7 @@ export default function MapLibreQuestMap({
         onClick={resetView}
         aria-label="Reset view: north up"
         title="Reset view: north up"
-        className="flex h-11 w-11 items-center justify-center rounded-full border border-paper-edge bg-paper/90 text-ink shadow-sm backdrop-blur"
+        className="quest-raised flex h-11 w-11 items-center justify-center rounded-full border border-ink-faint bg-paper/90 text-ink backdrop-blur"
       >
         {/* A needle pointing north on the map, so it turns against the bearing. */}
         <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6" style={{ transform: `rotate(${-bearing}deg)` }} data-testid="compass-needle">
@@ -537,7 +537,7 @@ export default function MapLibreQuestMap({
         onClick={toggleView}
         aria-label={VIEW_TOGGLE[view].label}
         title={VIEW_TOGGLE[view].label}
-        className="flex h-11 min-w-11 items-center justify-center rounded-full border border-paper-edge bg-paper/90 px-3 font-mono text-xs font-semibold tracking-wider text-ink shadow-sm backdrop-blur"
+        className="quest-raised flex h-11 min-w-11 items-center justify-center rounded-full border border-ink-faint bg-paper/90 px-3 font-mono text-xs font-semibold tracking-wider text-ink backdrop-blur"
       >
         {VIEW_TOGGLE[view].text}
       </button>

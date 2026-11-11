@@ -19,9 +19,8 @@ interface StateCardProps {
 }
 
 // The bottom card for every state that isn't a quest: loading, errors, surveying, nothing
-// nearby, outside the area. The quest sheet's shell (handle, border, shadow, width), so
-// the quest takes its place without the bottom of the screen changing shape. The handle
-// is drawn only: there's nothing to expand.
+// nearby, outside the area. The quest sheet's shell (border, shadow, width), so
+// the quest takes its place without the bottom of the screen changing shape.
 export function StateCard({ label, body, role, action, placeholder, ref }: StateCardProps) {
   return (
     <div
@@ -30,9 +29,7 @@ export function StateCard({ label, body, role, action, placeholder, ref }: State
       data-testid="state-card"
       className="absolute inset-x-0 bottom-0 z-10 mx-auto flex max-w-xl flex-col rounded-t-2xl border-x border-t border-paper-edge bg-paper shadow-[0_-6px_24px_color-mix(in_srgb,var(--ink)_12%,transparent)] lg:w-[60vw] lg:max-w-[960px]"
     >
-      <div aria-hidden className="flex h-11 shrink-0 items-center justify-center">
-        <span className="h-1 w-10 rounded-full bg-rule" />
-      </div>
+      <div aria-hidden className="h-11 shrink-0" />
       <div className="px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         <p className="field-label">{label}</p>
         {placeholder && <PeekOutline />}

@@ -42,7 +42,7 @@ export function demoAccountLocation(loc: Located | null, outside: boolean): Loca
 }
 
 // Clerk's avatar is a 28 px button; this gives it the same 44 px hit area as everything else.
-export const USER_BUTTON_APPEARANCE = { elements: { userButtonTrigger: "hit-target" } };
+export const USER_BUTTON_APPEARANCE = { elements: { userButtonTrigger: "quest-inline hit-target" } };
 
 // Plus ink initials in place of Clerk's generated avatar, for a user with no photo.
 export function userButtonAppearance(user: Parameters<typeof avatarInitialsAppearance>[0]) {
@@ -399,7 +399,7 @@ export function QuestHome() {
           <h1 className="text-lg font-semibold tracking-tight">Larper</h1>
           <Link
             href="/journal"
-            className="hit-target font-mono text-xs uppercase tracking-wider text-ink-soft underline-offset-4 hover:underline"
+            className="quest-inline hit-target rounded font-mono text-xs uppercase tracking-wider text-ink-soft underline underline-offset-4"
           >
             Journal
           </Link>
@@ -445,7 +445,7 @@ export function QuestHome() {
               <p id="why-not-today" className="flex-1">
                 <span className="font-medium">Set aside for today.</span> Want to say why? It&apos;s optional.
               </p>
-              <button onClick={() => setSetAside(null)} aria-label="No reason" className="hit-target px-1">
+              <button onClick={() => setSetAside(null)} aria-label="No reason" className="quest-inline hit-target rounded px-1">
                 ×
               </button>
             </div>
@@ -457,7 +457,7 @@ export function QuestHome() {
                   ref={i === 0 ? firstReasonRef : undefined}
                   onClick={() => giveReason(reason)}
                   disabled={busy}
-                  className="min-h-11 rounded-full border border-paper-edge bg-paper px-4 disabled:opacity-50"
+                  className="quest-raised min-h-11 rounded-full border border-ink-faint bg-paper px-4 disabled:opacity-50"
                 >
                   {label}
                 </button>
@@ -473,14 +473,14 @@ export function QuestHome() {
           >
             <p className="flex-1">{banner.text}</p>
             {banner.retry && (
-              <button onClick={banner.retry} disabled={banner.pending} className="font-medium underline disabled:opacity-50">
+              <button onClick={banner.retry} disabled={banner.pending} className="quest-inline rounded font-medium underline disabled:opacity-50">
                 {banner.pending ? "Retrying…" : banner.label}
               </button>
             )}
             <button
               onClick={() => (actionError ? setActionError(null) : setTodayError(null))}
               aria-label="Dismiss"
-              className="hit-target px-1"
+              className="quest-inline hit-target rounded px-1"
             >
               ×
             </button>
