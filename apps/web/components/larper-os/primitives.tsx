@@ -1,6 +1,8 @@
 import { useId, type ComponentProps, type ReactNode } from "react";
 import "./primitives.css";
 
+export const osPrimaryButtonClass = "larper-os-button larper-os-button-primary";
+
 export function OSMenuBar({ children }: { children?: ReactNode }) {
   return (
     <header className="larper-os-menu">
@@ -32,7 +34,7 @@ export function OSWindow({ title, children, footer }: {
 export function OSButton({ primary = false, type = "button", ...props }:
   Omit<ComponentProps<"button">, "className"> & { primary?: boolean }
 ) {
-  return <button {...props} type={type} className="larper-os-button" data-primary={primary} />;
+  return <button {...props} type={type} className={primary ? osPrimaryButtonClass : "larper-os-button"} />;
 }
 
 export function OSDesktopIcon({ type = "button", ...props }:
