@@ -6,7 +6,8 @@
 //   b) Not in a blocked category (medical, adult, worship, schools, government, residential,
 //      day care, funeral, courts and jails, gambling).
 //   c) Not a duplicate of a better-confidence place with the same name within 50 m.
-//   d) Unknown opening hours are not offered in the evening, New York time (behind a flag).
+//   d) In the evening, New York time, only a place whose regular schedule says it is open right
+//      now is offered (behind a flag). Unknown hours and closed places are not.
 //
 // The gate never revokes a quest the user already has: it decides what gets offered next.
 
@@ -262,8 +263,10 @@ export interface GateConfig {
   eveningUnknownHours: boolean;
 }
 
-// "on" or "off", parsed here and nowhere else. Off by default: places have no opening
-// hours yet, so turning it on today means no new quest after 6pm. A typo throws.
+// "on" or "off", parsed here and nowhere else. Off by default: few places have hours on file
+// (place_hours_facts, migration 0018), so turning it on holds back most new quests after 6pm.
+// The name says "unknown hours"; the rule is stricter than that, an unknown or closed place is
+// held back and only one known to be open at that moment passes. A typo throws.
 export function eveningGateFromEnv(raw = process.env.QUEST_GATE_EVENING_UNKNOWN_HOURS): boolean {
   const v = (raw ?? '').trim().toLowerCase();
   if (v === '' || v === 'off') return false;
@@ -276,7 +279,12 @@ export const gateConfigFromEnv = (): GateConfig => ({
   eveningUnknownHours: eveningGateFromEnv(),
 });
 
-/** Whether the evening rule lets a place with these hours be offered at this instant. */
-export function passesHoursRule(hoursKnown: boolean, now: Date, enabled: boolean): boolean {
-  return !enabled || hoursKnown || !isEveningInNyc(now);
+/**
+ * Whether the evening rule lets a place be offered at this instant. `openNow` is whether the
+ * place's regular schedule says it is open at `now` (hours/schedule.ts stateAt); the caller
+ * only has to look that up when the rule is active (enabled and in the evening window).
+ * Outside the window, or disabled, hours never filter anything.
+ */
+export function passesHoursRule(openNow: boolean, now: Date, enabled: boolean): boolean {
+  return !enabled || openNow || !isEveningInNyc(now);
 }

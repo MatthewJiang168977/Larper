@@ -1,10 +1,10 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { AuthUser, ClerkAuthGuard, CurrentUser } from '../auth/auth.guard';
 import { isDemoUser } from '../demo/demo-account';
 import { UserLimitGuard, userKey } from '../throttle/guards';
 import { actionOf, isCheckIn, LIMITS, OPT_IN_WINDOWS, USER_WINDOWS } from '../throttle/limits';
-import { QuestsService } from './quests.service';
+import { isWasOpenAnswer, QuestsService, WAS_OPEN_ANSWERS } from './quests.service';
 import { isAction, isSkipReason, SKIP_REASONS } from './transitions';
 
 const DEFAULT_RADIUS_M = 1500;
@@ -65,6 +65,22 @@ export class QuestsController {
     const reason = body?.reason;
     if (!isSkipReason(reason)) throw new BadRequestException(`reason must be one of ${SKIP_REASONS.join(', ')}`);
     return this.quests.giveReason(user.id, id, reason);
+  }
+
+  // POST /quests/:id/was-open { answer }: "was it open?" after a check-in. Declared before
+  // :id/:action too. 200, not 201: a repeat call returns the first answer and creates nothing.
+  @Post(':id/was-open')
+  @HttpCode(200)
+  @SkipThrottle({ [USER_WINDOWS.hour]: false })
+  @Throttle({
+    [USER_WINDOWS.minute]: { limit: LIMITS.questAction.minute },
+    [USER_WINDOWS.hour]: { limit: LIMITS.questAction.hour },
+  })
+  wasOpen(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: { answer?: unknown } = {}) {
+    if (!/^\d+$/.test(id)) throw new BadRequestException('bad quest id');
+    const answer = body?.answer;
+    if (!isWasOpenAnswer(answer)) throw new BadRequestException(`answer must be one of ${WAS_OPEN_ANSWERS.join(', ')}`);
+    return this.quests.wasOpen(user.id, id, answer);
   }
 
   // POST /quests/:id/accept | skip | not-today | complete

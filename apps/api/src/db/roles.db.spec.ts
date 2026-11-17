@@ -43,6 +43,7 @@ const EXPECTED: Record<Role, Record<string, string[]>> = {
     areas_ingested: [S],
     checkin_attempts: [I],
     saved_places: [S, I], // migration 0017: the want-to-go list; never updated or deleted by the API
+    place_hours_facts: [S, I], // migration 0018: hours facts and check-in answers; the first answer stands, so no UPDATE or DELETE
   },
   larper_relay: {
     outbox: [S, U, D],
@@ -216,6 +217,9 @@ describeDb('per-service database roles (real database)', () => {
       await denied('larper_api', 'DELETE FROM checkin_attempts');
       await denied('larper_api', 'DELETE FROM saved_places');
       await denied('larper_api', 'UPDATE saved_places SET quest_id = quest_id');
+      await denied('larper_api', 'DELETE FROM place_hours_facts'); // the first answer for a quest stands
+      await denied('larper_api', 'UPDATE place_hours_facts SET was_open = NOT was_open');
+      await denied('larper_ingest', `INSERT INTO place_hours_facts (place_id, kind, source, fetched_at, confidence) VALUES (1, 'observation', 'check-in', now(), 1)`); // no importer is approved yet
       await denied('larper_api', 'SELECT * FROM checkin_attempts'); // it writes attempts, never reads them
       await denied('larper_api', 'UPDATE places SET name = name');
       await denied('larper_api', 'UPDATE users SET clerk_id = clerk_id');
@@ -362,6 +366,12 @@ describeDb('per-service database roles (real database)', () => {
           [uid, place.rows[0].id],
         );
         await owner.query('INSERT INTO saved_places (user_id, place_id, quest_id) SELECT user_id, place_id, id FROM quests WHERE user_id = $1', [uid]);
+        // A check-in answer on the quest: the reset needs no grant on it, the foreign key frees it.
+        await owner.query(
+          `INSERT INTO place_hours_facts (place_id, kind, source, fetched_at, confidence, was_open, quest_id, user_id)
+           SELECT place_id, 'observation', 'check-in', now(), 0.9, true, id, user_id FROM quests WHERE user_id = $1`,
+          [uid],
+        );
         await inTx('larper_demo_reset', async (c) => {
           expect((await c.query(DELETE_SAVED_PLACES_SQL, [cid])).rowCount).toBe(1);
           expect((await c.query(DELETE_QUESTS_SQL, [cid])).rowCount).toBe(1);
@@ -372,6 +382,35 @@ describeDb('per-service database roles (real database)', () => {
         });
         await owner.query('DELETE FROM places WHERE id = $1', [place.rows[0].id]);
       } finally {
+        await owner.query('DELETE FROM users WHERE id = $1', [uid]);
+      }
+    });
+
+    it("the demo reset's delete frees a check-in answer's quest (committed, as the reset runs it)", async () => {
+      const { rows } = await owner.query<{ cid: string; uid: string }>(
+        `INSERT INTO users (clerk_id) VALUES ('test_demo_' || gen_random_uuid()) RETURNING clerk_id AS cid, id::text AS uid`,
+      );
+      const { cid, uid } = rows[0];
+      const reset = as.larper_demo_reset; // its one connection (the role allows no more), committing this time
+      try {
+        const place = await owner.query<{ id: string }>(`${PLACE} RETURNING id::text`);
+        await owner.query(
+          `INSERT INTO quests (user_id, place_id, score, reasons, origin)
+           VALUES ($1, $2, 0, '{}', ST_SetSRID(ST_MakePoint(0, -60), 4326)::geography)`,
+          [uid, place.rows[0].id],
+        );
+        await owner.query(
+          `INSERT INTO place_hours_facts (place_id, kind, source, fetched_at, confidence, was_open, quest_id, user_id)
+           SELECT place_id, 'observation', 'check-in', now(), 0.9, true, id, user_id FROM quests WHERE user_id = $1`,
+          [uid],
+        );
+        await reset.query('BEGIN');
+        expect((await reset.query(DELETE_QUESTS_SQL, [cid])).rowCount).toBe(1); // no grant on place_hours_facts needed
+        await reset.query('COMMIT');
+        expect((await owner.query('SELECT quest_id FROM place_hours_facts WHERE user_id = $1', [uid])).rows).toEqual([{ quest_id: null }]);
+        await owner.query('DELETE FROM places WHERE id = $1', [place.rows[0].id]);
+      } finally {
+        await reset.query('ROLLBACK').catch(() => undefined);
         await owner.query('DELETE FROM users WHERE id = $1', [uid]);
       }
     });
