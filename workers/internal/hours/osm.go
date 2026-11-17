@@ -35,7 +35,7 @@ var (
 //	open_ended    "17:00+" has no closing time, so that part was dropped; additive
 //	variable_time sunrise/sunset/dawn/dusk times were dropped; additive
 //	holiday_hours public holidays have their own hours, which can't be stored; holidays stays null
-//	override      a later rule overrides an earlier one (informational)
+//	exception-then-rule  a weekday rule follows a date or PH rule, so which wins is ambiguous; restrictive
 type Warning struct {
 	Code    string
 	Message string
@@ -581,6 +581,9 @@ type builder struct {
 	holidays *string
 	partial  Partial
 	warns    []Warning
+	// exception is set once a date or PH rule has been applied, to catch a weekday
+	// rule that comes after it.
+	exception bool
 }
 
 func newBuilder() *builder { return &builder{dates: map[string]*DateRule{}} }
@@ -620,9 +623,10 @@ func (b *builder) dateRule(on string) *DateRule {
 // apply folds one parsed OSM rule into the builder, in order: a normal rule replaces
 // what earlier rules said about the same days; an additional rule adds to it.
 //
-// Date rules and PH rules are exceptions whatever their position: a rule such as
+// Date rules and PH rules are exceptions that win wherever they stand: a rule such as
 // "Mo-Fr 09:00-17:00" written after "PH off" doesn't reopen the holiday here (the spec
-// would, on weekday holidays; in practice exceptions are written last).
+// would, on weekday holidays). Exceptions are normally written last, so a weekday rule
+// after one is ambiguous and makes the schedule restrictive (see checkAfterException).
 func (b *builder) apply(r rule, text string) {
 	switch {
 	case r.fallback:
@@ -638,6 +642,7 @@ func (b *builder) apply(r rule, text string) {
 		b.setPartial(PartialRestrictive)
 		return
 	case r.always:
+		b.checkAfterException(text)
 		b.days = [8][]Span{}
 		b.always = !r.additional
 		if r.additional {
@@ -661,14 +666,30 @@ func (b *builder) apply(r rule, text string) {
 	switch {
 	case len(r.dates) > 0:
 		b.applyDates(r, text)
+		b.exception = true
 	default:
 		if r.ph {
 			b.applyPH(r, text)
+			b.exception = true
+		} else {
+			b.checkAfterException(text)
 		}
 		if r.allDays || r.anyDay() {
 			b.applyDays(r, text)
 		}
 	}
+}
+
+// checkAfterException handles a weekday or all-days rule that follows a date or PH rule.
+// We read dates and PH as exceptions that win wherever they stand; strict OSM lets the
+// later rule override them on the days it matches. We can't tell which was meant, so the
+// result is restrictive: neither "open" nor "closed" can be trusted.
+func (b *builder) checkAfterException(text string) {
+	if !b.exception {
+		return
+	}
+	b.warn("exception-then-rule", "%q comes after a date or PH rule; whether it overrides that exception is ambiguous", text)
+	b.setPartial(PartialRestrictive)
 }
 
 func (b *builder) applyPH(r rule, text string) {
@@ -761,6 +782,11 @@ func (b *builder) finish() (Schedule, error) {
 // (Dec 25 off, Dec 24-26 off, Dec 31-Jan 2 off, Dec 24 09:00-15:00, 2026 Dec 25 off);
 // case, extra spaces and en dashes. A "24/7" that stands alone is Always; with other
 // rules it becomes seven full days.
+//
+// Dates and PH rules are exceptions that win over weekday rules. When a weekday (or
+// 24/7) rule comes AFTER one, strict OSM would let it override the exception, so the
+// order is ambiguous and the schedule is restrictive with an "exception-then-rule"
+// warning. Exceptions written last stay partial none.
 //
 // Understood but not stored, and marked partial (never guessed): month ranges
 // (Apr-Oct), week numbers, year ranges, nth weekdays (Mo[1]), school holidays (SH),

@@ -32,6 +32,11 @@ func TestParseOSMWarnings(t *testing.T) {
 		{"Mo-Fr 09:00-17:00 || Sa 10:00-12:00", PartialRestrictive, []string{"fallback"}},
 		{"Mo-Fr 09:00-17:00; Sa unknown", PartialRestrictive, []string{"unknown_state"}},
 		{`Mo-Fr 09:00-17:00 "ring first"`, PartialRestrictive, []string{"comment"}},
+		{"Mo-Fr 09:00-17:00; Dec 24 09:00-12:00; Mo-Fr 09:00-17:00", PartialRestrictive, []string{"exception-then-rule"}},
+		{"PH off; Mo-Fr 09:00-17:00", PartialRestrictive, []string{"exception-then-rule"}},
+		{"Mo-Fr 09:00-17:00; Dec 25 off, Sa 10:00-14:00", PartialRestrictive, []string{"exception-then-rule"}},
+		{"Mo-Fr 09:00-17:00; Dec 25 off; 24/7", PartialRestrictive, []string{"exception-then-rule"}},
+		{"Mo-Fr 09:00-17:00; Sa 10:00-14:00; PH off; Dec 25 off", PartialNone, nil},
 		{"Mo-Fr 09:00-17:00; Sa 17:00+; Su unknown", PartialRestrictive, []string{"open_ended", "unknown_state"}},
 	}
 	for _, c := range cases {

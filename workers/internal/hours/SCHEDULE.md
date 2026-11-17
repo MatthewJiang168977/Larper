@@ -97,3 +97,12 @@ Spans are local wall-clock times; the minute of day comes from the local clock r
   minutes of day and the same answer. A span ending 01:30 is open during the first
   01:00-01:30 and during the repeated one. An overnight Saturday 22:00-02:00 covers both
   01:xx hours.
+
+## Parsing note: exceptions before rules
+
+In OSM input, date rules (`Dec 25 off`) and `PH` rules are exceptions that win over weekday
+rules, wherever they stand. Strict OSM would instead let a LATER weekday rule override an
+earlier exception on the days it matches. When a weekday (or `24/7`) rule follows a date
+or PH rule (joined by `;` or `,`), the intent is ambiguous, so the parser sets
+`partial: "restrictive"` and warns `exception-then-rule`. Exceptions written last
+(`Mo-Fr 09:00-17:00; PH off`) stay `"none"`.
