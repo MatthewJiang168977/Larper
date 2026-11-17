@@ -16,6 +16,24 @@
 ALTER TABLE quests ALTER COLUMN origin DROP NOT NULL;
 UPDATE quests SET origin = NULL WHERE origin IS NOT NULL AND status IN ('expired', 'completed', 'skipped');
 
+-- Quest writers and the taste worker take the same locks in user -> quest order.
+-- KEY SHARE lets writers coexist and matches the user FK lock on a new quest. Use
+-- separate statements so the quest read sees a deletion that committed while the
+-- user lock was waiting (READ COMMITTED). Row locks need UPDATE privilege, so expose
+-- just this check to the service roles.
+CREATE FUNCTION lock_user_quest(p_user_id bigint, p_quest_id bigint) RETURNS boolean
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
+AS $$
+BEGIN
+  PERFORM 1 FROM users WHERE id = p_user_id FOR KEY SHARE;
+  IF NOT FOUND THEN
+    RETURN false;
+  END IF;
+  PERFORM 1 FROM quests WHERE id = p_quest_id AND user_id = p_user_id FOR KEY SHARE;
+  RETURN FOUND;
+END
+$$;
+
 -- Deletes the user's history and keeps the account and the taste profile: journal
 -- (quests, and through them check-in attempts), "was it open?" answers, the want-to-go
 -- list, and the user's outbox events (their payloads name quests and places). Returns
@@ -30,6 +48,11 @@ DECLARE
   n_quests   bigint;
   n_events   bigint;
 BEGIN
+  -- Wait for existing quest writers and workers before taking any child locks.
+  -- Account deletion holds this lock through the outbox sweep and the user DELETE,
+  -- so even a new offer's FK check cannot pass in between.
+  PERFORM 1 FROM users WHERE id = p_user_id FOR UPDATE;
+
   -- Attempts reach a person only through their quest (0014): count them, then the quest
   -- delete cascades to them.
   SELECT count(*) INTO n_attempts FROM checkin_attempts a JOIN quests q ON q.id = a.quest_id WHERE q.user_id = p_user_id;
@@ -88,3 +111,5 @@ $$;
 
 REVOKE ALL ON FUNCTION delete_my_history(bigint), delete_my_account(bigint), export_my_checkin_attempts(bigint) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION delete_my_history(bigint), delete_my_account(bigint), export_my_checkin_attempts(bigint) TO larper_api;
+REVOKE ALL ON FUNCTION lock_user_quest(bigint, bigint) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION lock_user_quest(bigint, bigint) TO larper_api, larper_taste;

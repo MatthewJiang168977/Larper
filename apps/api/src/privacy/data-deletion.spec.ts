@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, Logger } from '@nestjs/common';
 import type { Pool } from 'pg';
 import type { CacheService } from '../cache/cache.service';
 import { ClerkApiError } from '../demo/clerk-api';
@@ -76,6 +76,7 @@ describe('DataDeletionService', () => {
     delete process.env.DEMO_CLERK_USER_ID;
   };
   beforeEach(noDemo);
+  afterEach(() => jest.restoreAllMocks());
   afterAll(noDemo);
 
   it('flag off: deletes the data, never calls Clerk, and says the owner removes the Clerk user', async () => {
@@ -97,13 +98,18 @@ describe('DataDeletionService', () => {
     expect(order).toEqual(['db', 'clerk user_abc123']);
   });
 
-  it('flag on, Clerk fails: the data is still gone and the answer says so', async () => {
+  it.each([
+    [new ClerkApiError(503, 'DELETE /users/user_abc123'), 'Clerk user deletion failed (HTTP 503)'],
+    [new Error('failed for user_abc123\nresponse body'), 'Clerk user deletion failed'],
+  ])('reports Clerk failure with a single sanitized log message', async (error, message) => {
+    const log = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     const deleter = jest.fn(async () => {
-      throw new ClerkApiError(503, 'DELETE /users/user_abc123');
+      throw error;
     });
     const { svc } = service(deleter);
     await expect(svc.deleteAccount(USER)).resolves.toEqual({ deleted: COUNTS, clerkUser: 'failed' });
     expect(deleter).toHaveBeenCalledTimes(1);
+    expect(log.mock.calls).toEqual([[message]]);
   });
 
   it('a database failure stops before Clerk: the user can still sign in to repeat it', async () => {

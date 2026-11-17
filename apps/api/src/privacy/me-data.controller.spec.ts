@@ -21,13 +21,16 @@ describe('MeDataController', () => {
   const exportFn = jest.fn();
   const deleteHistory = jest.fn();
   const deleteAccount = jest.fn();
+  const storage = new ThrottlerStorageService();
+  const increment = jest.spyOn(storage, 'increment');
   let n = 0;
 
-  const call = (method: string, path: string, user: string | undefined) =>
+  const call = (method: string, path: string, user: string | undefined, accountId?: string) =>
     fetch(`${url}${path}`, {
       method,
       headers: {
         ...(user ? { 'x-test-user': user } : {}),
+        ...(accountId ? { 'x-test-account-row': accountId } : {}),
         // Whatever else the request carries, the user comes from the session.
         'x-user-id': 'other',
         'x-forwarded-for': `198.51.100.${(++n % 250) + 1}`,
@@ -49,14 +52,14 @@ describe('MeDataController', () => {
           const req = ctx.switchToHttp().getRequest();
           const user = req.headers['x-test-user'];
           if (!user) throw new UnauthorizedException();
-          req.user = { id: String(user), clerkId: `user_${String(user).replace(/\W/g, '')}` };
+          req.user = { id: req.headers['x-test-account-row'] ?? String(user), clerkId: `user_${String(user).replace(/\W/g, '')}` };
           return true;
         },
       })
       .overrideProvider(getOptionsToken())
       .useValue({ throttlers: [] })
       .overrideProvider(getStorageToken())
-      .useValue(new FailOpenStorage(new ThrottlerStorageService()))
+      .useValue(new FailOpenStorage(storage))
       .compile();
     app = moduleRef.createNestApplication<NestExpressApplication>({ logger: false });
     (app as NestExpressApplication).set('trust proxy', 1);
@@ -156,5 +159,23 @@ describe('MeDataController', () => {
 
   it('declares the Clerk and per-user limit guards on the controller', () => {
     expect(Reflect.getMetadata(GUARDS_METADATA, MeDataController)).toEqual([ClerkAuthGuard, UserLimitGuard]);
+  });
+
+  it('limits DELETE /me across recreated rows using hashed keys in both windows', async () => {
+    deleteAccount.mockResolvedValue({});
+    increment.mockClear();
+    for (let i = 0; i < LIMITS.dataDelete.minute; i++) {
+      expect((await call('DELETE', '/me', 'resteady', String(101 + i))).status).toBe(200);
+    }
+    expect((await call('DELETE', '/me', 'resteady', '999')).status).toBe(429);
+    expect(deleteAccount.mock.calls.map(([user]) => user.id)).toEqual(['101', '102', '103']);
+
+    for (const window of ['user', 'user-hour']) {
+      const keys = increment.mock.calls.filter((call) => call[4] === window).map(([key]) => key);
+      expect(keys.length).toBeGreaterThan(1);
+      expect(new Set(keys).size).toBe(1);
+      expect(keys[0]).toMatch(new RegExp(`^rl:${window}:MeDataController\\.deleteAccount:[0-9a-f]{64}$`));
+    }
+    expect((await call('DELETE', '/me', 'other-subject', '999')).status).toBe(200);
   });
 });

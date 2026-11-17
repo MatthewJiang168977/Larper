@@ -22,6 +22,9 @@ kept the exact position of every offer forever.
 | `DELETE /me/history` | Deletes the journal, check-ins, "was it open?" answers and saved places. Keeps the account and the taste profile. | 3 a minute, 10 an hour |
 | `DELETE /me` | Deletes all of the above, the taste profile and the account row. | 3 a minute, 10 an hour |
 
+`DELETE /me` uses a route-scoped hash of the verified Clerk subject for both rate
+limit windows. The counters carry over if the Larper account row is recreated.
+
 Both deletes answer 200 with the counts, and **403 `{"code":"demo_account"}` for the shared
 demo account** (it is reset nightly by `ops/demo-reset.ts`; a visitor must not be able to
 empty or remove it for the next one). `GET /me/export` refuses it the same way: the demo's
@@ -31,10 +34,10 @@ user: `"clerkUser": "manual" | "deleted" | "failed"`.
 
 ### How the API deletes without a DELETE grant
 
-Three `SECURITY DEFINER` functions (migration 0020), like `prune_checkin_attempts()` (0014):
-owned by the migration role, `SET search_path = pg_catalog, public, pg_temp`, `REVOKE ALL ...
-FROM PUBLIC`, `GRANT EXECUTE ... TO larper_api` and no other role. Each takes our `users.id`,
-which the API reads from the verified session.
+`SECURITY DEFINER` functions in migration 0020 follow `prune_checkin_attempts()` (0014).
+The migration role owns them, pins `search_path` to `pg_catalog, public, pg_temp`, and
+revokes access from `PUBLIC`. Only `larper_api` can execute the delete and export
+functions. The API gets `users.id` from the verified session.
 
 | Function | Deletes |
 |---|---|
@@ -42,7 +45,7 @@ which the API reads from the verified session.
 | `delete_my_account(user)` | `delete_my_history`, then `taste_profiles`, then the `users` row. |
 | `export_my_checkin_attempts(user)` | Deletes nothing: a read of the user's check-in attempts, so the API gets no SELECT on that table (it still "writes attempts, never reads them"). |
 
-`roles.db.spec.ts` pins the four function grants. Observations are deleted before quests on
+`roles.db.spec.ts` checks the function grants. Observations are deleted before quests on
 purpose: `place_hours_facts.quest_id` is `ON DELETE SET NULL`, which would leave the answer
 behind. `place_hours_facts` schedule facts (`user_id` NULL) are places' data, not the user's.
 
@@ -50,9 +53,13 @@ After either delete the API drops the user's cached decks (`deck:*:<id>:*` in Re
 
 ### Races
 
-A request running while `DELETE /me` executes may fail with a 500 (its user row vanishes
-under it), and a quest created while `DELETE /me/history` runs may survive it. Repeating the
-delete clears both.
+Both deletes take `FOR UPDATE` on the user row before sweeping children. Quest actions
+and hours answers take `FOR KEY SHARE` on the user and then the owned quest through
+`lock_user_quest`, holding both locks through their writes. If a writer wins, the sweep
+sees its committed children and events. If a delete wins, writes to its removed quests
+return 404. A new offer's foreign key also needs a user key-share lock. It can proceed
+after a history clear, and its foreign key fails if the account row was deleted. The
+account delete holds its lock until after the outbox sweep and user removal commit.
 
 ### The exact offer position
 
@@ -65,14 +72,17 @@ it. Apply the migration before the new pods: they write NULL.
 
 ### Events already in flight
 
-The outbox row of an event is deleted with the user, but an event the relay has already
-published sits in Kafka and can reach `taste-worker` after the user is gone. The worker's
-insert into `taste_profiles` then hits the foreign key to `users`; it used to retry that
-forever (stalling the partition). It now recognises that error (SQLSTATE 23503 on
-`taste_profiles`), rolls back and skips the event. `processed_events` holds only event ids
-(no user id) and is left alone. `outbox-relay` and `ingest-worker` need nothing: the relay
-claims rows with `FOR UPDATE SKIP LOCKED` (a delete waits for it), and jobs are keyed by area,
-not by user. Redis holds only decks, which expire in 10 minutes and are dropped on delete.
+An event the relay already published can reach `taste-worker` after either delete. Before
+locking the taste profile, the worker uses `lock_user_quest` to take the same user and quest
+locks as the API. The function checks ownership and reads the quest after the user lock
+is acquired. Missing users or quests cause the worker to skip the event. A taste update
+that commits before a history clear remains in the retained profile. Only `larper_api`
+and `larper_taste` can execute the locking function.
+
+Apply migration 0020 before starting the API and taste worker that use this function.
+Run the updated taste worker before making history deletion available so every consumer
+checks quest ownership. `processed_events` keeps event IDs. The outbox sweep waits on rows
+the relay has claimed with `FOR UPDATE SKIP LOCKED`. The ingest jobs are keyed by area.
 
 ### Deleting the Clerk user (D7): off by default
 
@@ -94,33 +104,30 @@ them out after a delete.
 
 ## What happens to deleted data in backups
 
-Deleted rows are not removed from backups; they age out.
+Copies of deleted rows can persist until the stores' normal cleanup runs.
 
-- **Base backups and WAL:** CloudNativePG's Barman Cloud plugin (`templates/backup.yaml`)
-  gets `retentionPolicy` from `postgres.backup.retention`, which is `14d`
-  (`infra/helm/larper/values.yaml`; the Oracle values don't override it). Base backups are
-  weekly (`schedule: "0 0 3 * * 0"`, Sunday 03:00); WAL is archived continuously. Retention
-  keeps the newest base backup that is older than now minus 14 days, and all WAL after it, so
-  that any point in the last 14 days can be restored. A row deleted on day D can be in a base
-  backup taken up to 7 days before D, and that backup must stay until it is no longer the
-  newest one older than 14 days, which is about D + 21 days, plus the lag before the plugin's
-  cleanup runs. So: **about 3 weeks**.
-- **Backstop:** the bucket `larper-pg-backups` has a lifecycle rule deleting objects older than
-  60 days (`infra/oci-k3s/README.md`, "Backups"), for what retention misses (an old server
-  folder after a rebuild). So the hard upper bound for anything in the bucket is **60 days**.
-- **No restore resurrects it unnoticed:** a restore replays the database as of its point in
-  time, so a restore would bring deleted rows back. There is no deletion ledger to replay.
-  After any restore, ask users who deleted since the restore point to delete again, or accept
-  the gap; keeping a ledger of deleted user ids is possible but would itself be personal data
-  (decision for the owner).
-- **Kafka:** neither `user.events` nor `user.events.dlq` has a retention setting anywhere in
-  the chart: `templates/workers.yaml` creates them with `rpk topic create <name> -p <n> -r 1`
-  and no `-c`, and `templates/redpanda.yaml` (image `redpanda:v24.2.7`, `--mode=dev-container`)
-  sets none. So the broker default applies: Redpanda's cluster property `log_retention_ms`,
-  documented default 604800000 ms, **7 days** (Redpanda docs, cluster properties; not
-  checked on the running cluster: `rpk topic describe user.events` shows it). Both topics
-  hold user ids (the dead-letter queue keeps a copy of any record that could not be decoded),
-  with quest and place ids, and no positions. They age out within 7 days.
+- **Base backups and WAL.** CloudNativePG's Barman Cloud plugin uses a 14-day recovery
+  window (`postgres.backup.retention: 14d` in `infra/helm/larper/values.yaml`). Full base
+  backups are scheduled weekly at Sunday 03:00 and WAL is archived continuously.
+  Recovery may need the last full backup before the window and the WAL from that backup
+  onward. Backup eligibility therefore depends on successful backups and the window,
+  and removal depends on when cleanup runs.
+  [Barman Cloud retention policies](https://cloudnative-pg.io/plugin-barman-cloud/docs/next/retention/)
+- **OCI lifecycle cleanup.** Objects in `larper-pg-backups` become eligible for cleanup
+  at 60 days of object age under the documented lifecycle rule
+  (`infra/oci-k3s/README.md`, "Backups"). This includes old server folders after a rebuild.
+  Object removal depends on OCI lifecycle processing.
+  [OCI lifecycle management](https://docs.oracle.com/en-us/iaas/Content/Object/Tasks/usinglifecyclepolicies.htm)
+- **Restore.** Restoring to a point before deletion can bring back the deleted rows.
+  The current restore process has no deletion ledger to replay.
+- **Redpanda segment retention.** The chart leaves `retention.ms` unset on `user.events`
+  and `user.events.dlq` and sets no broker override. The documented Redpanda v24.2
+  default for `log_retention_ms` is 604800000 ms (7 days). Cleanup applies to closed
+  segments, so the time a record remains depends on segment rolling and background
+  cleanup. These are chart and broker defaults. The running cluster was not checked.
+  Quest records carry user, quest and place IDs. The dead-letter topic keeps a copy of
+  records the consumer could not decode.
+  [Redpanda v24.2 cluster properties](https://docs.redpanda.com/streaming/24.2/reference/properties/cluster-properties/)
 
-The privacy page should say: deleted from the live app immediately; copies in
-backups expire after about 3 weeks (60 days at most).
+The privacy page should say that deletion removes data from the live app and that
+copies may persist in backups and event logs until scheduled cleanup.

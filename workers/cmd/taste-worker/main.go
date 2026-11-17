@@ -13,11 +13,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"google.golang.org/protobuf/proto"
@@ -155,6 +155,21 @@ func handle(ctx context.Context, pool *pgxpool.Pool, r *kgo.Record) (outcome, er
 		return duplicate, tx.Commit(ctx)
 	}
 
+	// A delayed event may outlive its quest. Lock the user and quest before the
+	// profile so history/account deletion either waits for us or wins and makes
+	// this event ineligible to learn from.
+	questID, err := strconv.ParseInt(evt.QuestId, 10, 64)
+	if err != nil {
+		return ignored, nil
+	}
+	var present bool
+	if err := tx.QueryRow(ctx, `SELECT lock_user_quest($1, $2)`, evt.UserId, questID).Scan(&present); err != nil {
+		return "", err
+	}
+	if !present {
+		return ignored, nil
+	}
+
 	// Lock the profile row. Two events for one user never race (same partition, one
 	// consumer), but onboarding can re-seed the profile at the same moment.
 	var oldText *string
@@ -191,24 +206,9 @@ func handle(ctx context.Context, pool *pgxpool.Pool, r *kgo.Record) (outcome, er
 		INSERT INTO taste_profiles (user_id, vec, source, updated_at) VALUES ($1, $2::vector, 'events', now())
 		ON CONFLICT (user_id) DO UPDATE SET vec = EXCLUDED.vec, source = 'events', updated_at = now()`,
 		evt.UserId, taxonomy.VectorLiteral(updated)); err != nil {
-		if userGone(err) {
-			// The account was deleted (DELETE /me) after this event was written: events
-			// already in Kafka outlive the user's outbox rows. There's nobody to learn
-			// about, and retrying could never succeed, so skip it. The rollback leaves no
-			// processed_events row; a redelivery lands here again.
-			return ignored, nil
-		}
 		return "", err
 	}
 	return applied, tx.Commit(ctx)
-}
-
-// userGone reports whether err is the taste_profiles -> users foreign key refusing an
-// insert for a user that no longer exists. This role can't read users (docs/decisions/0003),
-// so the foreign key is how the worker finds out.
-func userGone(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23503" && pgErr.TableName == "taste_profiles"
 }
 
 func deadLetter(ctx context.Context, kafka *kgo.Client, r *kgo.Record, cause error) {

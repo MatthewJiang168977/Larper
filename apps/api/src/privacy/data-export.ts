@@ -118,7 +118,7 @@ type AttemptRow = {
   demo: boolean;
   created_at: Date;
 };
-type AnswerRow = PlaceCols & { quest_id: string | null; was_open: boolean | null; fetched_at: Date };
+type AnswerRow = PlaceCols & { quest_id: string | null; was_open: boolean | null; created_at: Date };
 type SavedRow = PlaceCols & { quest_id: string | null; created_at: Date };
 
 @Injectable()
@@ -158,9 +158,9 @@ export class DataExportService {
       );
       attempts = await db.query<AttemptRow>('SELECT * FROM export_my_checkin_attempts($1)', [userId]);
       answers = await db.query<AnswerRow>(
-        `SELECT h.quest_id::text, h.was_open, h.fetched_at, ${PLACE_COLS}
+        `SELECT h.quest_id::text, h.was_open, h.created_at, ${PLACE_COLS}
          FROM place_hours_facts h JOIN places p ON p.id = h.place_id
-         WHERE h.user_id = $1 AND h.kind = 'observation' ORDER BY h.fetched_at DESC, h.id DESC`,
+         WHERE h.user_id = $1 AND h.kind = 'observation' ORDER BY h.created_at DESC, h.id DESC`,
         [userId],
       );
       saved = await db.query<SavedRow>(
@@ -240,7 +240,7 @@ export class DataExportService {
       hoursAnswers: answers.rows.map((r) => ({
         questId: r.quest_id,
         wasOpen: r.was_open,
-        answeredAt: r.fetched_at.toISOString(),
+        answeredAt: r.created_at.toISOString(),
         place: place(r),
       })),
       savedPlaces: saved.rows.map((r) => ({ questId: r.quest_id, savedAt: r.created_at.toISOString(), place: place(r) })),

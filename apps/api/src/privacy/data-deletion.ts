@@ -2,6 +2,7 @@ import { ForbiddenException, Inject, Injectable, Logger } from '@nestjs/common';
 import { Pool } from 'pg';
 import { CacheService } from '../cache/cache.service';
 import { PG } from '../db/db.module';
+import { ClerkApiError } from '../demo/clerk-api';
 import { isDemoUser } from '../demo/demo-account';
 import { CLERK_USER_DELETER, type ClerkUserDeleter } from './clerk-user-deleter';
 
@@ -65,15 +66,16 @@ export class DataDeletionService {
     this.refuseDemo(user.clerkId);
     const { rows } = await this.pg.query<{ r: AccountDeleted['deleted'] }>('SELECT delete_my_account($1) AS r', [user.id]);
     await this.cache.forgetUser(user.id);
-    this.log.log(`account ${user.id} deleted`);
+    this.log.log('account deleted');
 
     if (!this.clerkDelete) return { deleted: rows[0].r, clerkUser: 'manual' };
     try {
       await this.clerkDelete(user.clerkId);
       return { deleted: rows[0].r, clerkUser: 'deleted' };
     } catch (err) {
-      // Never the response body: errors carry the status only (demo/clerk-api.ts).
-      this.log.error(`Clerk user deletion failed for account ${user.id}: ${(err as Error).message}`);
+      // Clerk errors can include the request path and the subject it names.
+      const status = err instanceof ClerkApiError ? ` (HTTP ${err.status})` : '';
+      this.log.error(`Clerk user deletion failed${status}`);
       return { deleted: rows[0].r, clerkUser: 'failed' };
     }
   }
