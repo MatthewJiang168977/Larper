@@ -62,7 +62,7 @@ export class ProfileController {
     // The first taste profile drops it: the first quest fits the vibes just picked. (A
     // re-seed keeps an open offer, as before.)
     await this.pg.query(
-      `UPDATE quests SET status = 'expired', updated_at = now()
+      `UPDATE quests SET status = 'expired', updated_at = now(), origin = NULL
        WHERE user_id = $1 AND status = 'offered'
          AND NOT EXISTS (SELECT 1 FROM taste_profiles WHERE user_id = $1)`,
       [user.id],

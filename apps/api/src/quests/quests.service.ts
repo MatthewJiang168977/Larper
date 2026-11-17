@@ -43,6 +43,8 @@ const DAY_TIME_ZONE = 'America/New_York'; // when "today" ends (doneToday); the 
 // Bumped from v3 when the trust gate (eligibility.ts) began filtering before ranking:
 // decks cached by older pods hold places the gate now refuses.
 const DECK_CACHE_VERSION = 'v4';
+/** Where a quest was offered is only needed while the offer is open (the stale-offer check). */
+export const SCRUB_ORIGINS_SQL = `UPDATE quests SET origin = NULL WHERE origin IS NOT NULL AND status IN ('expired', 'completed', 'skipped')`;
 const PRUNE_ATTEMPTS_EVERY_MS = 6 * 3600_000; // retention is 90 days; this only bounds the overshoot
 
 export const EVENT_ACTION: Record<QuestAction, EventAction> = {
@@ -217,7 +219,8 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
         `UPDATE quests SET status = $4::quest_status, updated_at = now(), skip_reason = coalesce($5::skip_reason, skip_reason),
                 reasons = CASE WHEN $6 THEN reasons || '{"simulated": true}'::jsonb ELSE reasons END,
                 accepted_at = CASE WHEN $4::quest_status = 'accepted' THEN now() ELSE accepted_at END,
-                completed_at = CASE WHEN $4::quest_status = 'completed' THEN now() ELSE completed_at END
+                completed_at = CASE WHEN $4::quest_status = 'completed' THEN now() ELSE completed_at END,
+                origin = CASE WHEN $4::quest_status IN ('completed', 'skipped') THEN NULL ELSE origin END
          WHERE id = $1 AND user_id = $2 AND status = ANY($3::quest_status[])
          RETURNING status, place_id::text AS "placeId"`,
         [questId, userId, t.from, t.to, action === 'not-today' ? 'unstated' : null, !!checkIn?.simulated],
@@ -279,6 +282,9 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
 
   // Check-in attempts older than 90 days go (migration 0014's prune_checkin_attempts),
   // on start and every few hours, so rows don't outlive the retention while it's quiet.
+  // The same sweep drops the exact position (origin) of every quest whose offer is over
+  // (migration 0020): the paths that resolve a quest do it themselves, this catches rows
+  // from before and anything a path missed.
   private pruneTimer?: NodeJS.Timeout;
   onModuleInit() {
     const prune = () =>
@@ -288,8 +294,19 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
           if (Number(rows[0]?.n) > 0) this.logger.log(`pruned ${rows[0].n} check-in attempts past 90 days`);
         })
         .catch((err: Error) => this.logger.warn(`check-in attempt pruning failed: ${err.message}`));
+    const scrub = () =>
+      Promise.resolve()
+        .then(() => this.pg.query(SCRUB_ORIGINS_SQL))
+        .then(({ rowCount }) => {
+          if (rowCount) this.logger.log(`dropped the offer position of ${rowCount} resolved quests`);
+        })
+        .catch((err: Error) => this.logger.warn(`offer position scrub failed: ${err.message}`));
     void prune();
-    this.pruneTimer = setInterval(() => void prune(), PRUNE_ATTEMPTS_EVERY_MS);
+    void scrub();
+    this.pruneTimer = setInterval(() => {
+      void prune();
+      void scrub();
+    }, PRUNE_ATTEMPTS_EVERY_MS);
     this.pruneTimer.unref();
   }
 
@@ -581,7 +598,7 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
   // Accepted quests never expire on their own: the user committed to them.
   private async expireStaleOffer(userId: string, lat: number, lng: number) {
     await this.pg.query(
-      `UPDATE quests SET status = 'expired', updated_at = now()
+      `UPDATE quests SET status = 'expired', updated_at = now(), origin = NULL
        WHERE user_id = $1 AND status = 'offered'
          AND (created_at < now() - $4::interval
               OR NOT ST_DWithin(origin, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography, $5))`,

@@ -26,6 +26,10 @@ export const LIMITS = {
   // POST /quests/:id/accept, /skip, /not-today and /reason: going through a deck.
   questAction: { minute: 30, hour: 600 },
   onboarding: { minute: 10 },
+  // GET /me/export (a handful of queries over the whole journal) and DELETE /me, DELETE /me/history.
+  // A person needs one of each; the rest cover a retry.
+  dataExport: { minute: 3, hour: 10 },
+  dataDelete: { minute: 3, hour: 10 },
   // POST /demo/sign-in, per client IP (before any account exists) and for everyone
   // together: each one is a Clerk sign-in token, i.e. a session on the shared account.
   // A visitor needs one; a few more cover a second tab or a retry.

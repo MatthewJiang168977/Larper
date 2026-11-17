@@ -38,6 +38,7 @@ demo's nightly reset: S on `users` and `tags`, S D on `quests`, S I U on
 `taste_profiles`, to delete the shared demo account's quests and put its taste back). Each has a connection limit of 1. The API keeps never deleting: check-in attempts past their
 90 days go through `prune_checkin_attempts()` (migration 0014), a SECURITY DEFINER
 function that deletes only those rows, not a DELETE grant.
+The same way (migration 0020, `0005-data-deletion.md`), `delete_my_history()` and `delete_my_account()` delete one user's own data on their request, and `export_my_checkin_attempts()` reads a user's attempts for their export: `EXECUTE` to `larper_api` only, no table grant.
 
 S/I/U/D = SELECT/INSERT/UPDATE/DELETE. Why some cells are what they are:
 
