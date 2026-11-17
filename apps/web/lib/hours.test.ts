@@ -58,7 +58,7 @@ describe("readHours", () => {
     expect(readHours({ ...good, services })).toMatchObject({ services: [{ kind: "bar", state: "unknown", today: [] }] });
   });
 
-  it("keeps nextChange only with a time and open or closed", () => {
+  it("keeps nextChange only with a time, state, day and weekday", () => {
     for (const nextChange of [
       null,
       "22:00",
@@ -68,10 +68,10 @@ describe("readHours", () => {
     ]) {
       expect(readHours({ ...good, nextChange })).toMatchObject({ nextChange: null });
     }
-    // An older API (no day) or a bad day or weekday: the bare time, as the web showed before.
+    // Older API payloads and invalid day metadata still keep the current hours.
     for (const extra of [{}, { day: "yesterday", weekday: "sat" }, { day: "tomorrow", weekday: "funday" }, { day: "tomorrow" }]) {
-      const got = readHours({ ...good, nextChange: { at: "09:00", to: "open", ...extra } }) as { nextChange: object };
-      expect(got.nextChange).toEqual({ at: "09:00", to: "open" });
+      const nextChange = { at: "09:00", to: "open", ...extra };
+      expect(readHours({ ...good, nextChange })).toEqual({ ...good, nextChange: null });
     }
     const tomorrow = { at: "09:00", day: "tomorrow", weekday: "sun", to: "open" };
     expect(readHours({ ...good, nextChange: tomorrow })).toMatchObject({ nextChange: tomorrow });

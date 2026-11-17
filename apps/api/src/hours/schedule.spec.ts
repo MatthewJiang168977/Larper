@@ -293,9 +293,29 @@ describe('nextChange', () => {
     const t = base({ weekly: days([3], 540, 1440), holidays: null });
     expect(nextChange(t, at('2026-12-24T22:00:00Z'))).toBeNull(); // Thursday Dec 24 isn't it; Wed->Thu Dec 25 is
   });
-  it('is by wall clock across DST', () => {
+  it('opens at 03:00 when spring forward skips the scheduled 02:30 opening', () => {
+    const t = base({ weekly: days([7], 150, 240) });
+    expect(nextChange(t, at('2026-03-08T03:00:00Z'))).toEqual({ at: '03:00', day: 'tomorrow', weekday: 'sun', to: 'open' }); // Saturday 22:00 EST
+  });
+  it('skips a span entirely inside the missing spring-forward hour', () => {
+    const t = base({ weekly: days([7], 135, 165) });
+    expect(nextChange(t, at('2026-03-08T06:59:59Z'))).toBeNull();
+  });
+  it('fall back can close at the rewind and reopen at the repeated opening minute', () => {
     const t = base({ weekly: days([7], 90, 120) });
-    expect(nextChange(t, at('2026-11-01T05:45:00Z'))).toEqual({ at: '02:00', day: 'today', weekday: 'sun', to: 'closed' });
+    expect(nextChange(t, at('2026-11-01T05:45:00Z'))).toEqual({ at: '01:00', day: 'today', weekday: 'sun', to: 'closed' });
+    expect(nextChange(t, at('2026-11-01T06:00:00Z'))).toEqual({ at: '01:30', day: 'today', weekday: 'sun', to: 'open' });
+    expect(nextChange(t, at('2026-11-01T06:45:00Z'))).toEqual({ at: '02:00', day: 'today', weekday: 'sun', to: 'closed' });
+  });
+  it('finds an opening in the second pass after the first pass has closed', () => {
+    const t = base({ weekly: days([7], 75, 90) });
+    expect(nextChange(t, at('2026-11-01T05:45:00Z'))).toEqual({ at: '01:15', day: 'today', weekday: 'sun', to: 'open' });
+  });
+  it('keeps the civil cutoff at the same local time tomorrow across DST', () => {
+    const spring = base({ weekly: days([7], 180, 240) });
+    expect(nextChange(spring, at('2026-03-07T07:30:00Z'))).toBeNull(); // Saturday 02:30 EST
+    const fall = base({ weekly: days([7], 240, 300) });
+    expect(nextChange(fall, at('2026-10-31T08:00:00Z'))).toEqual({ at: '04:00', day: 'tomorrow', weekday: 'sun', to: 'open' }); // 25 elapsed hours
   });
 });
 

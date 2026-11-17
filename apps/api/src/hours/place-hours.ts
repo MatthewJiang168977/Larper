@@ -117,11 +117,10 @@ export async function loadRegularSchedules(pg: Pool, placeIds: readonly string[]
 
 /**
  * An hours observation (kind 'observation') always belongs to a user: the database says so too
- * (migration 0019's CHECK). Refuse before writing, with a clear error rather than a constraint
- * violation. Returns the id for use in the insert.
+ * (migration 0019's CHECK). Validate the positive PostgreSQL bigint before the first query.
  */
 export function requireObserver(userId: unknown): string {
-  if (typeof userId !== 'string' || !/^[1-9]\d{0,18}$/.test(userId)) {
+  if (typeof userId !== 'string' || !/^[1-9]\d{0,18}$/.test(userId) || BigInt(userId) > 9_223_372_036_854_775_807n) {
     throw new BadRequestException('an hours observation needs a user');
   }
   return userId;

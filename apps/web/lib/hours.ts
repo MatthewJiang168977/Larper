@@ -25,18 +25,14 @@ export function readHours(raw: unknown): PlaceHours {
   if (!isObject(raw) || raw.status !== "known") return { status: "unverified" };
   const state = STATES.find((s) => s === raw.state) ?? "unknown";
   const change = isObject(raw.nextChange) ? raw.nextChange : null;
-  const nextChange =
+  // Older APIs omit the day, so their transition time is ambiguous.
+  const nextChange: KnownHours["nextChange"] =
     change &&
     formatClock(change.at) &&
-    (change.to === "open" || change.to === "closed")
-      ? {
-          at: change.at as string,
-          to: change.to as "open" | "closed",
-          // Without a valid day AND weekday (an older API), the time is shown bare, as before.
-          ...((change.day === "today" || change.day === "tomorrow") && DAYS.includes(change.weekday as string)
-            ? { day: change.day as "today" | "tomorrow", weekday: change.weekday as Weekday }
-            : {}),
-        }
+    (change.to === "open" || change.to === "closed") &&
+    (change.day === "today" || change.day === "tomorrow") &&
+    DAYS.includes(change.weekday as string)
+      ? { at: change.at as string, to: change.to, day: change.day, weekday: change.weekday as Weekday }
       : null;
   const services = Array.isArray(raw.services)
     ? raw.services.flatMap((s) => {

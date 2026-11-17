@@ -5,9 +5,9 @@ How "time to first quest card" is measured, and the numbers recorded so far.
 **Status of this document.** The numbers and the method below are taken from the
 descriptions of PRs #67, #84 and #87. The measurement script itself (a headless-browser
 run) was never committed: it was a throwaway harness, and no copy of it exists on `main`
-or on `perf/p2-first-quest`. So the method is written down here in full, but a reproducible
-script is still missing; see [What is missing](#what-is-missing). Nothing here is a new
-measurement.
+or on `perf/p2-first-quest`. The steps below reconstruct the lab setup from those
+descriptions. See [What is missing](#what-is-missing) for the gaps in reproducing the
+recorded measurements.
 
 ## What is measured
 
@@ -73,20 +73,41 @@ candidate with a control measured in the same session.
 
 ## How to reproduce
 
-The parts that exist on `main`:
+Build and start each version locally. For a browser run, configure the offline Clerk
+mock described below before building. The example uses same-origin request interception.
 
 ```sh
 pnpm install --frozen-lockfile
 cd apps/web
-pnpm exec next build        # a production build of the candidate
+export NEXT_PUBLIC_API_URL=http://localhost:3000/api
+export VERCEL_ENV=preview
+pnpm exec next build
 pnpm exec next start -p 3000
 ```
 
-The sample quest the screen renders without an API is in
-`apps/web/app/design-lab/quest-fixture-data.ts`; `/design-lab/quest` (outside production)
-shows the quest screen from it, and #84's landing fixtures live under
-`/design-lab/landing`. For a signed-in screen with a mocked API, Clerk has to be bypassed
-as described above.
+`next build` requires `NEXT_PUBLIC_API_URL` and embeds it in the client bundle. Use the
+same host and port as the page for interception, or set it to your local fixture API
+before building. With the example URL, intercept `/api/me` and `/api/quests/today`.
+Keep `VERCEL_ENV=preview` set for build and start so the design-lab fixtures are available
+in this local production build.
+
+The sample quest is in `apps/web/app/design-lab/quest-fixture-data.ts`. The
+`/design-lab/quest` route shows the quest screen from that sample, and #84's landing
+fixtures live under `/design-lab/landing`.
+
+The CI build step runs without Clerk keys. Serving the fixture routes is a separate
+step. Even `/design-lab` uses the root Clerk provider and matches the Clerk proxy.
+If your mock expects a publishable key, export this synthetic key in the same shell
+before build and start. It comes from the
+[pre-commit guard fixture](../../scripts/test/pre-commit-hook.test.sh).
+
+```sh
+export NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_Y2xlcmsuZXhhbXBsZS5jb20k
+```
+
+The fixture key points to `clerk.example.com`. The mock must handle both the
+provider and proxy paths without a Clerk handshake. Use shell variables for the
+fixture and keep live Clerk credentials and traffic out of the run.
 
 The measurement itself, for each of 7 runs. This list is **reconstructed** from the PR
 descriptions (the exact way the card was detected is not recorded), so treat step 4 as the
@@ -95,8 +116,8 @@ intent, not as the original code:
 1. New browser context, viewport 390 x 844, geolocation granted at a fixed point in New York.
 2. `Network.emulateNetworkConditions`: 1.6 Mbps down (200 000 bytes/s), latency 150 ms.
    `Emulation.setCPUThrottlingRate`: 4.
-3. Block requests that are not to the page's own origin; answer `/me` and `/quests/today`
-   from the fixture.
+3. Allow the page's origin and, if separate, the loopback fixture API's origin. Serve
+   `/me` and `/quests/today` from the fixture at the configured API base URL.
 4. Navigate to `/`, and record the time at which the first quest card's text is in the
    DOM and a frame has painted after it (a `requestAnimationFrame` after the mutation).
 5. Take the median of the 7 and write down the min and max.
@@ -105,11 +126,10 @@ Repeat for the control build, and report the pair.
 
 ## What is missing
 
-- The harness script. A reproducible script needs Playwright (or Puppeteer), which is a new
-  dependency for the owner to approve. It was run by hand and never committed. Adding it (Playwright or
-  Puppeteer would be a new dev dependency, so that is a decision for the owner) is the
-  step that turns this document into something anyone can re-run.
+- The original harness, including the exact card-detection code and Clerk bypass. The
+  session report records that the harness was never committed. A new scripted run
+  would measure the reconstructed method above.
 - The setup behind the 6.33 s baseline (which Clerk handling, API and network profile).
-  Until it is re-measured with the harness above, treat it as a rough reference.
+  Treat it as a rough reference until the control and candidate are measured together.
 - Any measurement against the real API or a real Clerk session; the method is
   deliberately offline so it never touches production.

@@ -83,13 +83,13 @@ describe('requireObserver: an observation always has a user', () => {
   it.each([null, undefined, '', '0', 'abc', '1; DROP', 12, ' 7'])('refuses %j', (v) => {
     expect(() => requireObserver(v)).toThrow(BadRequestException);
   });
-  it('passes a numeric user id through', () => {
-    expect(requireObserver('42')).toBe('42');
+  it.each(['1', '42', '9223372036854775807'])('passes a positive bigint user id through: %s', (id) => {
+    expect(requireObserver(id)).toBe(id);
   });
-  it('QuestsService.wasOpen refuses before touching the database', async () => {
+  it.each(['', '9223372036854775808'])('QuestsService.wasOpen refuses %j before touching the database', async (id) => {
     const pg = { query: jest.fn() };
     const svc = new QuestsService(pg as never, {} as never, {} as never, {} as never);
-    await expect(svc.wasOpen('', '5', 'yes')).rejects.toBeInstanceOf(BadRequestException);
+    await expect(svc.wasOpen(id, '5', 'yes')).rejects.toBeInstanceOf(BadRequestException);
     expect(pg.query).not.toHaveBeenCalled();
   });
 });
