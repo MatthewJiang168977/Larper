@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { nextChange, spansOn, stateAt, validateSchedule, type OpenState, type Schedule } from './schedule';
 
+const MIN_STATE_VECTORS = 145;
+
 const base = (o: Partial<Schedule> = {}): Schedule => ({
   v: 1,
   tz: 'America/New_York',
@@ -77,9 +79,12 @@ describe('stateAt', () => {
       expect(stateAt(s, at('2026-11-27T06:00:00Z'))).toBe('closed'); // Fri 01:00: no Thursday tail
     });
 
-    it('a holiday with nothing stated makes the previous night tail unknown only if there is one', () => {
+    it('holidays not stated: the holiday is unknown at any minute, but an open span that is not in doubt wins', () => {
       const withTail = base({ weekly: days([3], 1080, 1560), holidays: null });
-      expect(stateAt(withTail, at('2026-11-26T06:00:00Z'))).toBe('unknown'); // Thanksgiving itself
+      expect(stateAt(withTail, at('2026-11-26T06:00:00Z'))).toBe('open'); // Thanksgiving 01:00, Wednesday's tail
+      expect(stateAt(withTail, at('2026-11-26T15:00:00Z'))).toBe('unknown'); // Thanksgiving 10:00, outside any span
+      expect(stateAt(withTail, at('2026-11-26T20:00:00Z'))).toBe('unknown'); // 15:00
+      // Yesterday's holiday casts doubt only if one of its spans reaches into this minute.
       const friday = base({ weekly: days([4], 1080, 1560), holidays: null });
       // Friday 2026-11-27 01:00: Thursday (the holiday) has a tail
       expect(stateAt(friday, at('2026-11-27T06:00:00Z'))).toBe('unknown');
@@ -220,9 +225,9 @@ describe('spansOn', () => {
       { from: '18:00', to: '02:00', nextDay: true },
     ]);
   });
-  it('to 24:00 is shown as 00:00 on the next day', () => {
+  it('closing at 24:00 is shown as 24:00 on the same day (as Go does); past midnight is the next day', () => {
     expect(spansOn(base({ weekly: days([2], 480, 1440) }), at('2026-07-14T16:00:00Z'))).toEqual([
-      { from: '08:00', to: '00:00', nextDay: true },
+      { from: '08:00', to: '24:00', nextDay: false },
     ]);
   });
   it('uses the local date, not the UTC date', () => {
@@ -239,13 +244,14 @@ describe('spansOn', () => {
     expect(spansOn(s, at('2026-12-25T17:00:00Z'))).toEqual([]); // Dec 25, holidays closed
     expect(spansOn(base({ weekly: days([4], 540, 1020), dates: [{ on: '2026-12-24', closed: true }] }), at('2026-12-24T17:00:00Z'))).toEqual([]);
   });
-  it('holidays open shows the weekly spans; not stated shows none', () => {
+  it('holidays open or not stated show the weekly spans (state says what is known)', () => {
     const weekly = days([5], 540, 1020);
     expect(spansOn(base({ weekly, holidays: 'open' }), at('2026-12-25T17:00:00Z'))).toHaveLength(1);
-    expect(spansOn(base({ weekly, holidays: null }), at('2026-12-25T17:00:00Z'))).toEqual([]);
+    expect(spansOn(base({ weekly, holidays: null }), at('2026-12-25T17:00:00Z'))).toHaveLength(1);
+    expect(spansOn(base({ weekly, holidays: 'closed' }), at('2026-12-25T17:00:00Z'))).toEqual([]);
   });
   it('always open', () => {
-    expect(spansOn(base({ always: true }), at('2026-07-10T16:00:00Z'))).toEqual([{ from: '00:00', to: '00:00', nextDay: true }]);
+    expect(spansOn(base({ always: true }), at('2026-07-10T16:00:00Z'))).toEqual([{ from: '00:00', to: '24:00', nextDay: false }]);
   });
 });
 
@@ -298,7 +304,7 @@ describe('validateSchedule', () => {
   it('accepts a valid schedule and returns it', () => {
     expect(validateSchedule(good())).toEqual(good());
     expect(
-      validateSchedule({ ...good(), dates: [{ on: '--12-24', spans: [{ from: 1, to: 2 }] }, { on: '2026-12-25', closed: true }, { on: '--02-29', closed: true }] }),
+      validateSchedule({ ...good(), dates: [{ on: '--02-29', closed: true, spans: [] }, { on: '--12-24', closed: false, spans: [{ from: 1, to: 2 }] }, { on: '2026-12-25', closed: true, spans: [] }] }),
     ).not.toBeNull();
     expect(validateSchedule({ ...good(), weekly: days([1], 1000, 2880) })).not.toBeNull();
   });
@@ -308,7 +314,14 @@ describe('validateSchedule', () => {
     ['unknown timezone', (s) => (s.tz = 'Mars/Olympus')],
     ['always not boolean', (s) => (s.always = 'yes')],
     ['holidays other', (s) => (s.holidays = 'maybe')],
-    ['holidays missing', (s) => delete s.holidays],
+    ['holidays not a known value', (s) => (s.holidays = 'yes')],
+    ['always with weekly spans', (s) => (s.always = true)],
+    ['always with holidays', (s) => ((s.always = true), (s.weekly = []), (s.holidays = 'closed'))],
+    ['partial missing', (s) => delete s.partial],
+    ['unsorted weekdays', (s) => (s.weekly = [{ d: 2, from: 1, to: 2 }, { d: 1, from: 1, to: 2 }])],
+    ['touching weekly spans', (s) => (s.weekly = [{ d: 1, from: 100, to: 200 }, { d: 1, from: 200, to: 300 }])],
+    ['dates out of order', (s) => (s.dates = [{ on: '2026-12-26', closed: true, spans: [] }, { on: '2026-12-25', closed: true, spans: [] }])],
+    ['touching date spans', (s) => (s.dates = [{ on: '2026-12-25', closed: false, spans: [{ from: 1, to: 5 }, { from: 5, to: 9 }] }])],
     ['partial other', (s) => (s.partial = 'some')],
     ['weekly not an array', (s) => (s.weekly = {})],
     ['weekday 0', (s) => (s.weekly = [{ d: 0, from: 1, to: 2 }])],
@@ -322,14 +335,14 @@ describe('validateSchedule', () => {
     ['string minutes', (s) => (s.weekly = [{ d: 1, from: '60', to: 90 }])],
     ['unsorted spans in a day', (s) => (s.weekly = [{ d: 1, from: 600, to: 700 }, { d: 1, from: 100, to: 200 }])],
     ['overlapping spans in a day', (s) => (s.weekly = [{ d: 1, from: 100, to: 700 }, { d: 1, from: 600, to: 800 }])],
-    ['dates not an array', (s) => (s.dates = null)],
+    ['dates not an array', (s) => (s.dates = {})],
     ['bad date format', (s) => (s.dates = [{ on: '2026-1-1', closed: true }])],
     ['impossible date', (s) => (s.dates = [{ on: '2026-02-30', closed: true }])],
     ['impossible yearly date', (s) => (s.dates = [{ on: '--04-31', closed: true }])],
     ['both closed and spans', (s) => (s.dates = [{ on: '2026-12-25', closed: true, spans: [{ from: 1, to: 2 }] }])],
     ['neither closed nor spans', (s) => (s.dates = [{ on: '2026-12-25' }])],
     ['closed false', (s) => (s.dates = [{ on: '2026-12-25', closed: false }])],
-    ['empty spans', (s) => (s.dates = [{ on: '2026-12-25', spans: [] }])],
+    ['empty spans', (s) => (s.dates = [{ on: '2026-12-25', closed: false, spans: [] }])],
     ['duplicate date', (s) => (s.dates = [{ on: '2026-12-25', closed: true }, { on: '2026-12-25', closed: true }])],
   ])('rejects: %s', (_n, mutate) => {
     const s = good();
@@ -339,23 +352,45 @@ describe('validateSchedule', () => {
   it.each([null, undefined, 'x', 3, [], true])('rejects a non-object: %p', (x) => {
     expect(validateSchedule(x)).toBeNull();
   });
+  it('takes what Go emits: every key present, both date-rule keys, and missing optional keys as empty', () => {
+    const goShape = { v: 1, tz: 'America/New_York', always: true, weekly: [], dates: [], holidays: null, partial: 'none' };
+    expect(validateSchedule(goShape)).toEqual(goShape);
+    const minimal = { v: 1, tz: 'America/New_York', partial: 'none' };
+    expect(validateSchedule(minimal)).toEqual({ ...minimal, always: false, weekly: [], dates: [], holidays: null });
+  });
   it('an invalid schedule is no schedule: unknown, never closed', () => {
     expect(stateAt(validateSchedule({ v: 1 }), at('2026-07-08T16:00:00Z'))).toBe('unknown');
   });
 });
 
 describe('shared test vectors (testdata/vectors.json)', () => {
+  // The Go package's canonical file, copied verbatim (workers/internal/hours/testdata/vectors.json).
+  it('is the full canonical file, not a smaller one swapped in', () => {
+    const f = JSON.parse(readFileSync(join(__dirname, 'testdata', 'vectors.json'), 'utf8')) as { state: unknown[] };
+    if (f.state.length < MIN_STATE_VECTORS) {
+      throw new Error(
+        `vectors.json has ${f.state.length} state vectors, fewer than the ${MIN_STATE_VECTORS} of the Go package's file: copy workers/internal/hours/testdata/vectors.json over it verbatim`,
+      );
+    }
+  });
   const file = JSON.parse(readFileSync(join(__dirname, 'testdata', 'vectors.json'), 'utf8')) as {
     v: number;
     state: { name: string; schedule: unknown; at: string; expect: OpenState }[];
   };
-  it('is version 1 with at least 25 state vectors', () => {
-    expect(file.v).toBe(1);
-    expect(file.state.length).toBeGreaterThanOrEqual(25);
-  });
+  it('is version 1', () => expect(file.v).toBe(1));
   it.each(file.state.map((v) => [v.name, v] as const))('%s', (_name, v) => {
     const schedule = v.schedule === null ? null : validateSchedule(v.schedule);
     if (v.schedule !== null) expect(schedule).not.toBeNull(); // a vector's schedule is meant to be valid
     expect(stateAt(schedule, new Date(v.at))).toBe(v.expect);
+  });
+});
+
+describe('the schedules in the shared parse vectors', () => {
+  const file = JSON.parse(readFileSync(join(__dirname, 'testdata', 'vectors.json'), 'utf8')) as {
+    parse: { name: string; schedule: unknown; error?: boolean }[];
+  };
+  const withSchedule = file.parse.filter((p) => p.schedule && !p.error);
+  it.each(withSchedule.map((p) => [p.name, p.schedule] as const))('Go emits a schedule this reader accepts: %s', (_n, schedule) => {
+    expect(validateSchedule(schedule)).not.toBeNull();
   });
 });

@@ -477,7 +477,7 @@ describeDb('opening hours (real database)', () => {
         return id;
       };
       open = await add('Open Now', 0, (id) => scheduleFact(id, DAILY_10_TO_23));
-      await add('Always Open', 40, (id) => scheduleFact(id, { ...DAILY_10_TO_23, always: true, weekly: [] }));
+      await add('Always Open', 40, (id) => scheduleFact(id, { ...DAILY_10_TO_23, always: true, weekly: [], holidays: null }));
       await add('Closed Now', 80, (id) => scheduleFact(id, DAILY_9_TO_17));
       await add('No Hours', 120);
       await add('Confirmed Only', 160, async (id) => observation(id, await user(), true, '2026-07-14T20:00:00Z')); // a check-in is not a schedule

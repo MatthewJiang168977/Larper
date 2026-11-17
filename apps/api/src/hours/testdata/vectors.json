@@ -1,1877 +1,266 @@
-{
- "v": 1,
- "state": [
-  {
-   "name": "no schedule is unknown, never closed",
-   "schedule": null,
-   "at": "2026-07-08T16:00:00Z",
-   "expect": "unknown"
-  },
-  {
-   "name": "EDT: one second before opening",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 2,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 6,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": "closed",
-    "partial": "none"
-   },
-   "at": "2026-07-03T12:59:59Z",
-   "expect": "closed"
-  },
-  {
-   "name": "EDT: opening minute is open (from inclusive)",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 2,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 6,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": "closed",
-    "partial": "none"
-   },
-   "at": "2026-07-03T13:00:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "EDT: last second before closing",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 2,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 6,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": "closed",
-    "partial": "none"
-   },
-   "at": "2026-07-03T20:59:59Z",
-   "expect": "open"
-  },
-  {
-   "name": "EDT: closing minute is closed (to exclusive)",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 2,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 6,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": "closed",
-    "partial": "none"
-   },
-   "at": "2026-07-03T21:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "EST: one second before opening",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 2,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 6,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": "closed",
-    "partial": "none"
-   },
-   "at": "2026-12-02T13:59:59Z",
-   "expect": "closed"
-  },
-  {
-   "name": "EST: opening minute",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 2,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 6,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": "closed",
-    "partial": "none"
-   },
-   "at": "2026-12-02T14:00:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "a day with no weekly span is closed (Sunday)",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 2,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 6,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": "closed",
-    "partial": "none"
-   },
-   "at": "2026-07-12T16:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "Jul 4 with holidays closed",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 2,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 6,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": "closed",
-    "partial": "none"
-   },
-   "at": "2026-07-04T15:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "Jul 4 with holidays open uses the weekly rule",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 2,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 6,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": "open",
-    "partial": "none"
-   },
-   "at": "2026-07-04T15:00:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "Jul 4 with holidays not stated is unknown",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 2,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 6,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-07-04T15:00:00Z",
-   "expect": "unknown"
-  },
-  {
-   "name": "Dec 25 with holidays closed",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 2,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 6,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": "closed",
-    "partial": "none"
-   },
-   "at": "2026-12-25T17:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "Dec 25 with holidays not stated is unknown",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 2,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 6,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-12-25T17:00:00Z",
-   "expect": "unknown"
-  },
-  {
-   "name": "Jan 1 with holidays closed",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 2,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 6,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": "closed",
-    "partial": "none"
-   },
-   "at": "2027-01-01T17:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "Thanksgiving 2026-11-26 is closed",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 2,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 6,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": "closed",
-    "partial": "none"
-   },
-   "at": "2026-11-26T17:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "the Thursday before Thanksgiving 2026 is a normal day",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 2,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 6,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": "closed",
-    "partial": "none"
-   },
-   "at": "2026-11-19T17:00:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "Thanksgiving 2027-11-25 is closed",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 2,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 6,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": "closed",
-    "partial": "none"
-   },
-   "at": "2027-11-25T17:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "the Thursday before Thanksgiving 2027 is a normal day",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 2,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 6,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": "closed",
-    "partial": "none"
-   },
-   "at": "2027-11-18T17:00:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "a non-holiday day is not affected by holidays null",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 2,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 6,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-07-08T16:00:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "a specific-date closure",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [
-     {
-      "on": "2026-12-24",
-      "closed": true
-     }
-    ],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-12-24T17:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "a yearly override with spans (open inside)",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [
-     {
-      "on": "--12-24",
-      "spans": [
-       {
-        "from": 540,
-        "to": 900
-       }
-      ]
-     }
-    ],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-12-24T19:00:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "a yearly override with spans (closed after them)",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [
-     {
-      "on": "--12-24",
-      "spans": [
-       {
-        "from": 540,
-        "to": 900
-       }
-      ]
-     }
-    ],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-12-24T21:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "a specific year beats the yearly rule (2026: closed)",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [
-     {
-      "on": "--12-24",
-      "spans": [
-       {
-        "from": 540,
-        "to": 900
-       }
-      ]
-     },
-     {
-      "on": "2026-12-24",
-      "closed": true
-     }
-    ],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-12-24T17:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "the yearly rule applies in other years (2027)",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 4,
-      "from": 540,
-      "to": 1020
-     },
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [
-     {
-      "on": "--12-24",
-      "spans": [
-       {
-        "from": 540,
-        "to": 900
-       }
-      ]
-     },
-     {
-      "on": "2026-12-24",
-      "closed": true
-     }
-    ],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2027-12-24T17:00:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "a date override beats the holiday rule",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 5,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [
-     {
-      "on": "2026-12-25",
-      "spans": [
-       {
-        "from": 600,
-        "to": 840
-       }
-      ]
-     }
-    ],
-    "holidays": "closed",
-    "partial": "none"
-   },
-   "at": "2026-12-25T16:00:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "overnight: Friday span still open at 01:00 Saturday",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 5,
-      "from": 1080,
-      "to": 1560
-     },
-     {
-      "d": 6,
-      "from": 1080,
-      "to": 1560
-     },
-     {
-      "d": 7,
-      "from": 1080,
-      "to": 1560
-     }
-    ],
-    "dates": [],
-    "holidays": "open",
-    "partial": "none"
-   },
-   "at": "2026-07-11T05:00:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "overnight: closed at the end minute on Saturday (to exclusive)",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 5,
-      "from": 1080,
-      "to": 1560
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-07-11T06:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "overnight: closed just before the Friday start",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 5,
-      "from": 1080,
-      "to": 1560
-     },
-     {
-      "d": 6,
-      "from": 1080,
-      "to": 1560
-     },
-     {
-      "d": 7,
-      "from": 1080,
-      "to": 1560
-     }
-    ],
-    "dates": [],
-    "holidays": "open",
-    "partial": "none"
-   },
-   "at": "2026-07-10T21:59:59Z",
-   "expect": "closed"
-  },
-  {
-   "name": "overnight: open at the Friday start",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 5,
-      "from": 1080,
-      "to": 1560
-     },
-     {
-      "d": 6,
-      "from": 1080,
-      "to": 1560
-     },
-     {
-      "d": 7,
-      "from": 1080,
-      "to": 1560
-     }
-    ],
-    "dates": [],
-    "holidays": "open",
-    "partial": "none"
-   },
-   "at": "2026-07-10T22:00:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "overnight Sunday into Monday: open at 01:59:59 Monday",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 5,
-      "from": 1080,
-      "to": 1560
-     },
-     {
-      "d": 6,
-      "from": 1080,
-      "to": 1560
-     },
-     {
-      "d": 7,
-      "from": 1080,
-      "to": 1560
-     }
-    ],
-    "dates": [],
-    "holidays": "open",
-    "partial": "none"
-   },
-   "at": "2026-07-13T05:59:59Z",
-   "expect": "open"
-  },
-  {
-   "name": "overnight Sunday into Monday: closed at 02:00 Monday (no Monday span)",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 5,
-      "from": 1080,
-      "to": 1560
-     },
-     {
-      "d": 6,
-      "from": 1080,
-      "to": 1560
-     },
-     {
-      "d": 7,
-      "from": 1080,
-      "to": 1560
-     }
-    ],
-    "dates": [],
-    "holidays": "open",
-    "partial": "none"
-   },
-   "at": "2026-07-13T06:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "overnight: a date override replacing Friday leaves no tail on Saturday",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 5,
-      "from": 1080,
-      "to": 1560
-     }
-    ],
-    "dates": [
-     {
-      "on": "2026-07-10",
-      "closed": true
-     }
-    ],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-07-11T05:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "overnight: closing Saturday leaves the Friday tail on Saturday morning",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 5,
-      "from": 1080,
-      "to": 1560
-     },
-     {
-      "d": 6,
-      "from": 1080,
-      "to": 1560
-     }
-    ],
-    "dates": [
-     {
-      "on": "2026-07-11",
-      "closed": true
-     }
-    ],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-07-11T05:00:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "split shift: first shift",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 720
-     },
-     {
-      "d": 1,
-      "from": 840,
-      "to": 1200
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-07-13T15:30:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "split shift: the gap at its first minute",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 720
-     },
-     {
-      "d": 1,
-      "from": 840,
-      "to": 1200
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-07-13T16:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "split shift: the gap at its last second",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 720
-     },
-     {
-      "d": 1,
-      "from": 840,
-      "to": 1200
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-07-13T17:59:59Z",
-   "expect": "closed"
-  },
-  {
-   "name": "split shift: second shift starts",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 1,
-      "from": 540,
-      "to": 720
-     },
-     {
-      "d": 1,
-      "from": 840,
-      "to": 1200
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-07-13T18:00:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "a span to 24:00 includes 23:59",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 2,
-      "from": 0,
-      "to": 1440
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-07-15T03:59:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "a span to 24:00 is over at the next midnight",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 2,
-      "from": 0,
-      "to": 1440
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-07-15T04:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "a span from midnight is open at 00:00",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 2,
-      "from": 0,
-      "to": 1440
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-07-14T04:00:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "a span to 48:00 runs through the whole next day",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 6,
-      "from": 600,
-      "to": 2880
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-07-13T03:59:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "a span to 48:00 is over at the midnight after",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 6,
-      "from": 600,
-      "to": 2880
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-07-13T04:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "always open",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": true,
-    "weekly": [],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-07-13T07:00:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "always open but partial restrictive is unknown",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": true,
-    "weekly": [],
-    "dates": [],
-    "holidays": null,
-    "partial": "restrictive"
-   },
-   "at": "2026-07-13T07:00:00Z",
-   "expect": "unknown"
-  },
-  {
-   "name": "always open with partial additive stays open",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": true,
-    "weekly": [],
-    "dates": [],
-    "holidays": null,
-    "partial": "additive"
-   },
-   "at": "2026-07-13T07:00:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "partial additive: open stays open",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "additive"
-   },
-   "at": "2026-07-08T16:00:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "partial additive: closed becomes unknown",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "additive"
-   },
-   "at": "2026-07-08T10:00:00Z",
-   "expect": "unknown"
-  },
-  {
-   "name": "partial restrictive: open becomes unknown",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "restrictive"
-   },
-   "at": "2026-07-08T16:00:00Z",
-   "expect": "unknown"
-  },
-  {
-   "name": "partial restrictive: closed becomes unknown",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "restrictive"
-   },
-   "at": "2026-07-08T10:00:00Z",
-   "expect": "unknown"
-  },
-  {
-   "name": "partial none: closed stays closed",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 3,
-      "from": 540,
-      "to": 1020
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-07-08T10:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "fall back 2026-11-01: first 01:30 (EDT) is minute 90, open",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 6,
-      "from": 1080,
-      "to": 1560
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-11-01T05:30:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "fall back 2026-11-01: second 01:30 (EST) is minute 90, open",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 6,
-      "from": 1080,
-      "to": 1560
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-11-01T06:30:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "fall back 2026-11-01: 02:00 EST ends the span",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 6,
-      "from": 1080,
-      "to": 1560
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-11-01T07:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "fall back: a Sunday 01:30-02:00 span, first pass",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 7,
-      "from": 90,
-      "to": 120
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-11-01T05:30:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "fall back: a Sunday 01:30-02:00 span, second pass",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 7,
-      "from": 90,
-      "to": 120
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-11-01T06:30:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "fall back: the same span ends at 02:00 EST",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 7,
-      "from": 90,
-      "to": 120
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-11-01T07:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "spring forward 2026-03-08: 01:59:59 EST is still the Saturday tail",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 6,
-      "from": 1080,
-      "to": 1560
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-03-08T06:59:59Z",
-   "expect": "open"
-  },
-  {
-   "name": "spring forward: 03:00 EDT (right after the gap) is past 02:00",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 6,
-      "from": 1080,
-      "to": 1560
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-03-08T07:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "spring forward: a Sunday 02:00-03:00 span never opens (no 02:xx)",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 7,
-      "from": 120,
-      "to": 180
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-03-08T07:00:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "spring forward: a Sunday 02:00-03:00 span, a second before the gap",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 7,
-      "from": 120,
-      "to": 180
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-03-08T06:59:59Z",
-   "expect": "closed"
-  },
-  {
-   "name": "spring forward: a Sunday 03:00-04:00 span opens at 07:00Z",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 7,
-      "from": 180,
-      "to": 240
-     }
-    ],
-    "dates": [],
-    "holidays": null,
-    "partial": "none"
-   },
-   "at": "2026-03-08T07:00:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "Thanksgiving: the Wednesday overnight tail is still open at 01:00 Thursday",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 3,
-      "from": 1080,
-      "to": 1560
-     },
-     {
-      "d": 4,
-      "from": 1080,
-      "to": 1560
-     }
-    ],
-    "dates": [],
-    "holidays": "closed",
-    "partial": "none"
-   },
-   "at": "2026-11-26T06:00:00Z",
-   "expect": "open"
-  },
-  {
-   "name": "Thanksgiving: spans starting that day are closed",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 3,
-      "from": 1080,
-      "to": 1560
-     },
-     {
-      "d": 4,
-      "from": 1080,
-      "to": 1560
-     }
-    ],
-    "dates": [],
-    "holidays": "closed",
-    "partial": "none"
-   },
-   "at": "2026-11-26T23:30:00Z",
-   "expect": "closed"
-  },
-  {
-   "name": "Thanksgiving: so is Friday 01:00 (no Thursday tail)",
-   "schedule": {
-    "v": 1,
-    "tz": "America/New_York",
-    "always": false,
-    "weekly": [
-     {
-      "d": 3,
-      "from": 1080,
-      "to": 1560
-     },
-     {
-      "d": 4,
-      "from": 1080,
-      "to": 1560
-     }
-    ],
-    "dates": [],
-    "holidays": "closed",
-    "partial": "none"
-   },
-   "at": "2026-11-27T06:00:00Z",
-   "expect": "closed"
-  }
- ],
- "parse": []
+{ "v": 1,
+  "state": [
+    {"name":"nil schedule is unknown, never closed","schedule":null,"at":"2026-07-03T16:00:00Z","expect":"unknown"},
+    {"name":"weekday: one minute before opening is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-03T12:59:00Z","expect":"closed"},
+    {"name":"weekday: opening minute is open (from inclusive)","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-03T13:00:00Z","expect":"open"},
+    {"name":"weekday: last second before closing is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-03T20:59:59Z","expect":"open"},
+    {"name":"weekday: closing minute is closed (to exclusive)","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-03T21:00:00Z","expect":"closed"},
+    {"name":"weekday: after closing is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-03T21:59:59Z","expect":"closed"},
+    {"name":"weekday: Monday morning is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-06T13:00:00Z","expect":"open"},
+    {"name":"weekend: Saturday noon is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-11T16:00:00Z","expect":"closed"},
+    {"name":"weekend: Sunday noon is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-12T16:00:00Z","expect":"closed"},
+    {"name":"split shift: before lunch shift is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":2,"from":690,"to":870},{"d":2,"from":1020,"to":1320}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-07T15:00:00Z","expect":"closed"},
+    {"name":"split shift: first shift opens 11:30","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":2,"from":690,"to":870},{"d":2,"from":1020,"to":1320}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-07T15:30:00Z","expect":"open"},
+    {"name":"split shift: 14:29 still open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":2,"from":690,"to":870},{"d":2,"from":1020,"to":1320}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-07T18:29:00Z","expect":"open"},
+    {"name":"split shift: first shift closes 14:30","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":2,"from":690,"to":870},{"d":2,"from":1020,"to":1320}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-07T18:30:00Z","expect":"closed"},
+    {"name":"split shift: gap is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":2,"from":690,"to":870},{"d":2,"from":1020,"to":1320}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-07T20:59:00Z","expect":"closed"},
+    {"name":"split shift: second shift opens 17:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":2,"from":690,"to":870},{"d":2,"from":1020,"to":1320}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-07T21:00:00Z","expect":"open"},
+    {"name":"split shift: 21:59 still open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":2,"from":690,"to":870},{"d":2,"from":1020,"to":1320}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-08T01:59:00Z","expect":"open"},
+    {"name":"split shift: second shift closes 22:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":2,"from":690,"to":870},{"d":2,"from":1020,"to":1320}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-08T02:00:00Z","expect":"closed"},
+    {"name":"overnight: Friday 21:59 before opening is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":5,"from":1320,"to":1560},{"d":6,"from":1320,"to":1560},{"d":7,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-11T01:59:00Z","expect":"closed"},
+    {"name":"overnight: Friday 22:00 opens","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":5,"from":1320,"to":1560},{"d":6,"from":1320,"to":1560},{"d":7,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-11T02:00:00Z","expect":"open"},
+    {"name":"overnight: Saturday 01:59 is open (Friday span)","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":5,"from":1320,"to":1560},{"d":6,"from":1320,"to":1560},{"d":7,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-11T05:59:00Z","expect":"open"},
+    {"name":"overnight: Saturday 02:00 is closed (end exclusive)","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":5,"from":1320,"to":1560},{"d":6,"from":1320,"to":1560},{"d":7,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-11T06:00:00Z","expect":"closed"},
+    {"name":"overnight: Saturday noon is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":5,"from":1320,"to":1560},{"d":6,"from":1320,"to":1560},{"d":7,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-11T16:00:00Z","expect":"closed"},
+    {"name":"overnight: Saturday 22:00 opens again","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":5,"from":1320,"to":1560},{"d":6,"from":1320,"to":1560},{"d":7,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-12T02:00:00Z","expect":"open"},
+    {"name":"overnight: Sunday 01:00 is open (Saturday span)","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":5,"from":1320,"to":1560},{"d":6,"from":1320,"to":1560},{"d":7,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-12T05:00:00Z","expect":"open"},
+    {"name":"overnight: Sunday 03:00 is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":5,"from":1320,"to":1560},{"d":6,"from":1320,"to":1560},{"d":7,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-12T07:00:00Z","expect":"closed"},
+    {"name":"overnight: Sunday 23:00 is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":5,"from":1320,"to":1560},{"d":6,"from":1320,"to":1560},{"d":7,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-13T03:00:00Z","expect":"open"},
+    {"name":"overnight: Sunday into Monday 01:59 is open (d:7 wraps into Monday)","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":5,"from":1320,"to":1560},{"d":6,"from":1320,"to":1560},{"d":7,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-13T05:59:00Z","expect":"open"},
+    {"name":"overnight: Monday 02:00 is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":5,"from":1320,"to":1560},{"d":6,"from":1320,"to":1560},{"d":7,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-13T06:00:00Z","expect":"closed"},
+    {"name":"overnight: Monday's own rule does not cancel Sunday's tail","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":7,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-13T05:00:00Z","expect":"open"},
+    {"name":"overnight: Monday 02:30 is closed after the tail ends","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":7,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-13T06:30:00Z","expect":"closed"},
+    {"name":"overnight: Monday 09:00 is open by its own rule","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":7,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-13T13:00:00Z","expect":"open"},
+    {"name":"override day: previous day's overnight span still applies","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":7,"from":1320,"to":1560}],"dates":[{"on":"2026-07-13","closed":true,"spans":[]}],"holidays":null,"partial":"none"},"at":"2026-07-13T05:00:00Z","expect":"open"},
+    {"name":"override day: closed override replaces the day's own spans","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":7,"from":1320,"to":1560}],"dates":[{"on":"2026-07-13","closed":true,"spans":[]}],"holidays":null,"partial":"none"},"at":"2026-07-13T14:00:00Z","expect":"closed"},
+    {"name":"override day: Thursday tail into a closed Friday is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":4,"from":1320,"to":1560},{"d":5,"from":540,"to":1020}],"dates":[{"on":"2026-07-10","closed":true,"spans":[]}],"holidays":null,"partial":"none"},"at":"2026-07-10T05:00:00Z","expect":"open"},
+    {"name":"override day: closed Friday at 10:00 is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":4,"from":1320,"to":1560},{"d":5,"from":540,"to":1020}],"dates":[{"on":"2026-07-10","closed":true,"spans":[]}],"holidays":null,"partial":"none"},"at":"2026-07-10T14:00:00Z","expect":"closed"},
+    {"name":"to 1440: Monday 00:00 is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":0,"to":1440},{"d":2,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-13T04:00:00Z","expect":"open"},
+    {"name":"to 1440: Monday 23:59 is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":0,"to":1440},{"d":2,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-14T03:59:00Z","expect":"open"},
+    {"name":"to 1440: Tuesday 00:00 is closed (24:00 is exclusive)","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":0,"to":1440},{"d":2,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-14T04:00:00Z","expect":"closed"},
+    {"name":"to 1440: Tuesday 09:00 is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":0,"to":1440},{"d":2,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-14T13:00:00Z","expect":"open"},
+    {"name":"to 2880: Saturday 21:59 is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":6,"from":1320,"to":2880}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-12T01:59:00Z","expect":"closed"},
+    {"name":"to 2880: Saturday 22:00 opens","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":6,"from":1320,"to":2880}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-12T02:00:00Z","expect":"open"},
+    {"name":"to 2880: Sunday noon is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":6,"from":1320,"to":2880}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-12T16:00:00Z","expect":"open"},
+    {"name":"to 2880: Sunday 23:59 is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":6,"from":1320,"to":2880}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-13T03:59:00Z","expect":"open"},
+    {"name":"to 2880: Monday 00:00 is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":6,"from":1320,"to":2880}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-13T04:00:00Z","expect":"closed"},
+    {"name":"always: Saturday 03:00 is open","schedule":{"v":1,"tz":"America/New_York","always":true,"weekly":[],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-11T07:00:00Z","expect":"open"},
+    {"name":"always: Christmas is open","schedule":{"v":1,"tz":"America/New_York","always":true,"weekly":[],"dates":[],"holidays":null,"partial":"none"},"at":"2026-12-25T17:00:00Z","expect":"open"},
+    {"name":"always with restrictive partial is unknown","schedule":{"v":1,"tz":"America/New_York","always":true,"weekly":[],"dates":[],"holidays":null,"partial":"restrictive"},"at":"2026-07-11T07:00:00Z","expect":"unknown"},
+    {"name":"always with additive partial stays open","schedule":{"v":1,"tz":"America/New_York","always":true,"weekly":[],"dates":[],"holidays":null,"partial":"additive"},"at":"2026-07-11T07:00:00Z","expect":"open"},
+    {"name":"empty weekly without partial is closed, not unknown","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-08T16:00:00Z","expect":"closed"},
+    {"name":"date override closed: that Wednesday is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"2026-07-08","closed":true,"spans":[]}],"holidays":null,"partial":"none"},"at":"2026-07-08T14:00:00Z","expect":"closed"},
+    {"name":"date override closed: next day is normal","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"2026-07-08","closed":true,"spans":[]}],"holidays":null,"partial":"none"},"at":"2026-07-09T14:00:00Z","expect":"open"},
+    {"name":"date override spans: 09:30 is closed (override replaces weekly)","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"2026-07-09","closed":false,"spans":[{"from":600,"to":780}]}],"holidays":null,"partial":"none"},"at":"2026-07-09T13:30:00Z","expect":"closed"},
+    {"name":"date override spans: 10:00 opens","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"2026-07-09","closed":false,"spans":[{"from":600,"to":780}]}],"holidays":null,"partial":"none"},"at":"2026-07-09T14:00:00Z","expect":"open"},
+    {"name":"date override spans: 12:59 open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"2026-07-09","closed":false,"spans":[{"from":600,"to":780}]}],"holidays":null,"partial":"none"},"at":"2026-07-09T16:59:00Z","expect":"open"},
+    {"name":"date override spans: 13:00 closed even though weekly says open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"2026-07-09","closed":false,"spans":[{"from":600,"to":780}]}],"holidays":null,"partial":"none"},"at":"2026-07-09T17:00:00Z","expect":"closed"},
+    {"name":"yearly override: 2026 date is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"--07-09","closed":true,"spans":[]}],"holidays":null,"partial":"none"},"at":"2026-07-09T14:00:00Z","expect":"closed"},
+    {"name":"yearly override: 2027 date is closed too","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"--07-09","closed":true,"spans":[]}],"holidays":null,"partial":"none"},"at":"2027-07-09T14:00:00Z","expect":"closed"},
+    {"name":"yearly override: the day after is normal","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"--07-09","closed":true,"spans":[]}],"holidays":null,"partial":"none"},"at":"2026-07-10T14:00:00Z","expect":"open"},
+    {"name":"year-specific beats yearly: 2026 is open on its special spans","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"--07-09","closed":true,"spans":[]},{"on":"2026-07-09","closed":false,"spans":[{"from":600,"to":780}]}],"holidays":null,"partial":"none"},"at":"2026-07-09T14:00:00Z","expect":"open"},
+    {"name":"year-specific beats yearly: 2027 falls back to the yearly closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"--07-09","closed":true,"spans":[]},{"on":"2026-07-09","closed":false,"spans":[{"from":600,"to":780}]}],"holidays":null,"partial":"none"},"at":"2027-07-09T14:00:00Z","expect":"closed"},
+    {"name":"yearly special spans: Dec 24 2026 14:30 EST open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"--12-24","closed":false,"spans":[{"from":540,"to":900}]}],"holidays":null,"partial":"none"},"at":"2026-12-24T19:30:00Z","expect":"open"},
+    {"name":"yearly special spans: Dec 24 2026 15:00 EST closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"--12-24","closed":false,"spans":[{"from":540,"to":900}]}],"holidays":null,"partial":"none"},"at":"2026-12-24T20:00:00Z","expect":"closed"},
+    {"name":"yearly special spans: Dec 24 2027 10:00 EST open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"--12-24","closed":false,"spans":[{"from":540,"to":900}]}],"holidays":null,"partial":"none"},"at":"2027-12-24T15:00:00Z","expect":"open"},
+    {"name":"yearly special spans: Dec 24 2027 15:30 EST closed although weekly is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"--12-24","closed":false,"spans":[{"from":540,"to":900}]}],"holidays":null,"partial":"none"},"at":"2027-12-24T20:30:00Z","expect":"closed"},
+    {"name":"holiday New Year's Day 2026 10:00 EST: holidays null is unknown","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-01-01T15:00:00Z","expect":"unknown"},
+    {"name":"holiday New Year's Day 2026 10:00 EST: holidays closed is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[],"holidays":"closed","partial":"none"},"at":"2026-01-01T15:00:00Z","expect":"closed"},
+    {"name":"holiday New Year's Day 2026 10:00 EST: holidays open follows the weekly rule","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[],"holidays":"open","partial":"none"},"at":"2026-01-01T15:00:00Z","expect":"open"},
+    {"name":"holiday New Year's Day 03:00 with null is unknown even outside the weekly spans","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-01-01T08:00:00Z","expect":"unknown"},
+    {"name":"holiday Independence Day 2026 12:00 EDT: holidays null is unknown","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-04T16:00:00Z","expect":"unknown"},
+    {"name":"holiday Independence Day 2026 12:00 EDT: holidays closed is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[],"holidays":"closed","partial":"none"},"at":"2026-07-04T16:00:00Z","expect":"closed"},
+    {"name":"holiday Independence Day 2026 12:00 EDT: holidays open follows the weekly rule","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[],"holidays":"open","partial":"none"},"at":"2026-07-04T16:00:00Z","expect":"open"},
+    {"name":"holiday: July 5 is not a holiday, null is fine","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-05T16:00:00Z","expect":"open"},
+    {"name":"holiday Thanksgiving 2026-11-26 12:00 EST: holidays null is unknown","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-26T17:00:00Z","expect":"unknown"},
+    {"name":"holiday Thanksgiving 2026-11-26 12:00 EST: holidays closed is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[],"holidays":"closed","partial":"none"},"at":"2026-11-26T17:00:00Z","expect":"closed"},
+    {"name":"holiday Thanksgiving 2026-11-26 12:00 EST: holidays open follows the weekly rule","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[],"holidays":"open","partial":"none"},"at":"2026-11-26T17:00:00Z","expect":"open"},
+    {"name":"holiday Thanksgiving 2027-11-25: null is unknown","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2027-11-25T17:00:00Z","expect":"unknown"},
+    {"name":"holiday Thanksgiving 2027-11-25: closed is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[],"holidays":"closed","partial":"none"},"at":"2027-11-25T17:00:00Z","expect":"closed"},
+    {"name":"holiday: the day after Thanksgiving 2027 is a normal day","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2027-11-26T17:00:00Z","expect":"open"},
+    {"name":"holiday: the third Thursday of November 2026 is a normal day","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-19T17:00:00Z","expect":"open"},
+    {"name":"holiday Christmas 2026 12:00 EST: holidays null is unknown","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-12-25T17:00:00Z","expect":"unknown"},
+    {"name":"holiday Christmas 2026 12:00 EST: holidays closed is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[],"holidays":"closed","partial":"none"},"at":"2026-12-25T17:00:00Z","expect":"closed"},
+    {"name":"holiday Christmas 2026 12:00 EST: holidays open follows the weekly rule","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[],"holidays":"open","partial":"none"},"at":"2026-12-25T17:00:00Z","expect":"open"},
+    {"name":"holiday with a dates override: closed holidays, override opens 10:30","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[{"on":"2026-12-25","closed":false,"spans":[{"from":600,"to":780}]}],"holidays":"closed","partial":"none"},"at":"2026-12-25T15:30:00Z","expect":"open"},
+    {"name":"holiday with a dates override: its hours end at 13:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[{"on":"2026-12-25","closed":false,"spans":[{"from":600,"to":780}]}],"holidays":"closed","partial":"none"},"at":"2026-12-25T18:30:00Z","expect":"closed"},
+    {"name":"holiday with a dates override: null holidays is not in doubt","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[{"on":"2026-12-25","closed":false,"spans":[{"from":600,"to":780}]}],"holidays":null,"partial":"none"},"at":"2026-12-25T15:30:00Z","expect":"open"},
+    {"name":"holiday overnight: Dec 24 23:00 starts a normal span","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":4,"from":1320,"to":1560},{"d":5,"from":1320,"to":1560}],"dates":[],"holidays":"closed","partial":"none"},"at":"2026-12-25T04:00:00Z","expect":"open"},
+    {"name":"holiday overnight: Dec 25 01:00 is that span, though Dec 25 is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":4,"from":1320,"to":1560},{"d":5,"from":1320,"to":1560}],"dates":[],"holidays":"closed","partial":"none"},"at":"2026-12-25T06:00:00Z","expect":"open"},
+    {"name":"holiday overnight: Dec 25 23:00 would start on a closed holiday","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":4,"from":1320,"to":1560},{"d":5,"from":1320,"to":1560}],"dates":[],"holidays":"closed","partial":"none"},"at":"2026-12-26T04:00:00Z","expect":"closed"},
+    {"name":"holiday overnight: Dec 26 01:00 is the closed holiday's tail, closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":4,"from":1320,"to":1560},{"d":5,"from":1320,"to":1560}],"dates":[],"holidays":"closed","partial":"none"},"at":"2026-12-26T06:00:00Z","expect":"closed"},
+    {"name":"holiday overnight: Dec 25 23:00 with null holidays is unknown","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":4,"from":1320,"to":1560},{"d":5,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-12-26T04:00:00Z","expect":"unknown"},
+    {"name":"holiday overnight: Dec 26 01:00 with null holidays is unknown (the holiday's tail)","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":4,"from":1320,"to":1560},{"d":5,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-12-26T06:00:00Z","expect":"unknown"},
+    {"name":"holiday overnight: Dec 25 01:00 with null holidays is open (the 24th's tail, not in doubt)","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":4,"from":1320,"to":1560},{"d":5,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-12-25T06:00:00Z","expect":"open"},
+    {"name":"holiday overnight: Dec 26 01:00 with holidays open is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":4,"from":1320,"to":1560},{"d":5,"from":1320,"to":1560}],"dates":[],"holidays":"open","partial":"none"},"at":"2026-12-26T06:00:00Z","expect":"open"},
+    {"name":"partial additive: open stays open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"additive"},"at":"2026-07-03T16:00:00Z","expect":"open"},
+    {"name":"partial additive: closed becomes unknown","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"additive"},"at":"2026-07-04T00:00:00Z","expect":"unknown"},
+    {"name":"partial restrictive: open becomes unknown","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"restrictive"},"at":"2026-07-03T16:00:00Z","expect":"unknown"},
+    {"name":"partial restrictive: closed is unknown too","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"restrictive"},"at":"2026-07-04T00:00:00Z","expect":"unknown"},
+    {"name":"EST: 17:00 local in January is 22:00Z, closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":1080,"to":1140},{"d":2,"from":1080,"to":1140},{"d":3,"from":1080,"to":1140},{"d":4,"from":1080,"to":1140},{"d":5,"from":1080,"to":1140},{"d":6,"from":1080,"to":1140},{"d":7,"from":1080,"to":1140}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-01-07T22:00:00Z","expect":"closed"},
+    {"name":"EST: 18:00 local in January is 23:00Z, open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":1080,"to":1140},{"d":2,"from":1080,"to":1140},{"d":3,"from":1080,"to":1140},{"d":4,"from":1080,"to":1140},{"d":5,"from":1080,"to":1140},{"d":6,"from":1080,"to":1140},{"d":7,"from":1080,"to":1140}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-01-07T23:00:00Z","expect":"open"},
+    {"name":"EST: 19:00 local in January is 00:00Z, closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":1080,"to":1140},{"d":2,"from":1080,"to":1140},{"d":3,"from":1080,"to":1140},{"d":4,"from":1080,"to":1140},{"d":5,"from":1080,"to":1140},{"d":6,"from":1080,"to":1140},{"d":7,"from":1080,"to":1140}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-01-08T00:00:00Z","expect":"closed"},
+    {"name":"EDT: 17:59:59 local in July is 21:59:59Z, closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":1080,"to":1140},{"d":2,"from":1080,"to":1140},{"d":3,"from":1080,"to":1140},{"d":4,"from":1080,"to":1140},{"d":5,"from":1080,"to":1140},{"d":6,"from":1080,"to":1140},{"d":7,"from":1080,"to":1140}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-08T21:59:59Z","expect":"closed"},
+    {"name":"EDT: 18:00 local in July is 22:00Z, open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":1080,"to":1140},{"d":2,"from":1080,"to":1140},{"d":3,"from":1080,"to":1140},{"d":4,"from":1080,"to":1140},{"d":5,"from":1080,"to":1140},{"d":6,"from":1080,"to":1140},{"d":7,"from":1080,"to":1140}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-08T22:00:00Z","expect":"open"},
+    {"name":"EDT: 18:59:59 local in July is 22:59:59Z, open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":1080,"to":1140},{"d":2,"from":1080,"to":1140},{"d":3,"from":1080,"to":1140},{"d":4,"from":1080,"to":1140},{"d":5,"from":1080,"to":1140},{"d":6,"from":1080,"to":1140},{"d":7,"from":1080,"to":1140}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-08T22:59:59Z","expect":"open"},
+    {"name":"EDT: 19:00 local in July is 23:00Z, closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":1080,"to":1140},{"d":2,"from":1080,"to":1140},{"d":3,"from":1080,"to":1140},{"d":4,"from":1080,"to":1140},{"d":5,"from":1080,"to":1140},{"d":6,"from":1080,"to":1140},{"d":7,"from":1080,"to":1140}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-07-08T23:00:00Z","expect":"closed"},
+    {"name":"spring forward 2026-03-08: 00:59 EST before the span is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":7,"from":60,"to":240}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-03-08T05:59:00Z","expect":"closed"},
+    {"name":"spring forward: 01:00 EST opens","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":7,"from":60,"to":240}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-03-08T06:00:00Z","expect":"open"},
+    {"name":"spring forward: 01:30 EST is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":7,"from":60,"to":240}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-03-08T06:30:00Z","expect":"open"},
+    {"name":"spring forward: 03:00 EDT (right after the skipped hour) is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":7,"from":60,"to":240}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-03-08T07:00:00Z","expect":"open"},
+    {"name":"spring forward: 03:30 EDT is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":7,"from":60,"to":240}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-03-08T07:30:00Z","expect":"open"},
+    {"name":"spring forward: 03:59 EDT is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":7,"from":60,"to":240}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-03-08T07:59:00Z","expect":"open"},
+    {"name":"spring forward: 04:00 EDT closes the span by wall clock","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":7,"from":60,"to":240}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-03-08T08:00:00Z","expect":"closed"},
+    {"name":"spring forward: a span closing 02:30 is open at 01:59 EST","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":7,"from":60,"to":150}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-03-08T06:59:00Z","expect":"open"},
+    {"name":"spring forward: a span closing 02:30 is closed at 03:00 EDT","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":7,"from":60,"to":150}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-03-08T07:00:00Z","expect":"closed"},
+    {"name":"spring forward: a span closing 02:30 is closed at 03:30 EDT","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":7,"from":60,"to":150}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-03-08T07:30:00Z","expect":"closed"},
+    {"name":"spring forward: Saturday 22:00 EST span starts","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":6,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-03-08T03:00:00Z","expect":"open"},
+    {"name":"spring forward: overnight span is open at Sunday 01:30 EST","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":6,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-03-08T06:30:00Z","expect":"open"},
+    {"name":"spring forward: overnight span 22:00-02:00 is over at 03:00 EDT","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":6,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-03-08T07:00:00Z","expect":"closed"},
+    {"name":"spring forward: overnight span is closed at 03:30 EDT","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":6,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-03-08T07:30:00Z","expect":"closed"},
+    {"name":"spring forward, day before: Saturday 01:30 EST is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":240},{"d":2,"from":60,"to":240},{"d":3,"from":60,"to":240},{"d":4,"from":60,"to":240},{"d":5,"from":60,"to":240},{"d":6,"from":60,"to":240},{"d":7,"from":60,"to":240}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-03-07T06:30:00Z","expect":"open"},
+    {"name":"spring forward, day before: Saturday 04:00 EST is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":240},{"d":2,"from":60,"to":240},{"d":3,"from":60,"to":240},{"d":4,"from":60,"to":240},{"d":5,"from":60,"to":240},{"d":6,"from":60,"to":240},{"d":7,"from":60,"to":240}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-03-07T09:00:00Z","expect":"closed"},
+    {"name":"spring forward, day after: Monday 01:30 EDT is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":240},{"d":2,"from":60,"to":240},{"d":3,"from":60,"to":240},{"d":4,"from":60,"to":240},{"d":5,"from":60,"to":240},{"d":6,"from":60,"to":240},{"d":7,"from":60,"to":240}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-03-09T05:30:00Z","expect":"open"},
+    {"name":"spring forward, day after: Monday 03:30 EDT is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":240},{"d":2,"from":60,"to":240},{"d":3,"from":60,"to":240},{"d":4,"from":60,"to":240},{"d":5,"from":60,"to":240},{"d":6,"from":60,"to":240},{"d":7,"from":60,"to":240}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-03-09T07:30:00Z","expect":"open"},
+    {"name":"spring forward, day after: Monday 04:00 EDT is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":240},{"d":2,"from":60,"to":240},{"d":3,"from":60,"to":240},{"d":4,"from":60,"to":240},{"d":5,"from":60,"to":240},{"d":6,"from":60,"to":240},{"d":7,"from":60,"to":240}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-03-09T08:00:00Z","expect":"closed"},
+    {"name":"fall back 2026-11-01: 00:59 EDT before the span is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":120},{"d":2,"from":60,"to":120},{"d":3,"from":60,"to":120},{"d":4,"from":60,"to":120},{"d":5,"from":60,"to":120},{"d":6,"from":60,"to":120},{"d":7,"from":60,"to":120}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-01T04:59:00Z","expect":"closed"},
+    {"name":"fall back: first 01:00 (EDT) opens","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":120},{"d":2,"from":60,"to":120},{"d":3,"from":60,"to":120},{"d":4,"from":60,"to":120},{"d":5,"from":60,"to":120},{"d":6,"from":60,"to":120},{"d":7,"from":60,"to":120}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-01T05:00:00Z","expect":"open"},
+    {"name":"fall back: first 01:30 (EDT, 05:30Z) is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":120},{"d":2,"from":60,"to":120},{"d":3,"from":60,"to":120},{"d":4,"from":60,"to":120},{"d":5,"from":60,"to":120},{"d":6,"from":60,"to":120},{"d":7,"from":60,"to":120}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-01T05:30:00Z","expect":"open"},
+    {"name":"fall back: repeated 01:00 (EST, 06:00Z) is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":120},{"d":2,"from":60,"to":120},{"d":3,"from":60,"to":120},{"d":4,"from":60,"to":120},{"d":5,"from":60,"to":120},{"d":6,"from":60,"to":120},{"d":7,"from":60,"to":120}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-01T06:00:00Z","expect":"open"},
+    {"name":"fall back: repeated 01:30 (EST, 06:30Z) is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":120},{"d":2,"from":60,"to":120},{"d":3,"from":60,"to":120},{"d":4,"from":60,"to":120},{"d":5,"from":60,"to":120},{"d":6,"from":60,"to":120},{"d":7,"from":60,"to":120}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-01T06:30:00Z","expect":"open"},
+    {"name":"fall back: 01:59 EST is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":120},{"d":2,"from":60,"to":120},{"d":3,"from":60,"to":120},{"d":4,"from":60,"to":120},{"d":5,"from":60,"to":120},{"d":6,"from":60,"to":120},{"d":7,"from":60,"to":120}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-01T06:59:00Z","expect":"open"},
+    {"name":"fall back: 02:00 EST is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":120},{"d":2,"from":60,"to":120},{"d":3,"from":60,"to":120},{"d":4,"from":60,"to":120},{"d":5,"from":60,"to":120},{"d":6,"from":60,"to":120},{"d":7,"from":60,"to":120}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-01T07:00:00Z","expect":"closed"},
+    {"name":"fall back: span ending 01:30 is open at first 01:29 (EDT)","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":90},{"d":2,"from":60,"to":90},{"d":3,"from":60,"to":90},{"d":4,"from":60,"to":90},{"d":5,"from":60,"to":90},{"d":6,"from":60,"to":90},{"d":7,"from":60,"to":90}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-01T05:29:00Z","expect":"open"},
+    {"name":"fall back: span ending 01:30 is closed at first 01:30 (EDT, 05:30Z)","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":90},{"d":2,"from":60,"to":90},{"d":3,"from":60,"to":90},{"d":4,"from":60,"to":90},{"d":5,"from":60,"to":90},{"d":6,"from":60,"to":90},{"d":7,"from":60,"to":90}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-01T05:30:00Z","expect":"closed"},
+    {"name":"fall back: span ending 01:30 is open again at repeated 01:00 (EST, 06:00Z)","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":90},{"d":2,"from":60,"to":90},{"d":3,"from":60,"to":90},{"d":4,"from":60,"to":90},{"d":5,"from":60,"to":90},{"d":6,"from":60,"to":90},{"d":7,"from":60,"to":90}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-01T06:00:00Z","expect":"open"},
+    {"name":"fall back: span ending 01:30 is open at repeated 01:29 (EST)","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":90},{"d":2,"from":60,"to":90},{"d":3,"from":60,"to":90},{"d":4,"from":60,"to":90},{"d":5,"from":60,"to":90},{"d":6,"from":60,"to":90},{"d":7,"from":60,"to":90}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-01T06:29:00Z","expect":"open"},
+    {"name":"fall back: span ending 01:30 is closed at repeated 01:30 (EST, 06:30Z)","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":90},{"d":2,"from":60,"to":90},{"d":3,"from":60,"to":90},{"d":4,"from":60,"to":90},{"d":5,"from":60,"to":90},{"d":6,"from":60,"to":90},{"d":7,"from":60,"to":90}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-01T06:30:00Z","expect":"closed"},
+    {"name":"fall back: Saturday 22:00 EDT starts the overnight span","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":6,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-01T02:00:00Z","expect":"open"},
+    {"name":"fall back: overnight span covers the first 01:30 (EDT, 05:30Z)","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":6,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-01T05:30:00Z","expect":"open"},
+    {"name":"fall back: overnight span covers the repeated 01:30 (EST, 06:30Z)","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":6,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-01T06:30:00Z","expect":"open"},
+    {"name":"fall back: overnight span covers repeated 01:59 (EST)","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":6,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-01T06:59:00Z","expect":"open"},
+    {"name":"fall back: overnight span ends 02:00 EST","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":6,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-01T07:00:00Z","expect":"closed"},
+    {"name":"fall back: overnight span is over by Sunday 07:00 EST","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":6,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-01T12:00:00Z","expect":"closed"},
+    {"name":"fall back, day before: Saturday 01:30 EDT is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":120},{"d":2,"from":60,"to":120},{"d":3,"from":60,"to":120},{"d":4,"from":60,"to":120},{"d":5,"from":60,"to":120},{"d":6,"from":60,"to":120},{"d":7,"from":60,"to":120}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-10-31T05:30:00Z","expect":"open"},
+    {"name":"fall back, day before: Saturday 02:00 EDT is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":120},{"d":2,"from":60,"to":120},{"d":3,"from":60,"to":120},{"d":4,"from":60,"to":120},{"d":5,"from":60,"to":120},{"d":6,"from":60,"to":120},{"d":7,"from":60,"to":120}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-10-31T06:00:00Z","expect":"closed"},
+    {"name":"fall back, day after: Monday 01:30 EST is open","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":120},{"d":2,"from":60,"to":120},{"d":3,"from":60,"to":120},{"d":4,"from":60,"to":120},{"d":5,"from":60,"to":120},{"d":6,"from":60,"to":120},{"d":7,"from":60,"to":120}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-02T06:30:00Z","expect":"open"},
+    {"name":"fall back, day after: Monday 02:00 EST is closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":60,"to":120},{"d":2,"from":60,"to":120},{"d":3,"from":60,"to":120},{"d":4,"from":60,"to":120},{"d":5,"from":60,"to":120},{"d":6,"from":60,"to":120},{"d":7,"from":60,"to":120}],"dates":[],"holidays":null,"partial":"none"},"at":"2026-11-02T07:00:00Z","expect":"closed"}
+  ],
+  "parse": [
+    {"name":"osm: 24/7","syntax":"osm","input":"24/7","schedule":{"v":1,"tz":"America/New_York","always":true,"weekly":[],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: weekday range","syntax":"osm","input":"Mo-Fr 09:00-17:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: messy real-world restaurant","syntax":"osm","input":"Mo-Th 11:00-22:00; Fr,Sa 11:00-24:00; Su 12:00-21:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":660,"to":1320},{"d":2,"from":660,"to":1320},{"d":3,"from":660,"to":1320},{"d":4,"from":660,"to":1320},{"d":5,"from":660,"to":1440},{"d":6,"from":660,"to":1440},{"d":7,"from":720,"to":1260}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: Mo-Su 00:00-24:00 is seven full days, not always","syntax":"osm","input":"Mo-Su 00:00-24:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":0,"to":1440},{"d":2,"from":0,"to":1440},{"d":3,"from":0,"to":1440},{"d":4,"from":0,"to":1440},{"d":5,"from":0,"to":1440},{"d":6,"from":0,"to":1440},{"d":7,"from":0,"to":1440}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: bar with Monday off","syntax":"osm","input":"Tu-Su 17:00-02:00; Mo off","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":2,"from":1020,"to":1560},{"d":3,"from":1020,"to":1560},{"d":4,"from":1020,"to":1560},{"d":5,"from":1020,"to":1560},{"d":6,"from":1020,"to":1560},{"d":7,"from":1020,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: PH off after weekday and weekend rules","syntax":"osm","input":"Mo-Fr 08:00-16:00; Sa,Su 09:00-17:00; PH off","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":480,"to":960},{"d":2,"from":480,"to":960},{"d":3,"from":480,"to":960},{"d":4,"from":480,"to":960},{"d":5,"from":480,"to":960},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[],"holidays":"closed","partial":"none"},"error":false},
+    {"name":"osm: lunch and dinner service","syntax":"osm","input":"Mo-Fr 11:30-14:30,17:00-22:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":690,"to":870},{"d":1,"from":1020,"to":1320},{"d":2,"from":690,"to":870},{"d":2,"from":1020,"to":1320},{"d":3,"from":690,"to":870},{"d":3,"from":1020,"to":1320},{"d":4,"from":690,"to":870},{"d":4,"from":1020,"to":1320},{"d":5,"from":690,"to":870},{"d":5,"from":1020,"to":1320}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: weekday list with split shift","syntax":"osm","input":"Mo,We 09:00-12:00,14:00-18:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":720},{"d":1,"from":840,"to":1080},{"d":3,"from":540,"to":720},{"d":3,"from":840,"to":1080}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: wrap-around weekday range","syntax":"osm","input":"Fr-Mo 10:00-14:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":600,"to":840},{"d":5,"from":600,"to":840},{"d":6,"from":600,"to":840},{"d":7,"from":600,"to":840}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: weekend list","syntax":"osm","input":"Sa,Su 10:00-16:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":6,"from":600,"to":960},{"d":7,"from":600,"to":960}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: extended time past midnight","syntax":"osm","input":"Mo-Fr 22:00-26:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":1320,"to":1560},{"d":2,"from":1320,"to":1560},{"d":3,"from":1320,"to":1560},{"d":4,"from":1320,"to":1560},{"d":5,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: close before open runs past midnight","syntax":"osm","input":"Fr 22:00-02:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":5,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: dot as time separator","syntax":"osm","input":"Mo-Fr 9.00-17.00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: case-insensitive","syntax":"osm","input":"mo-fr 09:00-17:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: en dashes and extra spaces","syntax":"osm","input":"  Mo–Fr   09:00–17:00  ","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: later rule for a day overrides (We off)","syntax":"osm","input":"Mo-Fr 09:00-17:00; We off","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: later rule for the same days replaces earlier hours","syntax":"osm","input":"Mo-Fr 09:00-12:00; Mo-Fr 13:00-17:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":780,"to":1020},{"d":2,"from":780,"to":1020},{"d":3,"from":780,"to":1020},{"d":4,"from":780,"to":1020},{"d":5,"from":780,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: additional rule with comma adds days","syntax":"osm","input":"Mo-Fr 09:00-12:00, Sa 10:00-14:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":720},{"d":2,"from":540,"to":720},{"d":3,"from":540,"to":720},{"d":4,"from":540,"to":720},{"d":5,"from":540,"to":720},{"d":6,"from":600,"to":840}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: additional rule adds to a day instead of replacing it","syntax":"osm","input":"Mo-Fr 08:00-12:00, We 14:00-18:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":480,"to":720},{"d":2,"from":480,"to":720},{"d":3,"from":480,"to":720},{"d":3,"from":840,"to":1080},{"d":4,"from":480,"to":720},{"d":5,"from":480,"to":720}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: closed keyword","syntax":"osm","input":"Mo-Fr 09:00-17:00; Su closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: rule without weekdays applies to every day","syntax":"osm","input":"10:00-22:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":600,"to":1320},{"d":2,"from":600,"to":1320},{"d":3,"from":600,"to":1320},{"d":4,"from":600,"to":1320},{"d":5,"from":600,"to":1320},{"d":6,"from":600,"to":1320},{"d":7,"from":600,"to":1320}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: PH with its own hours leaves holidays unstated","syntax":"osm","input":"Mo-Fr 09:00-17:00; PH 10:00-16:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: PH closed","syntax":"osm","input":"Mo-Fr 09:00-17:00; PH closed","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":"closed","partial":"none"},"error":false},
+    {"name":"osm: PH off comment is ignorable","syntax":"osm","input":"Mo-Fr 09:00-17:00; PH off \"Closed on public holidays\"","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":"closed","partial":"none"},"error":false},
+    {"name":"osm: Sa,Su,PH off","syntax":"osm","input":"Mo-Fr 09:00-17:00; Sa,Su,PH off","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":"closed","partial":"none"},"error":false},
+    {"name":"osm: single date closed","syntax":"osm","input":"Mo-Fr 09:00-17:00; Dec 25 off","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"--12-25","closed":true,"spans":[]}],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: two single dates","syntax":"osm","input":"Mo-Fr 09:00-17:00; Jan 1 off; Dec 25 off","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"--01-01","closed":true,"spans":[]},{"on":"--12-25","closed":true,"spans":[]}],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: date with special hours","syntax":"osm","input":"Mo-Fr 09:00-17:00; Dec 24 09:00-15:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"--12-24","closed":false,"spans":[{"from":540,"to":900}]}],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: date range within a month","syntax":"osm","input":"Mo-Fr 09:00-17:00; Dec 24-26 off","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"--12-24","closed":true,"spans":[]},{"on":"--12-25","closed":true,"spans":[]},{"on":"--12-26","closed":true,"spans":[]}],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: date range across the new year","syntax":"osm","input":"Mo-Fr 09:00-17:00; Dec 31-Jan 2 off","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"--01-01","closed":true,"spans":[]},{"on":"--01-02","closed":true,"spans":[]},{"on":"--12-31","closed":true,"spans":[]}],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: year-specific date","syntax":"osm","input":"Mo-Fr 09:00-17:00; 2026 Dec 25 off","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"2026-12-25","closed":true,"spans":[]}],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: date list with additional rule","syntax":"osm","input":"Mo-Fr 09:00-17:00; Dec 25 off, Dec 26 off","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"--12-25","closed":true,"spans":[]},{"on":"--12-26","closed":true,"spans":[]}],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: PH off and a special date together","syntax":"osm","input":"Mo-Fr 09:00-17:00; PH off; Dec 24 12:00-16:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"--12-24","closed":false,"spans":[{"from":720,"to":960}]}],"holidays":"closed","partial":"none"},"error":false},
+    {"name":"osm: 24/7 with PH off becomes seven full days","syntax":"osm","input":"24/7; PH off","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":0,"to":1440},{"d":2,"from":0,"to":1440},{"d":3,"from":0,"to":1440},{"d":4,"from":0,"to":1440},{"d":5,"from":0,"to":1440},{"d":6,"from":0,"to":1440},{"d":7,"from":0,"to":1440}],"dates":[],"holidays":"closed","partial":"none"},"error":false},
+    {"name":"osm: 24/7 with a closed date becomes seven full days","syntax":"osm","input":"24/7; Dec 25 off","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":0,"to":1440},{"d":2,"from":0,"to":1440},{"d":3,"from":0,"to":1440},{"d":4,"from":0,"to":1440},{"d":5,"from":0,"to":1440},{"d":6,"from":0,"to":1440},{"d":7,"from":0,"to":1440}],"dates":[{"on":"--12-25","closed":true,"spans":[]}],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: Sunday rule then a range","syntax":"osm","input":"Su 10:00-16:00; Mo-Sa 09:00-18:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1080},{"d":2,"from":540,"to":1080},{"d":3,"from":540,"to":1080},{"d":4,"from":540,"to":1080},{"d":5,"from":540,"to":1080},{"d":6,"from":540,"to":1080},{"d":7,"from":600,"to":960}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: trailing semicolon","syntax":"osm","input":"Mo-Fr 09:00-17:00; Sa 10:00-14:00;","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":600,"to":840}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: all weekdays listed","syntax":"osm","input":"Mo,Tu,We,Th,Fr 09:00-17:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: overlapping spans merge","syntax":"osm","input":"Mo 09:00-13:00,12:00-18:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1080}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: touching spans merge","syntax":"osm","input":"Mo 09:00-12:00,12:00-15:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":900}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: 24/7 on one day","syntax":"osm","input":"Mo-Fr 09:00-17:00; Sa 24/7","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":0,"to":1440}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: date rule then the same weekday rule again is ambiguous, restrictive","syntax":"osm","input":"Mo-Fr 09:00-17:00; Dec 24 09:00-12:00; Mo-Fr 09:00-17:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"--12-24","closed":false,"spans":[{"from":540,"to":720}]}],"holidays":null,"partial":"restrictive"},"error":false},
+    {"name":"osm: PH off then a weekday rule is ambiguous, restrictive","syntax":"osm","input":"PH off; Mo-Fr 09:00-17:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":"closed","partial":"restrictive"},"error":false},
+    {"name":"osm: closed date then Mo-Su rule is ambiguous, restrictive","syntax":"osm","input":"Mo-Fr 09:00-17:00; Sa 10:00-14:00; Dec 25 off; Mo-Su 09:00-17:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":540,"to":1020},{"d":7,"from":540,"to":1020}],"dates":[{"on":"--12-25","closed":true,"spans":[]}],"holidays":null,"partial":"restrictive"},"error":false},
+    {"name":"osm: additional rule after an exception is ambiguous too","syntax":"osm","input":"Mo-Fr 09:00-17:00; PH off, Sa 10:00-14:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":600,"to":840}],"dates":[],"holidays":"closed","partial":"restrictive"},"error":false},
+    {"name":"osm: exceptions written last stay unrestricted","syntax":"osm","input":"Mo-Fr 09:00-17:00; Sa 10:00-14:00; PH off; Dec 24 09:00-12:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":600,"to":840}],"dates":[{"on":"--12-24","closed":false,"spans":[{"from":540,"to":720}]}],"holidays":"closed","partial":"none"},"error":false},
+    {"name":"osm: two exceptions after the rules stay unrestricted","syntax":"osm","input":"Mo-Fr 09:00-17:00; Dec 25 off; Jan 1 off","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"--01-01","closed":true,"spans":[]},{"on":"--12-25","closed":true,"spans":[]}],"holidays":null,"partial":"none"},"error":false},
+    {"name":"osm: comment on a rule with times is restrictive","syntax":"osm","input":"Mo-Fr 09:00-17:00 \"by appointment\"","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"restrictive"},"error":false},
+    {"name":"osm: unknown state for Saturday is restrictive","syntax":"osm","input":"Mo-Fr 09:00-17:00; Sa unknown","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"restrictive"},"error":false},
+    {"name":"osm: month range rule is dropped, restrictive","syntax":"osm","input":"Mo-Fr 09:00-17:00; Apr-Oct Sa 10:00-14:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"restrictive"},"error":false},
+    {"name":"osm: week numbers are dropped, restrictive","syntax":"osm","input":"Mo-Fr 09:00-17:00; week 1-10 Sa 10:00-12:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"restrictive"},"error":false},
+    {"name":"osm: school holidays are dropped, restrictive","syntax":"osm","input":"Mo-Fr 09:00-17:00; SH off","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"restrictive"},"error":false},
+    {"name":"osm: nth weekday is dropped, restrictive","syntax":"osm","input":"Mo-Fr 09:00-17:00; Sa[1] 10:00-12:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"restrictive"},"error":false},
+    {"name":"osm: fallback rule is dropped, restrictive","syntax":"osm","input":"Mo-Fr 09:00-17:00 || Sa 10:00-12:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"restrictive"},"error":false},
+    {"name":"osm: year range is dropped, restrictive","syntax":"osm","input":"Mo-Su 10:00-20:00; 2026-2027 Mo off","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":600,"to":1200},{"d":2,"from":600,"to":1200},{"d":3,"from":600,"to":1200},{"d":4,"from":600,"to":1200},{"d":5,"from":600,"to":1200},{"d":6,"from":600,"to":1200},{"d":7,"from":600,"to":1200}],"dates":[],"holidays":null,"partial":"restrictive"},"error":false},
+    {"name":"osm: off with times is dropped, restrictive","syntax":"osm","input":"Mo-Fr 09:00-17:00; Mo 12:00-13:00 off","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"restrictive"},"error":false},
+    {"name":"osm: additional off on a weekday is dropped, restrictive","syntax":"osm","input":"Mo-Fr 09:00-17:00; Sa 10:00-14:00, Su off","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":600,"to":840}],"dates":[],"holidays":null,"partial":"restrictive"},"error":false},
+    {"name":"osm: sunset hours clear the day and are additive","syntax":"osm","input":"Mo-Fr 09:00-17:00; Sa sunrise-sunset","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"additive"},"error":false},
+    {"name":"osm: open-ended time clears the day and is additive","syntax":"osm","input":"Mo-Fr 09:00-12:00; Sa 17:00+","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":720},{"d":2,"from":540,"to":720},{"d":3,"from":540,"to":720},{"d":4,"from":540,"to":720},{"d":5,"from":540,"to":720}],"dates":[],"holidays":null,"partial":"additive"},"error":false},
+    {"name":"osm: open-ended after a range keeps the range and is additive","syntax":"osm","input":"Mo-Fr 09:00-17:00+","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"additive"},"error":false},
+    {"name":"osm: restrictive wins over additive","syntax":"osm","input":"Mo-Fr 09:00-17:00; Sa 17:00+; Su unknown","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"restrictive"},"error":false},
+    {"name":"osm: date with open-ended time is dropped, restrictive","syntax":"osm","input":"Mo-Fr 09:00-17:00; Dec 24 12:00+","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"restrictive"},"error":false},
+    {"name":"osm: sunrise-sunset alone","syntax":"osm","input":"sunrise-sunset","schedule":null,"error":true},
+    {"name":"osm: month range with weekday rule alone","syntax":"osm","input":"Apr-Oct: Mo-Su 10:00-18:00","schedule":null,"error":true},
+    {"name":"osm: comment only","syntax":"osm","input":"\"by appointment\"","schedule":null,"error":true},
+    {"name":"osm: unknown only","syntax":"osm","input":"unknown","schedule":null,"error":true},
+    {"name":"osm: nth weekday only","syntax":"osm","input":"Mo[1] 09:00-12:00","schedule":null,"error":true},
+    {"name":"osm: year range only","syntax":"osm","input":"2020-2025 Mo-Fr 09:00-17:00","schedule":null,"error":true},
+    {"name":"osm: sunrise weekday rule only","syntax":"osm","input":"Mo-Fr sunrise-sunset","schedule":null,"error":true},
+    {"name":"osm: open-ended only","syntax":"osm","input":"Mo-Fr 17:00+","schedule":null,"error":true},
+    {"name":"osm: 12-hour am/pm","syntax":"osm","input":"Mo-Fr 9am-5pm","schedule":null,"error":true},
+    {"name":"osm: 12-hour with minutes","syntax":"osm","input":"Mo-Fr 9:00 AM-5:00 PM","schedule":null,"error":true},
+    {"name":"osm: empty","syntax":"osm","input":"","schedule":null,"error":true},
+    {"name":"osm: blank","syntax":"osm","input":"   ","schedule":null,"error":true},
+    {"name":"osm: garbage","syntax":"osm","input":"garbage","schedule":null,"error":true},
+    {"name":"osm: weekdays without times","syntax":"osm","input":"Mo-Fr","schedule":null,"error":true},
+    {"name":"osm: a point in time","syntax":"osm","input":"Mo 10:00","schedule":null,"error":true},
+    {"name":"osm: hour 25","syntax":"osm","input":"Mo-Fr 25:00-26:00","schedule":null,"error":true},
+    {"name":"osm: only closed dates say nothing about open hours","syntax":"osm","input":"Dec 25 off","schedule":null,"error":true},
+    {"name":"osm: only off rules","syntax":"osm","input":"Mo-Fr off","schedule":null,"error":true},
+    {"name":"osm: off with times only","syntax":"osm","input":"Mo 09:00-12:00 off","schedule":null,"error":true},
+    {"name":"osm: missing semicolon between rules","syntax":"osm","input":"Mo-Fr 09:00-17:00 Sa 10:00-14:00","schedule":null,"error":true},
+    {"name":"osm: bare month","syntax":"osm","input":"Dec off","schedule":null,"error":true},
+    {"name":"osm: invalid date","syntax":"osm","input":"Feb 30 off","schedule":null,"error":true},
+    {"name":"schema.org text: weekday range","syntax":"schema.org","input":"Mo-Fr 09:00-17:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"schema.org text: weekday list","syntax":"schema.org","input":"Mo,Tu,We 09:00-17:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"schema.org text: days without times are all day","syntax":"schema.org","input":"Mo-Su","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":0,"to":1440},{"d":2,"from":0,"to":1440},{"d":3,"from":0,"to":1440},{"d":4,"from":0,"to":1440},{"d":5,"from":0,"to":1440},{"d":6,"from":0,"to":1440},{"d":7,"from":0,"to":1440}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"schema.org text: array of strings adds up","syntax":"schema.org","input":["Mo-Fr 09:00-17:00","Sa 10:00-14:00"],"schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":600,"to":840}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"schema.org text: split shift","syntax":"schema.org","input":"Mo-Fr 09:00-12:00,13:00-17:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":720},{"d":1,"from":780,"to":1020},{"d":2,"from":540,"to":720},{"d":2,"from":780,"to":1020},{"d":3,"from":540,"to":720},{"d":3,"from":780,"to":1020},{"d":4,"from":540,"to":720},{"d":4,"from":780,"to":1020},{"d":5,"from":540,"to":720},{"d":5,"from":780,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"schema.org text: past midnight","syntax":"schema.org","input":"Fr 22:00-02:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":5,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"schema.org text: two groups in one string","syntax":"schema.org","input":"Mo-Fr 09:00-17:00 Sa 10:00-14:00","schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":600,"to":840}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"schema.org text: later strings add, they do not override","syntax":"schema.org","input":["Mo-Fr 09:00-12:00","Mo-Fr 13:00-17:00"],"schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":720},{"d":1,"from":780,"to":1020},{"d":2,"from":540,"to":720},{"d":2,"from":780,"to":1020},{"d":3,"from":540,"to":720},{"d":3,"from":780,"to":1020},{"d":4,"from":540,"to":720},{"d":4,"from":780,"to":1020},{"d":5,"from":540,"to":720},{"d":5,"from":780,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"schema.org spec: one day","syntax":"schema.org","input":{"@type":"OpeningHoursSpecification","dayOfWeek":"Monday","opens":"09:00","closes":"17:00"},"schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"schema.org spec: urls, arrays and seconds","syntax":"schema.org","input":[{"@type":"OpeningHoursSpecification","dayOfWeek":["Monday","https://schema.org/Tuesday"],"opens":"09:00:00","closes":"17:00:00"},{"dayOfWeek":"http://schema.org/Saturday","opens":"10:00","closes":"14:00"}],"schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":6,"from":600,"to":840}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"schema.org spec: closes before opens runs past midnight","syntax":"schema.org","input":{"dayOfWeek":"Friday","opens":"22:00","closes":"02:00"},"schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":5,"from":1320,"to":1560}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"schema.org spec: closes 00:00 is the end of the day","syntax":"schema.org","input":{"dayOfWeek":"Monday","opens":"09:00","closes":"00:00"},"schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1440}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"schema.org spec: closes 23:59 is read as 24:00","syntax":"schema.org","input":{"dayOfWeek":"Saturday","opens":"00:00","closes":"23:59"},"schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":6,"from":0,"to":1440}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"schema.org spec: opens = closes = 00:00 is closed all day","syntax":"schema.org","input":[{"dayOfWeek":"Monday","opens":"00:00","closes":"00:00"},{"dayOfWeek":"Tuesday","opens":"09:00","closes":"17:00"}],"schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":2,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"schema.org spec: single-day validity closed is a date override","syntax":"schema.org","input":[{"dayOfWeek":["Monday","Tuesday","Wednesday","Thursday","Friday"],"opens":"09:00","closes":"17:00"},{"opens":"00:00","closes":"00:00","validFrom":"2026-12-25","validThrough":"2026-12-25"}],"schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[{"on":"2026-12-25","closed":true,"spans":[]}],"holidays":null,"partial":"none"},"error":false},
+    {"name":"schema.org spec: single-day validity with hours","syntax":"schema.org","input":[{"dayOfWeek":"Monday","opens":"09:00","closes":"17:00"},{"opens":"09:00","closes":"15:00","validFrom":"2026-12-24T00:00:00","validThrough":"2026-12-24T23:59:59"}],"schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020}],"dates":[{"on":"2026-12-24","closed":false,"spans":[{"from":540,"to":900}]}],"holidays":null,"partial":"none"},"error":false},
+    {"name":"schema.org spec: validity range is dropped, restrictive","syntax":"schema.org","input":[{"dayOfWeek":"Monday","opens":"09:00","closes":"17:00"},{"dayOfWeek":"Monday","opens":"10:00","closes":"20:00","validFrom":"2026-06-01","validThrough":"2026-08-31"}],"schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"restrictive"},"error":false},
+    {"name":"schema.org spec: PublicHolidays closed all day","syntax":"schema.org","input":[{"dayOfWeek":"Monday","opens":"09:00","closes":"17:00"},{"dayOfWeek":"PublicHolidays","opens":"00:00","closes":"00:00"}],"schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020}],"dates":[],"holidays":"closed","partial":"none"},"error":false},
+    {"name":"schema.org spec: PublicHolidays with hours leaves holidays unstated","syntax":"schema.org","input":[{"dayOfWeek":"Monday","opens":"09:00","closes":"17:00"},{"dayOfWeek":"https://schema.org/PublicHolidays","opens":"10:00","closes":"14:00"}],"schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"schema.org place object: text and specifications together","syntax":"schema.org","input":{"name":"Cafe","openingHours":"Mo-Fr 09:00-17:00","openingHoursSpecification":[{"dayOfWeek":"Saturday","opens":"10:00","closes":"14:00"}]},"schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020},{"d":6,"from":600,"to":840}],"dates":[],"holidays":null,"partial":"none"},"error":false},
+    {"name":"schema.org spec: unreadable specification is dropped, restrictive","syntax":"schema.org","input":[{"dayOfWeek":"Monday","opens":"09:00","closes":"17:00"},{"dayOfWeek":"Tuesday","opens":"9am","closes":"5pm"}],"schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"restrictive"},"error":false},
+    {"name":"schema.org text: an unreadable string is dropped, restrictive","syntax":"schema.org","input":["Mo-Fr 09:00-17:00","by appointment"],"schedule":{"v":1,"tz":"America/New_York","always":false,"weekly":[{"d":1,"from":540,"to":1020},{"d":2,"from":540,"to":1020},{"d":3,"from":540,"to":1020},{"d":4,"from":540,"to":1020},{"d":5,"from":540,"to":1020}],"dates":[],"holidays":null,"partial":"restrictive"},"error":false},
+    {"name":"schema.org: empty string","syntax":"schema.org","input":"","schedule":null,"error":true},
+    {"name":"schema.org: null","syntax":"schema.org","input":null,"schedule":null,"error":true},
+    {"name":"schema.org: not hours","syntax":"schema.org","input":"foo","schedule":null,"error":true},
+    {"name":"schema.org: empty object","syntax":"schema.org","input":{},"schedule":null,"error":true},
+    {"name":"schema.org: 12-hour text","syntax":"schema.org","input":"Mo-Fr 9:00 AM-5:00 PM","schedule":null,"error":true},
+    {"name":"schema.org: specification with only opens","syntax":"schema.org","input":{"dayOfWeek":"Monday","opens":"09:00"},"schedule":null,"error":true},
+    {"name":"schema.org: specification with no day","syntax":"schema.org","input":{"opens":"09:00","closes":"17:00"},"schedule":null,"error":true},
+    {"name":"schema.org: only a closed date","syntax":"schema.org","input":{"opens":"00:00","closes":"00:00","validFrom":"2026-12-25","validThrough":"2026-12-25"},"schedule":null,"error":true},
+    {"name":"schema.org: opens equals closes","syntax":"schema.org","input":{"dayOfWeek":"Monday","opens":"09:00","closes":"09:00"},"schedule":null,"error":true}
+  ]
 }

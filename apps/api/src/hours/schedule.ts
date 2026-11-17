@@ -1,29 +1,16 @@
-// Opening hours, evaluated. A parser (another package) turns a source's own text into the
-// normalized schedule below; the API only EVALUATES it, so what a place "is open" at an
-// instant is decided in this one file. Pure: the clock is a parameter, no dependencies.
+// Opening hours, evaluated. A parser (the Go package in workers/internal/hours) turns a source's
+// own text into the normalized schedule; the API only EVALUATES it, so what a place "is open"
+// at an instant is decided here. Pure: the clock is a parameter, no dependencies.
 //
-// Schedule v1 (JSON, as stored in place_hours_facts.schedule):
-//   { "v": 1, "tz": "America/New_York", "always": false,
-//     "weekly": [ { "d": 1, "from": 540, "to": 1020 } ],
-//     "dates":  [ { "on": "2026-12-25", "closed": true }, { "on": "--12-24", "spans": [ { "from": 540, "to": 900 } ] } ],
-//     "holidays": null, "partial": "none" }
-//
-//  - d: ISO weekday (1 = Mon ... 7 = Sun), the local day a span STARTS on. from: minutes after
-//    local midnight, 0..1439. to: from + 1 .. 2880; above 1440 it runs past midnight into the
-//    next day. Several spans a day are split shifts: sorted, not overlapping.
-//  - always: open 24/7.
-//  - dates: overrides for the local date a span starts on ("YYYY-MM-DD", or "--MM-DD" every
-//    year; a specific year beats the yearly one). Either closed: true or spans. They replace the
-//    weekly spans that START that date; the previous day's overnight span still applies.
-//  - holidays: what happens on a major US holiday (Jan 1, Jul 4, Thanksgiving, Dec 25) that has
-//    no date override: "closed", "open" (the weekly rule applies), or null (not stated: unknown).
-//  - partial: whether the parser dropped rules it could not read. "additive": a dropped rule
-//    could only add open time, so a computed "closed" becomes unknown. "restrictive": a dropped
-//    rule could take open time away, so both open and closed become unknown.
+// Canonical spec: workers/internal/hours/SCHEDULE.md (the Go code, StateAt, SpansOn, Validate,
+// is the source of truth). Vectors: workers/internal/hours/testdata/vectors.json, copied
+// verbatim to apps/api/src/hours/testdata/vectors.json: keep the two files identical.
+// Every key is always present in Go's output; this reader also takes a missing weekly, dates,
+// always or holidays as empty/false/null, as Go's decoder does.
 //
 // Missing or invalid hours are UNKNOWN, never closed: stateAt(null, ...) is 'unknown'.
 // DST is by wall clock: every question is asked of the local date and minutes-of-day of the
-// instant (on 2026-11-01 both 01:30 instants are minute 90; on 2026-03-08 02:xx never happens).
+// instant.
 
 export type Holidays = 'closed' | 'open' | null;
 export type PartialMode = 'none' | 'additive' | 'restrictive';
@@ -36,7 +23,7 @@ export interface WeeklySpan extends Span {
 }
 export interface DateRule {
   on: string;
-  closed?: true;
+  closed?: boolean;
   spans?: Span[];
 }
 export interface Schedule {
@@ -67,13 +54,22 @@ const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object
 const isInt = (x: unknown, lo: number, hi: number): x is number =>
   typeof x === 'number' && Number.isInteger(x) && x >= lo && x <= hi;
 
+const TIME_ZONE = 'America/New_York'; // the only zone (Go's Validate)
+
+// Go's checkSpan: from 0..1439, to from+1..2880.
+function validSpan(s: unknown): s is Span {
+  return isObj(s) && isInt(s.from, 0, DAY - 1) && isInt(s.to, 1, 2 * DAY) && s.to > s.from;
+}
+
+// Spans of one day: each starts strictly after the previous one ends (touching spans are merged by the parser).
 function validSpans(x: unknown): Span[] | null {
-  if (!Array.isArray(x) || x.length > 24) return null;
+  if (x === undefined || x === null) return [];
+  if (!Array.isArray(x)) return null;
   const out: Span[] = [];
   for (const s of x) {
-    if (!isObj(s) || !isInt(s.from, 0, DAY - 1) || !isInt(s.to, 1, 2 * DAY) || s.to <= s.from) return null;
+    if (!validSpan(s)) return null;
     const prev = out[out.length - 1];
-    if (prev && s.from < prev.to) return null; // sorted, not overlapping
+    if (prev && s.from <= prev.to) return null;
     out.push({ from: s.from, to: s.to });
   }
   return out;
@@ -93,60 +89,48 @@ function validOn(on: unknown): boolean {
   m = /^--(\d{2})-(\d{2})$/.exec(on);
   if (m) {
     const [mo, d] = [Number(m[1]), Number(m[2])];
-    return mo >= 1 && mo <= 12 && d >= 1 && d <= daysInMonth(2024, mo); // Feb 29 is a real yearly date
+    return mo >= 1 && mo <= 12 && d >= 1 && d <= daysInMonth(2000, mo); // --02-29 is allowed
   }
   return false;
 }
 
-function validTz(tz: unknown): tz is string {
-  if (typeof tz !== 'string' || tz === '') return false;
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: tz });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** The schedule if `json` is a valid v1 schedule, else null (which callers treat as no schedule at all). */
+/**
+ * The schedule if `json` is one Go's Validate accepts (what its MarshalJSON emits), else null,
+ * which callers treat as no schedule at all.
+ */
 export function validateSchedule(json: unknown): Schedule | null {
-  if (!isObj(json) || json.v !== 1 || !validTz(json.tz) || typeof json.always !== 'boolean') return null;
-  if (!(json.holidays === null || json.holidays === 'closed' || json.holidays === 'open')) return null;
+  if (!isObj(json) || json.v !== 1 || json.tz !== TIME_ZONE) return null;
   if (json.partial !== 'none' && json.partial !== 'additive' && json.partial !== 'restrictive') return null;
+  const always = json.always === undefined ? false : json.always;
+  if (typeof always !== 'boolean') return null;
+  const holidays = json.holidays === undefined ? null : json.holidays;
+  if (!(holidays === null || holidays === 'closed' || holidays === 'open')) return null;
+  const rawWeekly = json.weekly ?? [];
+  const rawDates = json.dates ?? [];
+  if (!Array.isArray(rawWeekly) || !Array.isArray(rawDates)) return null;
+  if (always && (rawWeekly.length > 0 || rawDates.length > 0 || holidays !== null)) return null;
 
-  if (!Array.isArray(json.weekly) || json.weekly.length > 7 * 24) return null;
   const weekly: WeeklySpan[] = [];
-  const lastOnDay = new Map<number, WeeklySpan>();
-  for (const w of json.weekly) {
-    if (!isObj(w) || !isInt(w.d, 1, 7) || !isInt(w.from, 0, DAY - 1) || !isInt(w.to, 1, 2 * DAY) || w.to <= w.from) {
-      return null;
-    }
-    const prev = lastOnDay.get(w.d);
-    if (prev && w.from < prev.to) return null; // per day: sorted, not overlapping
-    const span = { d: w.d, from: w.from, to: w.to };
-    lastOnDay.set(w.d, span);
-    weekly.push(span);
+  for (const w of rawWeekly) {
+    if (!isObj(w) || !isInt(w.d, 1, 7) || !validSpan(w)) return null;
+    const prev = weekly[weekly.length - 1];
+    if (prev && (w.d < prev.d || (w.d === prev.d && w.from <= prev.to))) return null; // sorted by (d, from), no overlap or touch
+    weekly.push({ d: w.d, from: w.from as number, to: w.to as number });
   }
 
-  if (!Array.isArray(json.dates) || json.dates.length > 400) return null;
   const dates: DateRule[] = [];
-  const seen = new Set<string>();
-  for (const r of json.dates) {
-    if (!isObj(r) || !validOn(r.on) || seen.has(r.on as string)) return null;
-    seen.add(r.on as string);
-    const hasClosed = 'closed' in r;
-    const hasSpans = 'spans' in r;
-    if (hasClosed === hasSpans) return null; // exactly one of the two
-    if (hasClosed) {
-      if (r.closed !== true) return null;
-      dates.push({ on: r.on as string, closed: true });
-    } else {
-      const spans = validSpans(r.spans);
-      if (!spans || spans.length === 0) return null;
-      dates.push({ on: r.on as string, spans });
-    }
+  for (const r of rawDates) {
+    if (!isObj(r) || !validOn(r.on)) return null;
+    const prev = dates[dates.length - 1];
+    if (prev && (r.on as string) <= prev.on) return null; // sorted by on, once each
+    const closed = r.closed === undefined ? false : r.closed;
+    if (typeof closed !== 'boolean') return null;
+    const spans = validSpans(r.spans);
+    if (!spans) return null;
+    if (closed ? spans.length > 0 : spans.length === 0) return null; // closed has no spans; otherwise at least one
+    dates.push({ on: r.on as string, closed, spans });
   }
-  return { v: 1, tz: json.tz, always: json.always, weekly, dates, holidays: json.holidays, partial: json.partial };
+  return { v: 1, tz: TIME_ZONE, always, weekly, dates, holidays, partial: json.partial };
 }
 
 // --- local time ---------------------------------------------------------------------
@@ -196,7 +180,6 @@ const addDays = ({ y, m, d }: Ymd, n: number): Ymd => {
 };
 /** ISO weekday, 1 = Monday ... 7 = Sunday. */
 export const isoWeekday = ({ y, m, d }: Ymd): number => new Date(Date.UTC(y, m - 1, d)).getUTCDay() || 7;
-const dayNumber = ({ y, m, d }: Ymd): number => Math.round(Date.UTC(y, m - 1, d) / 86_400_000);
 const pad = (n: number) => String(n).padStart(2, '0');
 
 function isMajorHoliday({ y, m, d }: Ymd): boolean {
@@ -211,43 +194,54 @@ function isMajorHoliday({ y, m, d }: Ymd): boolean {
 
 interface DayPlan {
   spans: Span[];
-  /** a holiday with no stated rule: nothing can be said about this day */
-  unknown: boolean;
+  /** a holiday with no stated rule (holidays null): venues often change hours then, so the day is in doubt */
+  doubt: boolean;
 }
 
+// Go's spansStarting: a dates entry (the exact year first) wins; else a holiday is closed, in
+// doubt (null), or the weekday's spans ("open"); else the weekday's spans.
 function planFor(s: Schedule, day: Ymd): DayPlan {
   const full = `${day.y}-${pad(day.m)}-${pad(day.d)}`;
   const yearly = `--${pad(day.m)}-${pad(day.d)}`;
   const rule = s.dates.find((r) => r.on === full) ?? s.dates.find((r) => r.on === yearly);
-  if (rule) return { spans: rule.closed ? [] : (rule.spans ?? []), unknown: false };
+  if (rule) return { spans: rule.closed ? [] : (rule.spans ?? []), doubt: false };
+  let doubt = false;
   if (isMajorHoliday(day)) {
-    if (s.holidays === 'closed') return { spans: [], unknown: false };
-    if (s.holidays === null) return { spans: [], unknown: true };
+    if (s.holidays === 'closed') return { spans: [], doubt: false };
+    if (s.holidays === null) doubt = true;
   }
   const wd = isoWeekday(day);
-  return { spans: s.weekly.filter((w) => w.d === wd), unknown: false };
+  return { spans: s.weekly.filter((w) => w.d === wd), doubt };
 }
 
 function applyPartial(s: Schedule, state: OpenState): OpenState {
-  if (state === 'unknown') return state;
   if (s.partial === 'restrictive') return 'unknown';
   if (s.partial === 'additive' && state === 'closed') return 'unknown';
   return state;
 }
 
+// Go's stateAtLocal. An open span that is not in doubt wins; otherwise doubt makes it unknown:
+// today being an unstated holiday (at any minute), or yesterday being one with a span that
+// reaches this minute.
 function stateAtLocal(s: Schedule, t: LocalTime): OpenState {
-  if (s.always) return applyPartial(s, 'open');
-  const yesterday = addDays(t, -1);
-  const todayPlan = planFor(s, t);
-  const prevPlan = planFor(s, yesterday);
-  if (todayPlan.unknown) return 'unknown';
-  // Yesterday's overnight tail is only at stake if yesterday has one. An unstated holiday
-  // yesterday could have had one, so the early hours are unknown (the conservative reading).
-  if (prevPlan.unknown && s.weekly.some((w) => w.d === isoWeekday(yesterday) && w.to > DAY)) return 'unknown';
-  const open =
-    todayPlan.spans.some((sp) => sp.from <= t.min && t.min < sp.to) ||
-    prevPlan.spans.some((sp) => sp.to > DAY && t.min < sp.to - DAY);
-  return applyPartial(s, open ? 'open' : 'closed');
+  return applyPartial(s, rawStateAt(s, t));
+}
+
+function rawStateAt(s: Schedule, t: LocalTime): OpenState {
+  if (s.always) return 'open';
+  let open = false;
+  let doubt = false;
+  const today = planFor(s, t);
+  if (today.doubt) doubt = true;
+  else if (today.spans.some((sp) => sp.from <= t.min && t.min < sp.to)) open = true;
+  const prev = planFor(s, addDays(t, -1));
+  for (const sp of prev.spans) {
+    if (sp.to > DAY && t.min < sp.to - DAY) {
+      if (prev.doubt) doubt = true;
+      else open = true;
+    }
+  }
+  return open ? 'open' : doubt ? 'unknown' : 'closed';
 }
 
 /** Open, closed or unknown at this instant. No schedule is unknown, never closed. */
@@ -258,41 +252,37 @@ export function stateAt(schedule: Schedule | null, at: Date): OpenState {
 
 const hhmm = (min: number) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
 
-/** Today's spans (the local date of `at`) for display. A closed day, and a holiday nobody stated, are []. */
+/**
+ * The spans that start on the local date of `at`, for display (Go's SpansOn): the regular spans
+ * even on a holiday nobody stated (use stateAt for what is known); a closed day is []. Midnight
+ * at the end of the day is "24:00"; nextDay says the span ends the following day.
+ */
 export function spansOn(schedule: Schedule, at: Date): DisplaySpan[] {
-  if (schedule.always) return [{ from: '00:00', to: '00:00', nextDay: true }];
-  const plan = planFor(schedule, localTime(at, schedule.tz));
-  if (plan.unknown) return [];
-  return plan.spans.map((sp) => ({ from: hhmm(sp.from), to: hhmm(sp.to % DAY), nextDay: sp.to >= DAY }));
+  if (schedule.always) return [{ from: '00:00', to: '24:00', nextDay: false }];
+  return planFor(schedule, localTime(at, schedule.tz)).spans.map((sp) => ({
+    from: hhmm(sp.from),
+    to: hhmm(sp.to > DAY ? sp.to - DAY : sp.to),
+    nextDay: sp.to > DAY,
+  }));
 }
 
 /**
- * The next time within 24 hours of wall clock that the state changes between open and closed,
- * from the spans. null when there is none, the schedule is always open, or the state now (or
- * right after the change) is unknown.
+ * The next time within the next 24 hours of wall clock (minute by minute, with the same rules as
+ * stateAt) that the state changes between open and closed. null when there is none, the schedule
+ * is always open, or the state now, or the state it would change to, is unknown.
  */
 export function nextChange(schedule: Schedule, at: Date): NextChange | null {
   if (schedule.always) return null;
   const now = localTime(at, schedule.tz);
   const current = stateAtLocal(schedule, now);
   if (current === 'unknown') return null;
-  const nowDay = dayNumber(now);
-
-  // Every wall-clock moment a span starts or ends, as minutes from now, plus the next
-  // midnight (where a date rule or a holiday can change the day).
-  const offsets = new Set<number>([DAY - now.min]);
-  for (let i = -1; i <= 1; i++) {
-    const day = addDays(now, i);
-    for (const sp of planFor(schedule, day).spans) {
-      for (const edge of [sp.from, sp.to]) offsets.add((dayNumber(day) - nowDay) * DAY + edge - now.min);
-    }
-  }
-  for (const off of [...offsets].filter((o) => o > 0 && o <= DAY).sort((a, b) => a - b)) {
-    const absolute = now.min + off;
+  for (let i = 1; i <= DAY; i++) {
+    const absolute = now.min + i;
     const day = addDays(now, Math.floor(absolute / DAY));
-    const state = stateAtLocal(schedule, { ...day, min: absolute % DAY });
+    const min = absolute % DAY;
+    const state = stateAtLocal(schedule, { ...day, min });
     if (state === current) continue;
-    return state === 'unknown' ? null : { at: hhmm(absolute % DAY), to: state };
+    return state === 'unknown' ? null : { at: hhmm(min), to: state };
   }
   return null;
 }
