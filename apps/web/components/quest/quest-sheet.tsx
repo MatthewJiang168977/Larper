@@ -3,10 +3,13 @@
 import { animate, motion, useDragControls, useMotionValue, useReducedMotion, type PanInfo } from "motion/react";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
-import type { DeckItem, PlaceView, QuestView, Reasons } from "@/lib/api";
+import type { DeckItem, PlaceView, QuestView, Reasons, WasOpenAnswer } from "@/lib/api";
 import { formatDistance } from "@/lib/format";
+import { telUrl, webUrl } from "@/lib/web-url";
 import { DOCK_MIN_WIDTH_PX, DOCK_RESERVED_PX } from "./dock";
 import { fullHeight, offsetFor, resolveSnap, type Snap, snapForKey } from "./sheet-snap";
+import { PlaceHoursNote } from "./place-hours-note";
+import { WasOpenQuestion } from "./was-open-question";
 import { humanize, whyLines } from "./why-lines";
 
 // "not-today" sets an accepted quest aside without counting against the place.
@@ -43,6 +46,11 @@ interface Props {
   stampSlam?: boolean;
   /** Called as the slam starts, so a later re-render can't play it again. */
   onStampSlammed?: () => void;
+  /**
+   * The optional "was it open?" under a done quest: null when it shouldn't be asked (a
+   * simulated check-in, already answered, an API without it). `answer` is what's saved.
+   */
+  wasOpen?: { answer: WasOpenAnswer | null; onAnswer: (answer: WasOpenAnswer) => Promise<void> } | null;
   /** Each snap the sheet goes to (and peek again as it goes away). */
   onSnapChange?: (snap: Snap) => void;
 }
@@ -367,6 +375,7 @@ function Peek({
   stampSlam,
   onStampSlammed,
   onImpact,
+  wasOpen,
 }: Props & { place: PlaceView; label: string; isQuest: boolean; onImpact: () => void }) {
   const done = isQuest && quest?.status === "completed";
   const walkMin = Math.max(1, Math.round(place.distanceM / WALK_M_PER_MIN));
@@ -395,6 +404,7 @@ function Peek({
         )}
       </div>
       {done && <DoneForToday demo={demo} />}
+      {done && wasOpen && <WasOpenQuestion answer={wasOpen.answer} onAnswer={wasOpen.onAnswer} />}
     </div>
   );
 }
@@ -459,7 +469,7 @@ function DoneStamp({ slam, onSlammed, onImpact }: { slam?: boolean; onSlammed?: 
 // One quest a day: after a check-in the sheet stays on it, and says when the next one comes.
 function DoneForToday({ demo }: { demo?: boolean }) {
   return (
-    <p className="mt-3 text-sm text-ink-soft">
+    <p data-done-message tabIndex={-1} className="mt-3 text-sm text-ink-soft">
       {demo
         ? "That's the demo's quest done. With your own account, the next one comes tomorrow."
         : "Done for today. Your next quest comes tomorrow."}{" "}
@@ -594,7 +604,7 @@ function FlagMark() {
   );
 }
 
-// We have no opening hours (Overture has none), so link to a maps search for the place,
+// Where we have no hours (most places), link to a maps search for the place,
 // centred on it so a same-name place elsewhere doesn't win. A plain link: no API call,
 // nothing stored. The documented `?api=1&query=` form has no way to centre the search,
 // and a visitor from out of town would get the nearest same-name place to them.
@@ -603,6 +613,10 @@ export function hoursSearchUrl(place: Pick<PlaceView, "name" | "lat" | "lng">) {
 }
 
 function Links({ place }: { place: PlaceView }) {
+  // Only web addresses go into an href (these strings come from the API).
+  const website = webUrl(place.website);
+  const instagram = webUrl(place.instagram);
+  const tel = telUrl(place.phone);
   return (
     <>
       {/* Each link has a 44 px hit area; the gaps keep neighbours' areas apart, also
@@ -616,18 +630,18 @@ function Links({ place }: { place: PlaceView }) {
         >
           Directions
         </a>
-        {place.website && (
-          <a className="hit-target underline underline-offset-4" href={place.website} target="_blank" rel="noreferrer">
+        {website && (
+          <a className="hit-target underline underline-offset-4" href={website} target="_blank" rel="noreferrer">
             Website
           </a>
         )}
-        {place.instagram && (
-          <a className="hit-target underline underline-offset-4" href={place.instagram} target="_blank" rel="noreferrer">
+        {instagram && (
+          <a className="hit-target underline underline-offset-4" href={instagram} target="_blank" rel="noreferrer">
             Instagram
           </a>
         )}
-        {place.phone && (
-          <a className="hit-target underline underline-offset-4" href={`tel:${place.phone.replace(/[^\d+]/g, "")}`}>
+        {tel && (
+          <a className="hit-target underline underline-offset-4" href={tel}>
             Call
           </a>
         )}
@@ -635,7 +649,12 @@ function Links({ place }: { place: PlaceView }) {
           Check hours
         </a>
       </div>
-      <p className="mt-4 text-xs text-ink-label">No opening hours yet. Check before you go.</p>
+      <PlaceHoursNote
+        hours={place.hours}
+        openConfirmations={place.openConfirmations}
+        website={place.website}
+        phone={place.phone}
+      />
     </>
   );
 }

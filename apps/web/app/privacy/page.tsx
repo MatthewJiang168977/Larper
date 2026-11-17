@@ -22,6 +22,7 @@ const SERVICES: { name: string; what: string; collects: string[] }[] = [
       "Viewing the home page, trying the demo, finishing setup, and opening the journal.",
       "Being offered, accepting, skipping or setting aside a quest, plus the optional reason for setting it aside.",
       "Checking in, whether it went through, and whether it was a demo check-in.",
+      "Your answer (yes, no or didn't check) when Larper asks whether a place was open. Larper itself keeps that answer with the place, to show how many people confirmed it open; PostHog only gets the answer.",
       "For quests: only the kind of place (say, “bakery”) and roughly how far it was (like “1–2 km”).",
       "Whether you're on the shared demo account, plus your browser, operating system, screen size and the page.",
       "No cookies or storage on your device, no account or email, and no recordings of the screen. Your IP address isn't kept and isn't used to locate you.",

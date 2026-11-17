@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { avatarInitialsAppearance } from "@/components/auth/clerk-appearance";
 import { useLocation, type Located } from "@/hooks/use-location";
 import { type CheckinResult, questProps, setDemo, track } from "@/lib/analytics";
-import { ApiError, describeError, useApi, type DeckItem, type Me, type QuestView, type SkipReason, type Today } from "@/lib/api";
+import { ApiError, describeError, postWasOpen, useApi, type DeckItem, type Me, type QuestView, type SkipReason, type Today, type WasOpenAnswer } from "@/lib/api";
 import { DEMO_MIDTOWN, DEMO_SPOT } from "@/lib/demo-spot";
 import { getPreciseFix } from "@/lib/precise-fix";
 import { formatDistance } from "@/lib/format";
@@ -112,6 +112,9 @@ export function QuestScreen({ api, location, accountControl, previewControls }: 
   // Set by a successful check-in, cleared as the stamp starts: it slams down once, and
   // never for a quest that loads already done.
   const [stampSlam, setStampSlam] = useState(false);
+  // "Was it open?" this visit, by quest: the answer sent, or "off" where it mustn't be
+  // asked (a simulated check-in; an API that has no such call).
+  const [wasOpenLocal, setWasOpenLocal] = useState<Record<string, WasOpenAnswer | "off">>({});
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<{ text: string; retry: (() => void) | null } | null>(null);
   const [fixing, setFixing] = useState(false);
@@ -344,6 +347,7 @@ export function QuestScreen({ api, location, accountControl, previewControls }: 
       if (action === "complete") track("checkin_attempted", { result: "checked_in", simulated: !!res?.simulated });
       if (action === "not-today") setSetAside(questId);
       if (action === "complete") {
+        if (res?.simulated) setWasOpenLocal((s) => ({ ...s, [questId]: "off" }));
         setCheckIn(checkedIn(placeName, res));
         setFinished({ ...quest, status: "completed" });
         setStampSlam(true);
@@ -367,6 +371,22 @@ export function QuestScreen({ api, location, accountControl, previewControls }: 
       setFixing(false);
       setBusy(false);
     }
+  };
+
+  // Sends the answer. A 404/405 (an older API) or 409 (a simulated check-in) means this
+  // isn't a question to ask: it goes quietly. Anything else rejects, and the sheet says so.
+  const answerWasOpen = async (questId: string, answer: WasOpenAnswer) => {
+    try {
+      await postWasOpen(api, questId, answer);
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 404 || e.status === 405 || e.status === 409)) {
+        setWasOpenLocal((s) => ({ ...s, [questId]: "off" }));
+        return;
+      }
+      throw e;
+    }
+    track("was_open_answered", { answer });
+    setWasOpenLocal((s) => ({ ...s, [questId]: answer }));
   };
 
   const giveReason = async (reason: SkipReason) => {
@@ -398,6 +418,16 @@ export function QuestScreen({ api, location, accountControl, previewControls }: 
 
   // What the map and the sheet show: the finished quest alone, or today's quest and leads.
   const quest = finished ?? today?.quest ?? null;
+  // Asked of a completed quest this account hasn't answered for. The API that has the
+  // question always sends `wasOpen` (null until answered); an older one omits it, and only
+  // `null` counts (a quest completed this visit keeps the field it was loaded with).
+  // Only once `me` has loaded, and never the shared demo account: its check-ins are mostly simulated, which the API
+  // refuses, and a quest that loads already done doesn't say whether it was.
+  const local = quest ? wasOpenLocal[quest.id] : undefined;
+  const wasOpen =
+    quest?.status === "completed" && me && !me.demo && local !== "off" && (local || quest.wasOpen === null)
+      ? { answer: local ?? null, onAnswer: (a: WasOpenAnswer) => answerWasOpen(quest.id, a) }
+      : null;
   const deck: DeckItem[] = finished ? [] : (today?.deck ?? []);
   const selected = finished ? null : selectedId;
 
@@ -588,6 +618,7 @@ export function QuestScreen({ api, location, accountControl, previewControls }: 
           note={checkIn && checkIn.action ? { ...checkIn, action: { ...checkIn.action, pending: busy } } : checkIn}
           onDismissNote={() => setCheckIn(null)}
           demo={me?.demo}
+          wasOpen={wasOpen}
           stampSlam={stampSlam}
           onStampSlammed={() => setStampSlam(false)}
           onSnapChange={onSnapChange}

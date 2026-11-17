@@ -23,4 +23,12 @@ describe("Privacy", () => {
     render(<PrivacyPage />);
     expect(screen.getByRole("main").textContent).toMatch(/none of the services below get your\s+coordinates/);
   });
+
+  it("says what happens to the answer to 'was it open?'", () => {
+    render(<PrivacyPage />);
+    const section = screen.getByRole("region", { name: "PostHog" });
+    expect(section.textContent).toMatch(/yes, no or didn't check/);
+    expect(section.textContent).toMatch(/keeps that answer with the place/);
+    expect(section.textContent).toMatch(/PostHog only gets the answer/);
+  });
 });
