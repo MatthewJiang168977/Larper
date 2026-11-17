@@ -12,7 +12,7 @@ exports a CSV of places to look up, one imports the CSV once you've filled it in
 ## 1. Export the candidates (read-only)
 
 ```bash
-DATABASE_URL=postgres://USER:PASS@HOST:PORT/larper scripts/hours-pilot-candidates
+DATABASE_URL=postgres://USER:PASS@HOST:PORT/larper bash scripts/hours-pilot-candidates
 # -> pilot/hours-candidates-YYYY-MM-DD.csv   (options: --out FILE, --per-area N [50])
 ```
 
@@ -57,7 +57,8 @@ DATABASE_URL=postgres://... go run ./cmd/hours-pilot-import -in ../pilot/hours-c
 - Every row is checked first with the same parser the workers use (`workers/internal/hours`);
   if any row is bad, nothing is written and every problem is listed with its line number:
   unparseable or only partly understood hours, a source that is neither an http(s) URL nor
-  `seen on the door`, a bad or future date, a repeated `place_id`, a place that doesn't exist.
+  `seen on the door`, an invalid date or a date after today in America/New_York,
+  a repeated `place_id`, a place that doesn't exist.
 - Rows land as `kind='schedule'`, `service='regular'`, `source='manual'`, confidence 0.9,
   `source_url` = your URL (NULL for the door), `fetched_at` = `date_checked` at noon New York,
   `raw` = the hours text as typed (for the door, plus a second line `[seen on the door]`),

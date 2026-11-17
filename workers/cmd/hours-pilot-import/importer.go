@@ -77,6 +77,13 @@ func parseCheckedDate(s string) (time.Time, error) {
 // are all empty is skipped (a candidate the owner did not get to). Every other row is checked;
 // the caller must write nothing if any Problem comes back.
 func ParseCSV(r io.Reader) ([]Row, []Problem) {
+	return parseCSVAt(r, time.Now())
+}
+
+func parseCSVAt(r io.Reader, now time.Time) ([]Row, []Problem) {
+	year, month, day := now.In(nyc).Date()
+	today := time.Date(year, month, day, 0, 0, 0, 0, nyc)
+
 	cr := csv.NewReader(r)
 	cr.FieldsPerRecord = -1 // checked per row below, with its line
 	head, err := cr.Read()
@@ -160,12 +167,11 @@ func ParseCSV(r io.Reader) ([]Row, []Problem) {
 			add("date_checked is empty (YYYY-MM-DD)")
 		} else if d, derr := parseCheckedDate(dc); derr != nil {
 			add(fmt.Sprintf("date_checked %q is not YYYY-MM-DD (or M/D/YYYY, as US Excel saves it)", dc))
+		} else if d.After(today) {
+			add(fmt.Sprintf("date_checked %s is in the future", dc))
 		} else {
-			// Noon New York time on that day: the date stays right in any zone it is shown in.
+			// Store the checked date at noon New York time.
 			checked = time.Date(d.Year(), d.Month(), d.Day(), 12, 0, 0, 0, nyc)
-			if checked.After(time.Now().Add(24 * time.Hour)) {
-				add(fmt.Sprintf("date_checked %s is in the future", dc))
-			}
 		}
 
 		var raw json.RawMessage

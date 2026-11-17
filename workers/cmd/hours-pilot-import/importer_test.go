@@ -7,14 +7,17 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const header = "place_id,neighborhood,name,address,website,phone,opening_hours,source,date_checked\r\n"
 
 func parse(t *testing.T, body string) ([]Row, []Problem) {
 	t.Helper()
-	return ParseCSV(strings.NewReader(header + body))
+	return parseCSVAt(strings.NewReader(header+body), fixtureNow)
 }
+
+var fixtureNow = time.Date(2026, time.November, 18, 18, 0, 0, 0, time.UTC)
 
 func TestParseCSVValidRows(t *testing.T) {
 	rows, probs := parse(t, strings.Join([]string{
@@ -103,19 +106,56 @@ func TestParseCSVExcelBOM(t *testing.T) {
 	if !strings.HasPrefix(bom, "\xef\xbb\xbf") {
 		t.Fatal("the test's BOM isn't U+FEFF")
 	}
-	rows, probs := ParseCSV(strings.NewReader(bom + header + "10,EV,A,,,,Mo-Fr 09:00-17:00,seen on the door,2026-11-18\r\n"))
+	rows, probs := parseCSVAt(strings.NewReader(bom+header+"10,EV,A,,,,Mo-Fr 09:00-17:00,seen on the door,2026-11-18\r\n"), fixtureNow)
 	if len(probs) > 0 || len(rows) != 1 {
 		t.Fatalf("rows %v probs %v", rows, probs)
 	}
 }
 
 func TestParseCSVUSExcelDate(t *testing.T) {
-	rows, probs := parse(t, "10,EV,A,,,,Mo-Fr 09:00-17:00,seen on the door,11/18/2026\r\n")
+	rows, probs := parse(t, "10,EV,A,,,,Mo-Fr 09:00-17:00,seen on the door,3/4/2026\r\n")
 	if len(probs) > 0 || len(rows) != 1 {
 		t.Fatalf("rows %v probs %v", rows, probs)
 	}
-	if got := rows[0].CheckedAt.Format("2006-01-02 15:04 MST"); got != "2026-11-18 12:00 EST" {
+	if got := rows[0].CheckedAt.Format("2006-01-02 15:04 MST"); got != "2026-03-04 12:00 EST" {
 		t.Fatalf("checked at %s", got)
+	}
+}
+
+func TestParseCSVCheckedDateUsesNewYorkCalendar(t *testing.T) {
+	const row = "10,EV,A,,,,Mo-Fr 09:00-17:00,seen on the door,"
+	for _, tt := range []struct {
+		name        string
+		now         string
+		dateChecked string
+		wantNoon    string
+	}{
+		{"today before noon", "2026-11-17T14:00:00Z", "2026-11-17", "2026-11-17 12:00 EST"},
+		{"tomorrow before UTC midnight", "2026-11-17T23:59:59Z", "2026-11-18", ""},
+		{"tomorrow after UTC midnight", "2026-11-18T00:00:00Z", "11/18/2026", ""},
+		{"tomorrow before New York midnight", "2026-11-18T04:59:59Z", "2026-11-18", ""},
+		{"today at New York midnight", "2026-11-18T05:00:00Z", "2026-11-18", "2026-11-18 12:00 EST"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			now, err := time.Parse(time.RFC3339, tt.now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rows, probs := parseCSVAt(strings.NewReader(header+row+tt.dateChecked+"\r\n"), now)
+			if tt.wantNoon == "" {
+				want := Problem{Line: 2, Msg: "date_checked " + tt.dateChecked + " is in the future"}
+				if len(rows) != 0 || len(probs) != 1 || probs[0] != want {
+					t.Fatalf("want future date problem %v, got rows %v problems %v", want, rows, probs)
+				}
+				return
+			}
+			if len(rows) != 1 || len(probs) != 0 {
+				t.Fatalf("want one valid row, got rows %v problems %v", rows, probs)
+			}
+			if got := rows[0].CheckedAt.Format("2006-01-02 15:04 MST"); got != tt.wantNoon {
+				t.Errorf("checked at %s, want %s", got, tt.wantNoon)
+			}
+		})
 	}
 }
 
@@ -181,7 +221,7 @@ func TestGoldenSchedulesForTheTSReader(t *testing.T) {
 	}
 	got := map[string]json.RawMessage{}
 	for _, in := range inputs {
-		rows, probs := ParseCSV(strings.NewReader(header + `1,EV,A,,,,"` + in + `",seen on the door,2026-11-18` + "\r\n"))
+		rows, probs := parse(t, `1,EV,A,,,,"`+in+`",seen on the door,2026-11-18`+"\r\n")
 		if len(probs) > 0 || len(rows) != 1 {
 			t.Fatalf("%q: %v", in, probs)
 		}
