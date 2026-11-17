@@ -120,7 +120,55 @@ export async function demoTicket(): Promise<string> {
   return ticket;
 }
 
+/** POST /quests/:id/was-open. 404/405: an API without it. 409: a simulated (demo) check-in. */
+export async function postWasOpen(
+  api: <T>(path: string, init?: RequestInit) => Promise<T>,
+  questId: string,
+  answer: WasOpenAnswer,
+): Promise<{ wasOpen: WasOpenAnswer }> {
+  return api<{ wasOpen: WasOpenAnswer }>(`/quests/${questId}/was-open`, {
+    method: "POST",
+    body: JSON.stringify({ answer }),
+  });
+}
+
 // --- quests (shapes mirror apps/api/src/quests/quests.service.ts) -----------
+
+// --- opening hours (apps/api: the hours contract) -----------------------------
+// Every new field is optional on the wire: an API that doesn't send them is read as
+// `{ status: "unverified" }` and no confirmations.
+
+export type HoursState = "open" | "closed" | "unknown";
+/** "HH:MM" on the New York wall clock. `nextDay`: it closes after midnight. */
+export interface HoursSpan {
+  from: string;
+  to: string;
+  nextDay: boolean;
+}
+export type HoursSource = "osm" | "website" | "nyc_open_data" | "alltheplaces" | "manual";
+export type PlaceHours =
+  /** No hours on file. Never shown as "closed". */
+  | { status: "unverified" }
+  | {
+      status: "known";
+      /** Right now, New York time. */
+      state: HoursState;
+      /** Regular hours for today's New York date; [] is closed all day. */
+      today: HoursSpan[];
+      nextChange: { at: string; to: "open" | "closed" } | null;
+      source: HoursSource;
+      sourceUrl: string | null;
+      fetchedAt: string;
+      services: { kind: "kitchen" | "bar"; state: HoursState; today: HoursSpan[] }[];
+    };
+export type Weekday = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
+export type DayPart = "morning" | "afternoon" | "evening" | "night";
+export interface OpenConfirmations {
+  count: number;
+  last: { day: Weekday; part: DayPart };
+}
+/** One person's answer to "was it open?" after a check-in. */
+export type WasOpenAnswer = "yes" | "no" | "didnt_check";
 
 export interface PlaceView {
   id: string;
@@ -133,6 +181,8 @@ export interface PlaceView {
   website: string | null;
   instagram: string | null;
   phone: string | null;
+  hours?: PlaceHours;
+  openConfirmations?: OpenConfirmations | null;
 }
 
 export interface Reasons {
@@ -153,6 +203,8 @@ export interface QuestView {
   reasons: Reasons;
   createdAt: string;
   place: PlaceView;
+  /** This user's answer to "was it open?" for this quest; null or missing: not answered. */
+  wasOpen?: WasOpenAnswer | null;
 }
 
 export interface DeckItem {

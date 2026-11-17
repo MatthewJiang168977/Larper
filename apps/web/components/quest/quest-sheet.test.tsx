@@ -344,7 +344,7 @@ describe("QuestSheet on a phone: full", () => {
 
   it("draws the small print in the label ink", () => {
     sheet("offered");
-    expect(screen.getByText(/No opening hours yet/).classList).toContain("text-ink-label");
+    expect(screen.getByText(/hours unverified, check before you go/).closest("[data-testid=place-hours]")!.classList).toContain("text-ink-label");
   });
 
   it("links 'Check hours' to a maps search for the place, with the other links", () => {
@@ -368,7 +368,7 @@ describe("QuestSheet on a phone: full", () => {
         onCoveredChange={vi.fn()}
       />,
     );
-    const links = within(rest()).getAllByRole("link");
+    const links = within(rest().querySelector<HTMLElement>(".larper-quest-links")!).getAllByRole("link");
     expect(links.map((l) => l.textContent)).toEqual(["Directions", "Website", "Instagram", "Call", "Check hours"]);
     for (const link of links) expect(link.classList).toContain("hit-target");
     // 20 px text in a 44 px area reaches 12 px past each edge: 24 px apart either way.
@@ -559,6 +559,27 @@ describe("QuestSheet: the check-in note", () => {
   });
 });
 
+describe("QuestSheet: hours", () => {
+  it("shows the hours block in the full view, with the website and phone links when unverified", () => {
+    render(
+      <QuestSheet
+        quest={{ ...quest("offered"), place: { ...place("p1", "Cafe Uno"), website: "https://cafe.example", phone: "212-555-0142" } }}
+        deck={[]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onAction={vi.fn()}
+        busy={false}
+        topLimit={120}
+        onCoveredChange={vi.fn()}
+      />,
+    );
+    const block = within(rest()).getByTestId("place-hours");
+    expect(within(block).getByRole("link", { name: "website" }).getAttribute("href")).toBe("https://cafe.example");
+    expect(within(block).getByRole("link", { name: "call" }).getAttribute("href")).toBe("tel:2125550142");
+    expect(within(rest()).getByRole("link", { name: "Check hours" })).toBeTruthy();
+  });
+});
+
 describe("QuestSheet: done for today", () => {
   const done = (demo?: boolean) =>
     render(
@@ -589,6 +610,44 @@ describe("QuestSheet: done for today", () => {
     done(true);
     expect(peekPart().textContent).toContain("That's the demo's quest done. With your own account, the next one comes tomorrow.");
     expect(peekPart().textContent).not.toContain("Done for today.");
+  });
+
+  it("asks 'was it open?' under the done message when given the question, and not otherwise", () => {
+    done();
+    expect(screen.queryByRole("group", { name: "was it open?" })).toBeNull();
+    cleanup();
+    render(
+      <QuestSheet
+        quest={quest("completed")}
+        deck={[]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onAction={vi.fn()}
+        busy={false}
+        topLimit={120}
+        onCoveredChange={vi.fn()}
+        wasOpen={{ answer: null, onAnswer: vi.fn().mockResolvedValue(undefined) }}
+      />,
+    );
+    const group = within(peekPart()).getByRole("group", { name: "was it open?" });
+    expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual(["yes", "no", "didn't check"]);
+  });
+
+  it("never asks about a quest that isn't done", () => {
+    render(
+      <QuestSheet
+        quest={quest("accepted")}
+        deck={[]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onAction={vi.fn()}
+        busy={false}
+        topLimit={120}
+        onCoveredChange={vi.fn()}
+        wasOpen={{ answer: null, onAnswer: vi.fn() }}
+      />,
+    );
+    expect(screen.queryByRole("group", { name: "was it open?" })).toBeNull();
   });
 
   it("shows no leads", () => {
