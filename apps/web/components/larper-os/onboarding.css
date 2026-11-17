@@ -1,0 +1,62 @@
+.larper-onboarding {
+  flex: 1;
+  min-height: 100svh;
+  background: var(--larper-os-pink);
+  color: var(--larper-os-ink);
+  font: 17px/1.4 var(--larper-os-font-body), system-ui, sans-serif;
+}
+
+.larper-onboarding-stage {
+  display: grid;
+  place-items: center;
+  min-height: 90svh;
+  padding: 16px 12px max(24px, env(safe-area-inset-bottom));
+}
+
+.larper-onboarding-stage .larper-os-window { width: min(100%, 520px); min-width: 0; }
+.larper-onboarding-stage .larper-os-body { padding: 14px; }
+.larper-onboarding-heading, .larper-onboarding-complete, .larper-onboarding-label, .larper-onboarding-card h2 {
+  font-family: var(--larper-os-font-pixel), system-ui, sans-serif;
+  font-weight: 400;
+  line-height: 1;
+}
+.larper-onboarding-heading, .larper-onboarding-complete { font-size: clamp(34px, 8vw, 48px); }
+.larper-onboarding-label { font-size: 23px; }
+
+.larper-onboarding-card {
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  min-height: 146px;
+  padding: 16px;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--larper-os-ink);
+  border-radius: var(--larper-os-radius-window);
+  background: var(--larper-os-paper);
+  box-shadow: var(--larper-os-shadow-raised);
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+  transition: transform var(--larper-os-dur-pop) ease-out;
+}
+
+.larper-onboarding-card h2 { font-size: clamp(28px, 7vw, 38px); }
+.larper-onboarding-card[data-dragging="true"] { cursor: grabbing; transition: none; }
+.larper-onboarding-actions, .larper-onboarding-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.larper-onboarding-actions > button { flex: 1 1 auto; }
+.larper-onboarding-tags > li {
+  border: 1px solid var(--larper-os-ink);
+  border-radius: var(--larper-os-radius-tag);
+  background: var(--larper-os-butter);
+  padding: 2px 8px;
+}
+
+.larper-onboarding-preview select { min-height: var(--larper-os-tap-min); padding-inline: 8px; }
+.larper-onboarding-preview select:focus-visible {
+  outline: 2px solid var(--larper-os-ink);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .larper-onboarding-card { transition: none; }
+}
