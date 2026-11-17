@@ -39,6 +39,39 @@ const SERVICES: { name: string; what: string; collects: string[] }[] = [
   },
 ];
 
+// Keep in step with apps/api/src/privacy and docs/decisions/0005-data-deletion.md.
+const YOUR_DATA: { title: string; points: string[] }[] = [
+  {
+    title: "Download my data",
+    points: [
+      "One JSON file with everything Larper holds about you: your account (its ID and when it was made), your taste profile, every quest you've been offered with its place, your check-ins and check-in attempts (distances only, never a position), your answers to “was it open?”, and your saved places.",
+      "Find it under “your data” at the bottom of the journal.",
+    ],
+  },
+  {
+    title: "Delete my history",
+    points: [
+      "Removes your journal, check-ins and attempts, “was it open?” answers and saved places.",
+      "Keeps your account, your sign-in and your taste profile.",
+    ],
+  },
+  {
+    title: "Delete my account",
+    points: [
+      "Removes all of the above, plus your taste profile and your Larper account.",
+      "Your sign-in lives with Clerk. Larper asks Clerk to remove it where it can; otherwise we remove it by hand within 7 days. Either way you're signed out when you delete.",
+    ],
+  },
+  {
+    title: "Backups",
+    points: [
+      "Deleting takes your data out of the live app straight away. It is not removed from backups: those copies can stay for about 3 weeks (60 days at the very most).",
+      "If we ever restore from a backup, data you deleted after that backup was taken would come back. Delete it again if that happens.",
+      "The shared demo account can't be exported or deleted: it belongs to every visitor.",
+    ],
+  },
+];
+
 const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
 export default function PrivacyPage() {
@@ -64,6 +97,23 @@ export default function PrivacyPage() {
             <p className="mt-1 text-ink-soft">{s.what}</p>
             <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">
               {s.collects.map((c) => (
+                <li key={c}>{c}</li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+
+      <h2 className="mt-8 text-2xl font-medium">Your data</h2>
+      <p className="mt-2 text-ink-soft">You can take your data with you, or delete it, from the journal.</p>
+      <div className="mt-4 divide-y divide-rule border-y border-rule">
+        {YOUR_DATA.map((s) => (
+          <section key={s.title} aria-labelledby={`data-${slug(s.title)}`} className="py-5">
+            <h3 id={`data-${slug(s.title)}`} className="text-lg font-medium">
+              {s.title}
+            </h3>
+            <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">
+              {s.points.map((c) => (
                 <li key={c}>{c}</li>
               ))}
             </ul>

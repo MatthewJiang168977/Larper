@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, type JournalEntry } from "@/lib/api";
 import JournalPage from "./page";
 
+vi.mock("@clerk/nextjs", () => ({ useClerk: () => ({ signOut: vi.fn() }) }));
 vi.mock("@/app/larper-os", () => ({ larperOsClassName: "larper-os" }));
 vi.mock("@/components/require-sign-in", () => ({ RequireSignIn: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock("next/link", () => ({
@@ -24,7 +25,10 @@ vi.mock("@/lib/analytics", async (importOriginal) => ({
 
 let answer: () => Promise<unknown>;
 let answerMe: () => Promise<unknown>;
-const api = vi.fn((path: string) => (path === "/me" ? answerMe() : answer()));
+let answerDelete: () => Promise<unknown>;
+const api = vi.fn((path: string, init?: RequestInit) =>
+  path === "/me" && !init?.method ? answerMe() : init?.method === "DELETE" ? answerDelete() : answer(),
+);
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
   useApi: () => api,
@@ -145,5 +149,47 @@ describe("Journal", () => {
     render(<JournalPage />);
     await settle();
     expect(screen.getByRole("alert").textContent).toContain("can't reach the server. check your connection.");
+  });
+
+  describe("your data", () => {
+    it("is offered at the bottom of the journal to a signed-in person", async () => {
+      answer = () => Promise.resolve([entry({})]);
+      render(<JournalPage />);
+      await settle();
+      expect(screen.getByRole("region", { name: "your data" })).toBeTruthy();
+      for (const name of ["download my data", "delete my history", "delete my account"]) {
+        expect(screen.getByRole("button", { name })).toBeTruthy();
+      }
+    });
+
+    it("is replaced by one line for the shared demo account", async () => {
+      answer = () => Promise.resolve([entry({})]);
+      answerMe = () => Promise.resolve({ demo: true });
+      render(<JournalPage />);
+      await settle();
+      expect(screen.queryByRole("button", { name: "download my data" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "delete my history" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "delete my account" })).toBeNull();
+      expect(screen.getByText("the shared demo account has no data of its own to download or delete.")).toBeTruthy();
+    });
+
+    it("after deleting history, the list is emptied and asked for again", async () => {
+      answer = () => Promise.resolve([entry({})]);
+      answerDelete = () => Promise.resolve({ deleted: { quests: 1, checkInAttempts: 0, hoursAnswers: 0, savedPlaces: 0, events: 1 } });
+      render(<JournalPage />);
+      await settle();
+      expect(screen.getByText("Tasty Noodles")).toBeTruthy();
+      const listCalls = () => api.mock.calls.filter(([p, i]) => p === "/quests" && !i).length;
+      const before = listCalls();
+
+      answer = () => Promise.resolve([]);
+      fireEvent.click(screen.getByRole("button", { name: "delete my history" }));
+      fireEvent.change(screen.getByLabelText(/to go ahead/), { target: { value: "delete" } });
+      fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
+      await settle();
+      expect(screen.queryByText("Tasty Noodles")).toBeNull();
+      expect(screen.getByText("blank pages. your first quest is on the map.")).toBeTruthy();
+      expect(listCalls()).toBe(before + 1);
+    });
   });
 });

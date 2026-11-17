@@ -32,3 +32,34 @@ describe("Privacy", () => {
     expect(section.textContent).toMatch(/PostHog only gets the answer/);
   });
 });
+
+describe("Privacy: your data", () => {
+  const section = (name: string) => screen.getByRole("region", { name }).textContent ?? "";
+
+  it("says what the export contains, and where to find it", () => {
+    render(<PrivacyPage />);
+    const t = section("Download my data");
+    for (const word of ["taste profile", "check-ins", "was it open", "saved places", "distances only"]) expect(t).toContain(word);
+    expect(t).toContain("bottom of the journal");
+  });
+
+  it("says what each delete removes and keeps", () => {
+    render(<PrivacyPage />);
+    const h = section("Delete my history");
+    expect(h).toMatch(/Removes your journal/);
+    expect(h).toMatch(/Keeps your account, your sign-in and your taste profile/);
+    const a = section("Delete my account");
+    expect(a).toMatch(/your taste profile and your Larper account/);
+    expect(a).toMatch(/Clerk/);
+    expect(a).toMatch(/by hand within 7 days/);
+  });
+
+  it("says backups keep deleted data for about 3 weeks (60 days at most) and a restore could bring it back", () => {
+    render(<PrivacyPage />);
+    const b = section("Backups");
+    expect(b).toMatch(/about 3 weeks \(60 days at the very most\)/);
+    expect(b).not.toContain("14 days");
+    expect(b).toMatch(/would come back/);
+    expect(b).toMatch(/demo account can't be exported or deleted/);
+  });
+});
