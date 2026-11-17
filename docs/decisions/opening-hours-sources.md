@@ -1,7 +1,9 @@
 # Opening hours: where they come from
 
-- **Status:** proposed, 2026-11-16. Nothing here is approved. **No third-party hours
-  data is to be loaded into any real database until the owner approves the licensing.**
+- **Status:** accepted in part, 2026-11-17 (proposed 2026-11-16). Sources 1 to 3 are
+  approved; OpenStreetMap is left out for now. See "Decisions" below. **No
+  OpenStreetMap data, and nothing from sources not approved here, is to be loaded into
+  any real database.**
 - **Scope:** which sources Larper may take opening hours from, at $0 in API fees, and
   what each one obliges us to do.
 - **Not legal advice.** The OpenStreetMap questions at the end need someone qualified,
@@ -169,13 +171,17 @@ Every hours fact records its **source**, **source URL**, **fetch time** and a
 
 If OpenStreetMap is ever approved, its rows stay in a table of their own.
 
-## Decisions for the owner
+## Decisions
 
-1. Approve sources 1 to 3 above (check-ins, hand verification, venue websites under
-   the listed rules)?
-2. OpenStreetMap: leave it out, or take the publish-under-ODbL route once the open
-   question is answered?
-3. Who answers the open questions.
+Answered by the owner on 2026-11-17.
+
+1. **Sources 1 to 3 are approved:** check-ins, hand verification, and venue websites
+   under the listed rules (including measuring markup coverage before building a
+   pipeline). NYC Open Data for closures stays "later" and isn't approved yet.
+2. **OpenStreetMap is left out for now.** The publish-under-ODbL route isn't taken.
+   Revisiting it needs a new decision.
+3. **Nobody is assigned to the open questions.** With OpenStreetMap left out they
+   don't block anything; they're kept below for if it comes back.
 
 ## Open questions on OpenStreetMap
 
