@@ -97,6 +97,24 @@ describe('the category blocklist', () => {
       ['services_and_business', 'housing_or_property_service', 'condominium'],
       ['services_and_business', 'senior_living_facility', 'retirement_home'],
     ],
+    day_care: [
+      ['services_and_business', 'family_service', 'child_care_and_day_care', 'day_care_preschool'],
+      ['services_and_business', 'family_service', 'child_care_and_day_care'],
+      ['preschool'], // cut short: the real one is education > place_of_learning > school > preschool, under `schools`
+    ],
+    funeral: [
+      ['services_and_business', 'family_service', 'funeral_service'],
+      ['services_and_business', 'family_service', 'funeral_service', 'cremation_service'],
+      ['lifestyle_services', 'animal_or_pet_service', 'pet_cemetery_and_crematorium_service'],
+    ],
+    // Overture files these under government_office / public_safety_service (blocked as
+    // `government`); the names themselves are what is tested here.
+    courts_and_jails: [['courthouse'], ['jail_or_prison'], ['jail_or_prison', 'juvenile_detention_center']],
+    gambling: [
+      ['arts_and_entertainment', 'gaming_venue', 'casino'],
+      ['arts_and_entertainment', 'gaming_venue', 'betting_center'],
+      ['arts_and_entertainment', 'gaming_venue', 'bingo_hall'],
+    ],
   };
 
   it.each(Object.entries(hierarchies) as [BlockedGroup, string[][]][])('blocks %s', (group, list) => {
@@ -137,10 +155,45 @@ describe('the category blocklist', () => {
     ['public plaza', ['community_and_government', 'public_facility', 'public_plaza']],
     ['community center', ['community_and_government', 'social_or_community_service', 'community_center']],
     ['hostel', ['lodging', 'hostel']],
+    ['bed and breakfast', ['lodging', 'bed_and_breakfast']],
+    ['inn', ['lodging', 'inn']],
+    ['holiday rental home (private lodging)', ['lodging', 'private_lodging', 'holiday_rental_home']],
+    ['guest house (private lodging)', ['lodging', 'private_lodging', 'guest_house']],
+    ['cemetery', ['cultural_and_historic', 'memorial_site', 'cemetery']],
+    ['arcade', ['arts_and_entertainment', 'gaming_venue', 'arcade']],
+    ['escape room', ['arts_and_entertainment', 'gaming_venue', 'escape_room']],
+    ['lottery vendor (a newsstand that sells tickets)', ['arts_and_entertainment', 'gaming_venue', 'lottery_vendor']],
+    // Campus attractions: none of these carries college_university in Overture's hierarchy.
+    ['university museum', ['arts_and_entertainment', 'museum']],
+    ['university art gallery', ['arts_and_entertainment', 'arts_and_crafts_space', 'art_gallery']],
+    ['university library', ['education', 'library']],
+    ['university theater', ['arts_and_entertainment', 'performing_arts_venue', 'theater']],
+    ['campus park', ['sports_and_recreation', 'park']],
     ['beach', ['geographic_entities', 'land_feature', 'beach']],
     ['no hierarchy', []],
   ])('passes a %s', (_name, h) => {
     expect(isBlockedCategory(h)).toBe(false);
+  });
+
+  it('blocks the real hierarchies of day care, funeral homes, courthouses, jails and casinos', () => {
+    for (const h of [
+      ['education', 'place_of_learning', 'school', 'preschool'],
+      ['community_and_government', 'government_office', 'courthouse'],
+      ['community_and_government', 'public_safety_service', 'jail_or_prison', 'juvenile_detention_center'],
+    ]) {
+      expect({ h, blocked: isBlockedCategory(h) }).toEqual({ h, blocked: true });
+    }
+  });
+
+  it('blocks a place that is itself a college or university, and its schools', () => {
+    expect(isBlockedCategory(['education', 'place_of_learning', 'college_university'])).toBe(true);
+    expect(isBlockedCategory(['education', 'place_of_learning', 'college_university', 'law_school'])).toBe(true);
+  });
+
+  it('keeps private lodging and bed and breakfasts out of the blocklist', () => {
+    for (const n of ['private_lodging', 'holiday_rental_home', 'guest_house', 'bed_and_breakfast', 'inn', 'lodging', 'cemetery', 'arcade']) {
+      expect(BLOCKED_CATEGORIES).not.toContain(n);
+    }
   });
 
   it('treats a missing hierarchy as nothing to block', () => {

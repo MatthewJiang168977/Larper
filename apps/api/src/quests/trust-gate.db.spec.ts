@@ -58,7 +58,7 @@ describeDb('the trust gate (real database)', () => {
   };
 
   // What may be offered; every other place below must never appear.
-  const ELIGIBLE = ['Alpha Cafe', 'Beta Books', 'Edge Spot', 'Green Park', 'Library Branch', 'Twin Cafe Best'];
+  const ELIGIBLE = ['Alpha Cafe', 'Beta Books', 'Edge Spot', 'Green Park', 'Library Branch', 'Twin Cafe Best', 'Harbor B&B', 'Campus Museum', 'Holiday Rental'].sort();
 
   beforeAll(async () => {
     pool = createPool(URL);
@@ -71,7 +71,15 @@ describeDb('the trust gate (real database)', () => {
     await place('Edge Spot', ['food_and_drink', 'cafe'], 0.7, 300); // exactly at the threshold, stored as a float4
     await place('Green Park', ['sports_and_recreation', 'park'], 0.95, 400);
     await place('Library Branch', ['education', 'library'], 0.95, 450); // under the education root
+    await place('Harbor B&B', ['lodging', 'bed_and_breakfast'], 0.8, 460); // visitors stay here: kept
+    await place('Holiday Rental', ['lodging', 'private_lodging', 'holiday_rental_home'], 0.8, 470); // kept too
+    await place('Campus Museum', ['arts_and_entertainment', 'museum', 'art_museum'], 0.8, 480); // a museum on a campus
     // Not eligible:
+    await place('Little Learners Day Care', ['services_and_business', 'family_service', 'child_care_and_day_care', 'day_care_preschool'], 0.99, 520);
+    await place('Dalton Funeral Home', ['services_and_business', 'family_service', 'funeral_service'], 0.99, 530);
+    await place('Borough Courthouse', ['community_and_government', 'government_office', 'courthouse'], 0.99, 540);
+    await place('Lucky Casino', ['arts_and_entertainment', 'gaming_venue', 'casino'], 0.99, 550);
+    await place('State University', ['education', 'place_of_learning', 'college_university'], 0.99, 560);
     await place('Shaky Spot', ['food_and_drink', 'cafe'], 0.65, 500); // below the threshold
     await place('City Clinic', ['health_care', 'hospital'], 0.99, 600);
     await place('Grace Church', ['cultural_and_historic', 'place_of_worship', 'christian_place_of_worship'], 0.99, 650);
@@ -116,7 +124,19 @@ describeDb('the trust gate (real database)', () => {
     ).candidates(await user(), HERE.lat, HERE.lng, RADIUS);
     // Duplicates are the TypeScript rule's job: all three twins are still candidates here.
     expect(rows.map((c) => c.name).sort()).toEqual(
-      ['Alpha Cafe', 'Beta Books', 'Edge Spot', 'Green Park', 'Library Branch', 'The Twin Cafe!', 'Twin  Café', 'Twin Cafe'].sort(),
+      [
+        'Alpha Cafe',
+        'Beta Books',
+        'Campus Museum',
+        'Edge Spot',
+        'Green Park',
+        'Harbor B&B',
+        'Holiday Rental',
+        'Library Branch',
+        'The Twin Cafe!',
+        'Twin  Café',
+        'Twin Cafe',
+      ].sort(),
     );
   });
 
@@ -126,7 +146,7 @@ describeDb('the trust gate (real database)', () => {
          AND EXISTS (SELECT FROM unnest(p.categories) c WHERE lower(c) = ANY($2::text[]))`,
       [placeIds, BLOCKED_CATEGORIES],
     );
-    expect(rows[0].n).toBe(5); // clinic, church, school, apartments, and the mixed-case clinic
+    expect(rows[0].n).toBe(10); // clinic, church, school, apartments, the mixed-case clinic, day care, funeral home, courthouse, casino, university
   });
 
   it('a threshold override reaches the query: at 0.9 only the places at or above it remain', async () => {

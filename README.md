@@ -231,7 +231,8 @@ flowchart LR
    - Area tag counts for the surrounding cells come from their own shared cache (1 h).
    - The **trust gate** ([`eligibility.ts`](apps/api/src/quests/eligibility.ts)) keeps out places below
      `QUEST_MIN_CONFIDENCE` (default 0.7), in a blocked category (medical, adult, worship, schools,
-     government, residential) and duplicates (same name within 50 m), before anything is scored.
+     government, residential, day care, funeral homes, courts and jails, casinos and other gambling venues)
+     and duplicates (same name within 50 m), before anything is scored.
      `QUEST_GATE_EVENING_UNKNOWN_HOURS=on` also holds back places with unknown opening hours from 6pm
      to 6am New York time (off by default: no place has hours yet); it is applied after the cache.
    - Candidates are scored in TypeScript, and the top 200 are cached for 10 min.

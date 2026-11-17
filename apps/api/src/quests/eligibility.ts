@@ -3,7 +3,8 @@
 // rules that don't depend on the clock, today() for the one that does).
 //
 //   a) Overture confidence at least MIN_CONFIDENCE.
-//   b) Not in a blocked category (medical, adult, worship, schools, government, residential).
+//   b) Not in a blocked category (medical, adult, worship, schools, government, residential,
+//      day care, funeral, courts and jails, gambling).
 //   c) Not a duplicate of a better-confidence place with the same name within 50 m.
 //   d) Unknown opening hours are not offered in the evening, New York time (behind a flag).
 //
@@ -54,6 +55,12 @@ export function meetsConfidence(confidence: number, min: number = MIN_CONFIDENCE
 // Not blocked on purpose: the `education` root itself, because libraries live at
 // education > library; and community_and_government's parks, plazas, fountains and
 // community centers, charities, and cemeteries/memorials (cultural_and_historic).
+// Also kept: places visitors stay in. bed_and_breakfast, inn, hostel and the rest of
+// `lodging` pass, and so does `private_lodging` (holiday rentals and guest houses, which
+// are hosted for visitors, not homes). Attractions on a campus (museums, galleries,
+// theaters, libraries) pass too: in the data they never carry college_university in
+// their hierarchy, which is only ever education > place_of_learning > college_university
+// (> a school of it), so a place that is itself a college stays blocked and its museum doesn't.
 export const BLOCKED_CATEGORY_GROUPS = {
   // health_care is the whole tree: hospitals, clinics, dental, pharmacies' care side,
   // mental health, cannabis clinics... A retail pharmacy sits under shopping and is not blocked.
@@ -114,10 +121,26 @@ export const BLOCKED_CATEGORY_GROUPS = {
     'retirement_home',
     'assisted_living_facility',
     'service_apartment',
-    'private_lodging',
     'housing_authority',
     'homeless_shelter',
   ],
+  // Children's day care, child care and preschools (services_and_business > family_service >
+  // child_care_and_day_care > day_care_preschool; preschool is education > ... > school >
+  // preschool, already under `schools`, and is listed here too so a cut-short hierarchy matches).
+  day_care: ['child_care_and_day_care', 'day_care_preschool', 'preschool'],
+  // Funeral homes, funeral services, mortuaries and crematoria (funeral_service is the parent
+  // of cremation_service in Overture, which has no separate mortuary type). Cemeteries are NOT
+  // here: cultural_and_historic > memorial_site > cemetery stays allowed. A pet crematorium is
+  // a crematorium, and its parent name says cemetery too, so it is listed by its whole name.
+  funeral: ['funeral_service', 'cremation_service', 'pet_cemetery_and_crematorium_service'],
+  // Courthouses, jails and prisons. Overture files all of them under government_office and
+  // public_safety_service, which the `government` group already blocks; these names keep
+  // them blocked if the hierarchy is ever cut short or the parents change.
+  courts_and_jails: ['courthouse', 'jail_or_prison', 'juvenile_detention_center'],
+  // Gambling venues: casinos, betting centers (sportsbooks) and bingo halls. Not the whole
+  // arts_and_entertainment > gaming_venue parent, which also holds arcades and escape rooms,
+  // and not lottery_vendor, which is mostly newsstands and candy shops that sell tickets.
+  gambling: ['casino', 'betting_center', 'bingo_hall'],
 } as const;
 
 export type BlockedGroup = keyof typeof BLOCKED_CATEGORY_GROUPS;
