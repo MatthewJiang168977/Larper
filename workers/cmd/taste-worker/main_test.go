@@ -2,41 +2,18 @@ package main
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"google.golang.org/protobuf/proto"
 
 	eventsv1 "github.com/MatthewJiang168977/larper/workers/gen/larper/events/v1"
 )
-
-func TestUserGone(t *testing.T) {
-	fk := &pgconn.PgError{Code: "23503", TableName: "taste_profiles"}
-	cases := []struct {
-		name string
-		err  error
-		want bool
-	}{
-		{"the profile's foreign key", fk, true},
-		{"wrapped", fmt.Errorf("insert: %w", fk), true},
-		{"another table's foreign key", &pgconn.PgError{Code: "23503", TableName: "quests"}, false},
-		{"another violation", &pgconn.PgError{Code: "23505", TableName: "taste_profiles"}, false},
-		{"not a Postgres error", errors.New("connection reset"), false},
-		{"nil", nil, false},
-	}
-	for _, c := range cases {
-		if got := userGone(c.err); got != c.want {
-			t.Errorf("%s: userGone = %v, want %v", c.name, got, c.want)
-		}
-	}
-}
 
 // The handler against a real Postgres with the migrations applied, as the taste-worker's
 // role (it can't read users or delete anything):
@@ -85,14 +62,25 @@ func fixtures(t *testing.T, owner *pgxpool.Pool) (userID, placeID string) {
 	return userID, placeID
 }
 
-func record(t *testing.T, userID, placeID string, action eventsv1.QuestAction) (*kgo.Record, string) {
+func record(t *testing.T, userID, questID, placeID string, action eventsv1.QuestAction) (*kgo.Record, string) {
 	t.Helper()
 	id := uuid.NewString()
-	b, err := proto.Marshal(&eventsv1.QuestEvent{EventId: id, UserId: userID, QuestId: "1", PlaceId: placeID, Action: action})
+	b, err := proto.Marshal(&eventsv1.QuestEvent{EventId: id, UserId: userID, QuestId: questID, PlaceId: placeID, Action: action})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return &kgo.Record{Value: b, Headers: []kgo.RecordHeader{{Key: "type", Value: []byte(questType)}}}, id
+}
+
+func questFixture(t *testing.T, owner *pgxpool.Pool, userID, placeID string) string {
+	t.Helper()
+	var questID string
+	if err := owner.QueryRow(context.Background(), `
+		INSERT INTO quests (user_id, place_id, status, score, reasons)
+		VALUES ($1::bigint, $2::bigint, 'completed', 1, '{}') RETURNING id::text`, userID, placeID).Scan(&questID); err != nil {
+		t.Fatal(err)
+	}
+	return questID
 }
 
 func count(t *testing.T, owner *pgxpool.Pool, sql string, args ...any) int {
@@ -111,6 +99,7 @@ func TestEventForDeletedUserIsIgnored(t *testing.T) {
 	taste, owner := testPools(t)
 	ctx := context.Background()
 	userID, placeID := fixtures(t, owner)
+	questID := questFixture(t, owner, userID, placeID)
 	if _, err := owner.Exec(ctx, `DELETE FROM users WHERE id = $1::bigint`, userID); err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +109,7 @@ func TestEventForDeletedUserIsIgnored(t *testing.T) {
 		eventsv1.QuestAction_QUEST_ACTION_COMPLETED,
 		eventsv1.QuestAction_QUEST_ACTION_SKIPPED,
 	} {
-		r, eventID := record(t, userID, placeID, action)
+		r, eventID := record(t, userID, questID, placeID, action)
 		out, err := handle(ctx, taste, r)
 		if err != nil || out != ignored {
 			t.Fatalf("%v: handle = %q, %v; want ignored, nil", action, out, err)
@@ -138,7 +127,8 @@ func TestEventForExistingUserStillApplies(t *testing.T) {
 	ctx := context.Background()
 	userID, placeID := fixtures(t, owner)
 
-	r, eventID := record(t, userID, placeID, eventsv1.QuestAction_QUEST_ACTION_COMPLETED)
+	questID := questFixture(t, owner, userID, placeID)
+	r, eventID := record(t, userID, questID, placeID, eventsv1.QuestAction_QUEST_ACTION_COMPLETED)
 	t.Cleanup(func() { owner.Exec(ctx, `DELETE FROM processed_events WHERE event_id = $1::uuid`, eventID) })
 	if out, err := handle(ctx, taste, r); err != nil || out != applied {
 		t.Fatalf("first delivery: handle = %q, %v; want applied, nil", out, err)
@@ -148,5 +138,82 @@ func TestEventForExistingUserStillApplies(t *testing.T) {
 	}
 	if out, err := handle(ctx, taste, r); err != nil || out != duplicate {
 		t.Fatalf("redelivery: handle = %q, %v; want duplicate, nil", out, err)
+	}
+}
+
+func TestEventForAnotherUsersQuestIsIgnored(t *testing.T) {
+	taste, owner := testPools(t)
+	ctx := context.Background()
+	userID, placeID := fixtures(t, owner)
+	otherID, _ := fixtures(t, owner)
+	questID := questFixture(t, owner, otherID, placeID)
+	r, eventID := record(t, userID, questID, placeID, eventsv1.QuestAction_QUEST_ACTION_COMPLETED)
+	t.Cleanup(func() { owner.Exec(ctx, `DELETE FROM processed_events WHERE event_id = $1::uuid`, eventID) })
+	if out, err := handle(ctx, taste, r); err != nil || out != ignored {
+		t.Fatalf("handle = %q, %v; want ignored, nil", out, err)
+	}
+}
+
+func TestEventRechecksQuestAfterWaitingForHistoryDelete(t *testing.T) {
+	taste, owner := testPools(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	userID, placeID := fixtures(t, owner)
+	questID := questFixture(t, owner, userID, placeID)
+	if _, err := owner.Exec(ctx, `INSERT INTO taste_profiles (user_id, vec, source)
+		VALUES ($1::bigint, array_fill(0::real, ARRAY[160])::vector, 'onboarding')`, userID); err != nil {
+		t.Fatal(err)
+	}
+	deleting, err := owner.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer deleting.Rollback(context.Background())
+	var pid int32
+	if err := deleting.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&pid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := deleting.Exec(ctx, `SELECT delete_my_history($1::bigint)`, userID); err != nil {
+		t.Fatal(err)
+	}
+
+	r, eventID := record(t, userID, questID, placeID, eventsv1.QuestAction_QUEST_ACTION_COMPLETED)
+	type delivery struct {
+		out outcome
+		err error
+	}
+	result := make(chan delivery, 1)
+	t.Cleanup(func() {
+		owner.Exec(context.Background(), `DELETE FROM processed_events WHERE event_id = $1::uuid`, eventID)
+	})
+	go func() {
+		out, err := handle(ctx, taste, r)
+		result <- delivery{out, err}
+	}()
+	for {
+		var waiting bool
+		err := owner.QueryRow(ctx, `SELECT EXISTS (
+			SELECT FROM pg_stat_activity WHERE datname = current_database() AND $1 = ANY(pg_blocking_pids(pid))
+		)`, pid).Scan(&waiting)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		select {
+		case got := <-result:
+			t.Fatalf("handler finished before history delete committed: %q, %v", got.out, got.err)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	if err := deleting.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := <-result; got.err != nil || got.out != ignored {
+		t.Fatalf("handle after the lock was released = %q, %v; want ignored, nil", got.out, got.err)
+	}
+	if n := count(t, owner, `SELECT count(*) FROM taste_profiles WHERE user_id = $1::bigint AND source = 'onboarding'`, userID); n != 1 {
+		t.Fatal("event changed the retained onboarding profile")
 	}
 }

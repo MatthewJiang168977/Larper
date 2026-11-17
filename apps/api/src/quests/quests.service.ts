@@ -209,6 +209,7 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     try {
       await tx.query('BEGIN');
       if (checkIn) await this.checkGeofence(tx, checkIn, at);
+      await this.lockUserQuest(tx, userId, questId);
 
       // "Not today" leaves the reason 'unstated' until the user gives one (giveReason).
       // A simulated demo check-in is marked in the quest's reasons, so the journal can
@@ -230,10 +231,7 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
           'SELECT status FROM quests WHERE id = $1 AND user_id = $2',
           [questId, userId],
         );
-        if (!cur.rows.length) {
-          if (checkIn) checkIn.outcome = 'not_found';
-          throw new NotFoundException('no such quest');
-        }
+        if (!cur.rows.length) throw new NotFoundException('no such quest');
         if (checkIn) checkIn.outcome = 'conflict';
         throw new ConflictException(`cannot ${VERB[action]} a quest that is ${cur.rows[0].status}`);
       }
@@ -258,6 +256,7 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
         ...(checkIn?.simulated ? { simulated: true as const, distanceM: Math.round(checkIn.geofence!.distanceM) } : {}),
       };
     } catch (err) {
+      if (checkIn && err instanceof NotFoundException) checkIn.outcome = 'not_found';
       await tx.query('ROLLBACK');
       throw err;
     } finally {
@@ -267,6 +266,16 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
         await this.recordAttempt(checkIn);
       }
     }
+  }
+
+  // Lock the user before the quest so history/account deletion can wait before it
+  // touches children, even for actions that insert a row with a user FK.
+  private async lockUserQuest(tx: PoolClient, userId: string, questId: string) {
+    const { rows } = await tx.query<{ present: boolean }>(
+      'SELECT lock_user_quest($1, $2) AS present',
+      [userId, questId],
+    );
+    if (!rows[0].present) throw new NotFoundException('no such quest');
   }
 
   // Outside the action's transaction: a rejected check-in rolls that back, and its
@@ -321,6 +330,7 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     const tx = await this.pg.connect();
     try {
       await tx.query('BEGIN');
+      await this.lockUserQuest(tx, userId, questId);
       const { rows } = await tx.query<{ placeId: string }>(
         `UPDATE quests SET skip_reason = $3
          WHERE id = $1 AND user_id = $2 AND status = 'skipped' AND skip_reason = 'unstated'
@@ -363,29 +373,38 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
   // went on a simulated demo check-in, so it has nothing to say. A "no" is only recorded:
   // nothing reacts to it yet (no event, no taste, no effect on the schedule).
   async wasOpen(userId: string, questId: string, answer: WasOpenAnswer): Promise<{ wasOpen: WasOpenAnswer }> {
-    const { rows } = await this.pg.query<{ status: QuestStatus; placeId: string; at: Date; simulated: boolean }>(
-      `SELECT status, place_id::text AS "placeId", coalesce(completed_at, updated_at) AS at,
-              coalesce((reasons->>'simulated')::boolean, false) AS simulated
-       FROM quests WHERE id = $1 AND user_id = $2`,
-      [questId, userId],
-    );
-    if (!rows.length) throw new NotFoundException('no such quest');
-    const q = rows[0];
-    if (q.status !== 'completed') throw new ConflictException('only a quest you checked in at can be asked about');
-    if (q.simulated) throw new ConflictException('a simulated check-in has no answer: nobody went');
+    const tx = await this.pg.connect();
+    try {
+      await tx.query('BEGIN');
+      await this.lockUserQuest(tx, userId, questId);
+      const { rows: [q] } = await tx.query<{ status: QuestStatus; placeId: string; at: Date; simulated: boolean }>(
+        `SELECT status, place_id::text AS "placeId", coalesce(completed_at, updated_at) AS at,
+                coalesce((reasons->>'simulated')::boolean, false) AS simulated
+         FROM quests WHERE id = $1 AND user_id = $2`,
+        [questId, userId],
+      );
+      if (q.status !== 'completed') throw new ConflictException('only a quest you checked in at can be asked about');
+      if (q.simulated) throw new ConflictException('a simulated check-in has no answer: nobody went');
 
-    await this.pg.query(
-      `INSERT INTO place_hours_facts (place_id, kind, source, fetched_at, confidence, was_open, quest_id, user_id)
-       VALUES ($1, 'observation', 'check-in', $2, $3::real, $4::boolean, $5, $6)
-       ON CONFLICT (quest_id) WHERE quest_id IS NOT NULL DO NOTHING`,
-      [q.placeId, q.at, answer === 'didnt_check' ? 0 : 0.9, answer === 'didnt_check' ? null : answer === 'yes', questId, userId],
-    );
-    const stored = await this.pg.query<{ wasOpen: boolean | null }>(
-      'SELECT was_open AS "wasOpen" FROM place_hours_facts WHERE quest_id = $1 AND user_id = $2',
-      [questId, userId],
-    );
-    const w = stored.rows[0]?.wasOpen;
-    return { wasOpen: w === true ? 'yes' : w === false ? 'no' : 'didnt_check' };
+      await tx.query(
+        `INSERT INTO place_hours_facts (place_id, kind, source, fetched_at, confidence, was_open, quest_id, user_id)
+         VALUES ($1, 'observation', 'check-in', $2, $3::real, $4::boolean, $5, $6)
+         ON CONFLICT (quest_id) WHERE quest_id IS NOT NULL DO NOTHING`,
+        [q.placeId, q.at, answer === 'didnt_check' ? 0 : 0.9, answer === 'didnt_check' ? null : answer === 'yes', questId, userId],
+      );
+      const stored = await tx.query<{ wasOpen: boolean | null }>(
+        'SELECT was_open AS "wasOpen" FROM place_hours_facts WHERE quest_id = $1 AND user_id = $2',
+        [questId, userId],
+      );
+      await tx.query('COMMIT');
+      const w = stored.rows[0]?.wasOpen;
+      return { wasOpen: w === true ? 'yes' : w === false ? 'no' : 'didnt_check' };
+    } catch (err) {
+      await tx.query('ROLLBACK');
+      throw err;
+    } finally {
+      tx.release();
+    }
   }
 
   // A check-in counts only near the place (the rule and its messages: checkin.ts).

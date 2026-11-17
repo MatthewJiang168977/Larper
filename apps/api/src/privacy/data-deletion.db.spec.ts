@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Pool } from 'pg';
 import type { CacheService } from '../cache/cache.service';
 import { createPool } from '../db/db.module';
@@ -87,8 +87,8 @@ describeDb('export and delete my data (real database)', () => {
     const q = await quest(u.id, p, 'completed');
     await owner.query('INSERT INTO checkin_attempts (quest_id, outcome, distance_m, accuracy_m, allowed_m, demo) VALUES ($1, $2, 12, 8, 60, false)', [q, 'accepted']);
     await owner.query(
-      `INSERT INTO place_hours_facts (place_id, kind, source, fetched_at, confidence, was_open, quest_id, user_id)
-       VALUES ($1, 'observation', 'check-in', now(), 0.9, true, $2, $3)`,
+      `INSERT INTO place_hours_facts (place_id, kind, source, fetched_at, confidence, was_open, quest_id, user_id, created_at)
+       VALUES ($1, 'observation', 'check-in', '2026-11-17T10:00:00Z', 0.9, true, $2, $3, '2026-11-17T11:00:00Z')`,
       [p, q, u.id],
     );
     await owner.query('INSERT INTO saved_places (user_id, place_id, quest_id) VALUES ($1, $2, $3)', [u.id, p, q]);
@@ -146,6 +146,88 @@ describeDb('export and delete my data (real database)', () => {
     expect(again.deleted).toMatchObject({ quests: 0, tasteProfile: false, account: false });
   });
 
+  // Wait for a backend to reach a lock, so the races do not depend on a sleep.
+  const blockedBy = async (blockers: number[], except?: number): Promise<number> => {
+    for (let i = 0; i < 100; i++) {
+      const { rows } = await owner.query<{ pid: number }>(
+        `SELECT pid FROM pg_stat_activity WHERE datname = current_database()
+         AND pg_blocking_pids(pid) && $1::int[] AND pid IS DISTINCT FROM $2`,
+        [blockers, except ?? null],
+      );
+      if (rows.length) return rows[0].pid;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    throw new Error('expected concurrent transaction to reach a lock');
+  };
+
+  it.each(['accept', 'answer'] as const)('history waits for an in-flight %s before sweeping children', async (write) => {
+    const u = await user();
+    const p = await place('Concurrent history');
+    const q = await quest(u.id, p, write === 'accept' ? 'offered' : 'completed');
+    const gate = await owner.connect();
+    const pending: Promise<unknown>[] = [];
+    try {
+      await gate.query('BEGIN');
+      const { rows: [{ pid }] } = await gate.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+      await gate.query('SELECT id FROM quests WHERE id = $1 FOR UPDATE', [q]);
+      const writing = write === 'accept' ? quests.act(u.id, q, 'accept') : quests.wasOpen(u.id, q, 'yes');
+      pending.push(writing);
+      void writing.catch(() => undefined);
+      const writer = await blockedBy([pid]);
+      const clearing = deletion.deleteHistory(u);
+      pending.push(clearing);
+      void clearing.catch(() => undefined);
+      await blockedBy([pid, writer], writer);
+      await gate.query('COMMIT');
+      await writing;
+      expect((await clearing).deleted).toMatchObject(
+        write === 'accept' ? { quests: 1, savedPlaces: 1, events: 1 } : { quests: 1, hoursAnswers: 1 },
+      );
+      expect(await footprint(u.id)).toMatchObject({ quests: 0, saved: 0, answers: 0, events: 0 });
+    } finally {
+      await gate.query('ROLLBACK');
+      gate.release();
+      await Promise.allSettled(pending);
+    }
+  });
+
+  it('account deletion fences new offers and their events while the outbox sweep is waiting', async () => {
+    const u = await user();
+    const p = await place('Concurrent account');
+    await owner.query(`INSERT INTO outbox (topic, key, type, payload) VALUES ('user.events', $1, 'test', '\\x00')`, [u.id]);
+    const relay = await owner.connect();
+    const offer = await pool.connect();
+    let clearing: ReturnType<DataDeletionService['deleteAccount']> | undefined;
+    try {
+      await relay.query('BEGIN');
+      const { rows: [{ pid }] } = await relay.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+      await relay.query('SELECT id FROM outbox WHERE key = $1 FOR UPDATE', [u.id]);
+      clearing = deletion.deleteAccount(u);
+      void clearing.catch(() => undefined);
+      await blockedBy([pid]);
+      await offer.query('BEGIN');
+      await offer.query("SET LOCAL lock_timeout = '250ms'");
+      const insert = await offer.query<{ id: string }>(
+        `INSERT INTO quests (user_id, place_id, score, reasons) VALUES ($1, $2, 1, '{}') RETURNING id::text`,
+        [u.id, p],
+      ).then((result) => ({ id: result.rows[0].id }), (error: unknown) => ({ error }));
+      if ('id' in insert) {
+        await offer.query('COMMIT');
+        await quests.act(u.id, insert.id, 'accept');
+      }
+      await relay.query('COMMIT');
+      expect((await clearing).deleted.account).toBe(true);
+      expect(await footprint(u.id)).toMatchObject({ account: 0, quests: 0, events: 0 });
+      expect(insert).toMatchObject({ error: { code: '55P03' } });
+    } finally {
+      await offer.query('ROLLBACK');
+      offer.release();
+      await relay.query('ROLLBACK');
+      relay.release();
+      await clearing?.catch(() => undefined);
+    }
+  });
+
   it('the API role still cannot delete anything itself, only through the functions', async () => {
     const a = await user();
     await expect(pool.query('DELETE FROM users WHERE id = $1', [a.id])).rejects.toMatchObject({ code: '42501' });
@@ -182,6 +264,7 @@ describeDb('export and delete my data (real database)', () => {
     const out = await exporter.export(a.id, new Date('2026-11-17T12:00:00Z'));
 
     expect(out).toMatchObject({ version: 1, exportedAt: '2026-11-17T12:00:00.000Z', account: { id: a.id, clerkId: a.clerkId } });
+    expect(out.onboarding).toEqual({ stored: false, note: expect.stringContaining('only seeded the taste profile') });
     expect(out.taste).toMatchObject({ source: 'onboarding', topTags: ['cafe'] });
     expect(out.taste?.weights).toEqual({ cafe: expect.closeTo(0.1, 5) });
     expect(out.journal).toHaveLength(1);
@@ -192,14 +275,22 @@ describeDb('export and delete my data (real database)', () => {
     expect(out.checkIns.attempts).toEqual([
       expect.objectContaining({ questId: pa.quest, outcome: 'accepted', distanceM: 12, accuracyM: 8, allowedM: 60, demo: false }),
     ]);
-    expect(out.hoursAnswers).toEqual([expect.objectContaining({ questId: pa.quest, wasOpen: true })]);
+    expect(out.hoursAnswers).toEqual([
+      expect.objectContaining({ questId: pa.quest, wasOpen: true, answeredAt: '2026-11-17T11:00:00.000Z' }),
+    ]);
     expect(out.savedPlaces).toEqual([expect.objectContaining({ questId: pa.quest, place: expect.objectContaining({ id: pa.place }) })]);
 
     const text = JSON.stringify(out);
     expect(text).not.toContain(b.clerkId);
     expect(text).not.toContain('ExpB');
     // Nothing internal: no outbox, jobs or processed-event fields.
-    expect(Object.keys(out).sort()).toEqual(['account', 'checkIns', 'exportedAt', 'hoursAnswers', 'journal', 'savedPlaces', 'taste', 'version']);
+    expect(Object.keys(out).sort()).toEqual(['account', 'checkIns', 'exportedAt', 'hoursAnswers', 'journal', 'onboarding', 'savedPlaces', 'taste', 'version']);
+  });
+
+  it('export of an account that no longer exists is a 404, not a TypeError', async () => {
+    const a = await user();
+    await deletion.deleteAccount(a);
+    await expect(exporter.export(a.id)).rejects.toThrow(NotFoundException);
   });
 
   it('export of a user with no data is empty lists and a null taste, not an error', async () => {
