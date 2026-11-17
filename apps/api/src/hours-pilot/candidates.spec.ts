@@ -79,6 +79,14 @@ describe('CSV', () => {
     expect(csvField('plain')).toBe('plain');
   });
 
+  it('keeps fields a spreadsheet would run as a formula as text', () => {
+    expect(csvField('=HYPERLINK("http://x")')).toBe(`"'=HYPERLINK(""http://x"")"`);
+    expect(csvField('+1 212 555 0100')).toBe("'+1 212 555 0100");
+    expect(csvField('-cafe-')).toBe("'-cafe-");
+    expect(csvField('@home')).toBe("'@home");
+    expect(csvField('cafe = good')).toBe('cafe = good');
+  });
+
   it('writes the header, leaves the last three columns empty and blanks missing fields', () => {
     const [ranked] = rankPilotCandidates([place('7', { name: 'Joe, "J" & Co', website: 'https://j.example', phone: '+1 212' })], 5);
     const lines = toCsv([ranked]).split('\r\n');

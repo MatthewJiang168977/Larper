@@ -114,9 +114,12 @@ export const CSV_COLUMNS = [
   'date_checked',
 ] as const;
 
-// RFC 4180: quote a field holding a comma, quote, CR or LF; double the quotes.
+// RFC 4180: quote a field holding a comma, quote, CR or LF; double the quotes. A field a
+// spreadsheet would run as a formula (starting =, +, -, @, tab or CR: place names and
+// websites come from Overture, not from us) gets a leading apostrophe, so it stays text.
 export function csvField(v: string | null | undefined): string {
-  const s = v ?? '';
+  let s = v ?? '';
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
