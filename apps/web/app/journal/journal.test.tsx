@@ -22,15 +22,19 @@ vi.mock("next/link", () => ({
 }));
 
 // Analytics (lib/analytics.ts): what would be recorded.
-const tracked = vi.hoisted(() => ({ events: [] as string[], known: false }));
-vi.mock("@/lib/analytics", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/analytics")>()),
-  track: (event: string) => void tracked.events.push(event),
-  setDemo: (d: boolean) => void tracked.events.push(`demo=${d}`),
-  demoKnown: () => tracked.known,
-  demoFlag: () => tracked.known ? false : undefined,
-  clearDemo: () => { tracked.known = false; },
-}));
+const tracked = vi.hoisted(() => ({ events: [] as string[] }));
+vi.mock("@/lib/analytics", async (importOriginal) => {
+  const analytics = await importOriginal<typeof import("@/lib/analytics")>();
+  return {
+    ...analytics,
+    track: (event: string) => void tracked.events.push(event),
+    setDemo: (d: boolean) => {
+      analytics.setDemo(d);
+      tracked.events.push(`demo=${d}`);
+    },
+  };
+});
+const { clearDemo, setDemo: seedDemo } = await vi.importActual<typeof import("@/lib/analytics")>("@/lib/analytics");
 
 let answer: () => Promise<unknown>;
 let answerMe: () => Promise<unknown>;
@@ -46,8 +50,12 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 const settle = () => act(async () => {});
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((r) => (resolve = r));
-  return { promise, resolve };
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 };
 const deleteData = (kind: "history" | "account") => {
   fireEvent.click(screen.getByRole("button", { name: `delete my ${kind}` }));
@@ -71,13 +79,13 @@ beforeEach(() => {
   signOut.mockReset().mockResolvedValue(undefined);
   replace.mockClear();
   tracked.events.length = 0;
-  tracked.known = false;
+  clearDemo();
   answerMe = () => Promise.resolve({ demo: false });
 });
 
 describe("Journal", () => {
   it("checks /me even with a cached analytics flag and fails closed while waiting", async () => {
-    tracked.known = true;
+    seedDemo(false);
     answer = () => Promise.resolve([]);
     const me = deferred<{ demo: boolean }>();
     answerMe = () => me.promise;
@@ -104,7 +112,7 @@ describe("Journal", () => {
 
   it("still records the visit, with no flag and no error shown, when /me fails", async () => {
     answer = () => Promise.resolve([entry({})]);
-    tracked.known = true;
+    seedDemo(false);
     answerMe = () => Promise.reject(new ApiError("nope", 503));
     render(<JournalPage />);
     await settle();
@@ -298,12 +306,20 @@ describe("Journal", () => {
       ["manual", "larper didn't remove your clerk sign-in."],
       ["failed", "larper couldn't remove your clerk sign-in."],
     ])("immediately tries to sign out after the %s outcome and hides the signed-in UI", async (clerkUser, message) => {
+      const purge = deferred<{ clerkUser: string }>();
       const signOutPending = deferred<void>();
       signOut.mockReturnValue(signOutPending.promise);
-      answerDelete = () => Promise.resolve({ clerkUser });
+      answerDelete = () => purge.promise;
       const { rerender } = render(<JournalPage />);
       await settle();
+      expect(screen.getByRole("link", { name: "back to the map" })).toBeTruthy();
       deleteData("account");
+      await settle();
+      expect(api).toHaveBeenCalledWith("/me", { method: "DELETE" });
+      expect(screen.queryByRole("link", { name: "back to the map" })).toBeNull();
+      expect(signOut).not.toHaveBeenCalled();
+
+      purge.resolve({ clerkUser });
       await settle();
       expect(signOut).toHaveBeenCalledOnce();
       expect(signOut).toHaveBeenCalledWith(expect.any(Function), { sessionId: "session-a" });
@@ -329,6 +345,23 @@ describe("Journal", () => {
         expect(screen.getByRole("status").textContent).toContain(message);
         expect(screen.getByRole("link", { name: "back to larper" }).getAttribute("href")).toBe("/");
       }
+    });
+
+    it("restores the map link when a pending account deletion fails", async () => {
+      const purge = deferred<never>();
+      answerDelete = () => purge.promise;
+      render(<JournalPage />);
+      await settle();
+      deleteData("account");
+      await settle();
+      expect(screen.queryByRole("link", { name: "back to the map" })).toBeNull();
+
+      purge.reject(new ApiError("failed", 503));
+      await settle();
+      expect(screen.getByRole("link", { name: "back to the map" }).getAttribute("href")).toBe("/");
+      expect(screen.getByRole("dialog", { name: "delete your account?" })).toBeTruthy();
+      expect(screen.getByRole("alert").textContent).toBe("something went wrong on our end.");
+      expect(signOut).not.toHaveBeenCalled();
     });
 
     it("doesn't sign out the new identity if the old account purge finishes after a switch", async () => {

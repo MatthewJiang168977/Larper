@@ -66,6 +66,7 @@ function Journal({ onAccountDeleted }: { onAccountDeleted: (clerkUser: ClerkRemo
   const [error, setError] = useState<string | null>(null);
   const [tries, setTries] = useState(0);
   const [account, setAccount] = useState<AccountKind>("checking");
+  const [accountDeletePending, setAccountDeletePending] = useState(false);
   const invalidateQuestRequest = useRef<(() => void) | null>(null);
   const opened = useRef(false);
 
@@ -123,10 +124,12 @@ function Journal({ onAccountDeleted }: { onAccountDeleted: (clerkUser: ClerkRemo
       entries={entries}
       error={error}
       retry={reloadQuests}
+      hideMapLink={accountDeletePending}
       dataPanel={
         <YourData
           account={account}
           onAccountDeleted={onAccountDeleted}
+          onAccountDeletePendingChange={setAccountDeletePending}
           onHistoryDeleted={() => {
             reloadQuests();
             setEntries([]);

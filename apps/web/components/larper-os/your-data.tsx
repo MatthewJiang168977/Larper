@@ -81,10 +81,11 @@ function failure(e: unknown): string {
   return describeError(e, "that didn't work. try again.").toLowerCase();
 }
 
-export function YourData({ account, onHistoryDeleted, onAccountDeleted }: {
+export function YourData({ account, onHistoryDeleted, onAccountDeleted, onAccountDeletePendingChange }: {
   account: AccountKind;
   onHistoryDeleted: () => void;
   onAccountDeleted: (clerkUser: ClerkRemoval) => void;
+  onAccountDeletePendingChange: (pending: boolean) => void;
 }) {
   const api = useApi();
   const headingId = useId();
@@ -147,6 +148,7 @@ export function YourData({ account, onHistoryDeleted, onAccountDeleted }: {
     if (deletePending.current) return;
     deletePending.current = true;
     setDeleting(true);
+    if (kind === "account") onAccountDeletePendingChange(true);
     try {
       if (kind === "history") {
         const r = await api<HistoryDeleted>("/me/history", { method: "DELETE" });
@@ -158,6 +160,10 @@ export function YourData({ account, onHistoryDeleted, onAccountDeleted }: {
         const r = await api<AccountDeleted>("/me", { method: "DELETE" });
         if (active.current) onAccountDeleted(r.clerkUser);
       }
+    } catch (e) {
+      // On success the completion screen takes over with the map link still hidden.
+      if (kind === "account" && active.current) onAccountDeletePendingChange(false);
+      throw e;
     } finally {
       deletePending.current = false;
       setDeleting(false);

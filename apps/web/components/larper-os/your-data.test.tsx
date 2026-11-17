@@ -14,7 +14,14 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 const settle = () => act(async () => {});
 const onHistoryDeleted = vi.fn();
 const onAccountDeleted = vi.fn();
-const mount = (account: AccountKind = "user") => render(<YourData account={account} onHistoryDeleted={onHistoryDeleted} onAccountDeleted={onAccountDeleted} />);
+const mount = (account: AccountKind = "user") => render(
+  <YourData
+    account={account}
+    onHistoryDeleted={onHistoryDeleted}
+    onAccountDeleted={onAccountDeleted}
+    onAccountDeletePendingChange={() => {}}
+  />,
+);
 const button = (name: string) => screen.getByRole("button", { name });
 const typeDelete = (word = "delete") =>
   fireEvent.change(screen.getByLabelText(/type .*delete.* to go ahead/), { target: { value: word } });

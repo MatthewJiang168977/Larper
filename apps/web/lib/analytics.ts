@@ -172,11 +172,6 @@ export function demoKnown(): boolean {
   return demo !== undefined;
 }
 
-/** The flag itself: undefined until setDemo() has an answer. */
-export function demoFlag(): boolean | undefined {
-  return demo;
-}
-
 /** Forgets the account's flag: someone signed out or switched accounts. */
 export function clearDemo() {
   demo = undefined;
