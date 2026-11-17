@@ -3,8 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api";
 import { YourData, type AccountKind } from "./your-data";
 
-const signOut = vi.fn(() => Promise.resolve());
-vi.mock("@clerk/nextjs", () => ({ useClerk: () => ({ signOut }) }));
+vi.mock("@/app/larper-os", () => ({ larperOsClassName: "larper-os" }));
 
 const api = vi.fn<(path: string, init?: RequestInit) => Promise<unknown>>();
 vi.mock("@/lib/api", async (importOriginal) => ({
@@ -14,7 +13,8 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 
 const settle = () => act(async () => {});
 const onHistoryDeleted = vi.fn();
-const mount = (account: AccountKind = "user") => render(<YourData account={account} onHistoryDeleted={onHistoryDeleted} />);
+const onAccountDeleted = vi.fn();
+const mount = (account: AccountKind = "user") => render(<YourData account={account} onHistoryDeleted={onHistoryDeleted} onAccountDeleted={onAccountDeleted} />);
 const button = (name: string) => screen.getByRole("button", { name });
 const typeDelete = (word = "delete") =>
   fireEvent.change(screen.getByLabelText(/type .*delete.* to go ahead/), { target: { value: word } });
@@ -30,8 +30,8 @@ const counts = { quests: 3, checkInAttempts: 2, hoursAnswers: 1, savedPlaces: 1,
 
 beforeEach(() => {
   api.mockReset();
-  signOut.mockClear();
   onHistoryDeleted.mockClear();
+  onAccountDeleted.mockClear();
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -120,7 +120,11 @@ describe("delete my history", () => {
     expect(dialog.textContent).toContain("your journal: every quest you've been offered.");
     expect(dialog.textContent).toContain("your saved places.");
     expect(dialog.textContent).toContain("your taste profile: what you told larper you like");
-    expect(dialog.textContent).toContain("about 3 weeks (60 days at the very most), and restoring a backup could bring deleted data back");
+    expect(dialog.textContent).toContain("about 3 weeks under the usual backup schedule");
+    expect(dialog.textContent).toContain("60-day cleanup rule");
+    expect(dialog.textContent).toContain("restoring a backup could bring deleted data back");
+    expect(dialog.textContent).toContain("eligible for cleanup after about 7 days");
+    expect(dialog.textContent).toContain("with no fixed deadline");
   });
 
   it("needs the word delete before it will go", () => {
@@ -174,7 +178,7 @@ describe("delete my history", () => {
     expect(screen.getByRole("status").textContent).toBe(
       "deleted 3 quests, 2 check-in attempts, 1 “was it open?” answer and 1 saved place.",
     );
-    expect(signOut).not.toHaveBeenCalled();
+    expect(onAccountDeleted).not.toHaveBeenCalled();
   });
 
   it("keeps the confirmation open with the error when it fails, and can try again", async () => {
@@ -217,6 +221,40 @@ describe("delete my history", () => {
   });
 });
 
+it.each(["history", "account"])("locks both delete actions while the %s confirmation is open or submitting", async (kind) => {
+  let reject!: (error: ApiError) => void;
+  api.mockReturnValue(new Promise((_, fail) => (reject = fail)));
+  mount();
+  const opener = button(`delete my ${kind}`);
+  const other = button(kind === "history" ? "delete my account" : "delete my history");
+  fireEvent.click(opener);
+  expect(other.hasAttribute("disabled")).toBe(true);
+  fireEvent.click(other);
+  expect(screen.getByRole("dialog", { name: `delete your ${kind}?` })).toBeTruthy();
+
+  typeDelete();
+  const dialog = screen.getByRole("dialog");
+  const form = dialog.querySelector("form")!;
+  act(() => {
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    fireEvent.click(other);
+    fireEvent.keyDown(dialog, { key: "Escape" });
+  });
+  expect(screen.getByRole("dialog")).toBe(dialog);
+  expect(other.hasAttribute("disabled")).toBe(true);
+  const path = kind === "history" ? "/me/history" : "/me";
+  expect(api.mock.calls).toEqual([[path, { method: "DELETE" }]]);
+
+  reject(new ApiError("boom", 503));
+  await settle();
+  expect(screen.getByRole("alert")).toBeTruthy();
+  expect(other.hasAttribute("disabled")).toBe(true);
+  fireEvent.click(button("cancel"));
+  expect(other.hasAttribute("disabled")).toBe(false);
+  expect(document.activeElement).toBe(opener);
+});
+
 describe("delete my account", () => {
   const confirmAccount = async () => {
     fireEvent.click(button("delete my account"));
@@ -224,17 +262,17 @@ describe("delete my account", () => {
     fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
     await settle();
   };
-  const accountCounts = { ...counts, tasteProfile: 1, account: 1 };
+  const accountCounts = { ...counts, tasteProfile: true, account: true };
 
-  it("says what goes (the profile, the account, the clerk sign-in) and what stays", () => {
+  it("explains the account deletion and what happens to the sign-in", () => {
     mount();
     fireEvent.click(button("delete my account"));
     const dialog = screen.getByRole("dialog", { name: "delete your account?" });
     expect(document.activeElement).toBe(dialog);
     expect(dialog.textContent).toContain("your taste profile.");
-    expect(dialog.textContent).toContain("your larper account. you'll be signed out.");
-    expect(dialog.textContent).toContain("by hand within 7 days");
-    expect(dialog.textContent).toContain("nothing in the app.");
+    expect(dialog.textContent).toContain("your larper account.");
+    expect(dialog.textContent).toContain("larper tries to remove your sign-in with clerk when it can, then tries to sign you out");
+    expect(dialog.textContent).not.toMatch(/within 7 days|you'll be signed out|by hand/);
   });
 
   it("cancel closes it and returns focus to the opener", () => {
@@ -247,28 +285,13 @@ describe("delete my account", () => {
     expect(api).not.toHaveBeenCalled();
   });
 
-  it("signs out to the landing page once Clerk has removed the user", async () => {
-    api.mockResolvedValue({ deleted: accountCounts, clerkUser: "deleted" });
-    mount();
-    await confirmAccount();
-    expect(api).toHaveBeenCalledWith("/me", { method: "DELETE" });
-    expect(signOut).toHaveBeenCalledWith({ redirectUrl: "/" });
-  });
-
-  it.each([
-    ["manual", "your larper data is deleted. your sign-in will be removed by hand within 7 days."],
-    [
-      "failed",
-      "your larper data is deleted, but removing your sign-in didn't go through. we'll remove it by hand within 7 days.",
-    ],
-  ])("clerkUser %s: says so, then signs out when they leave", async (clerkUser, text) => {
+  it.each(["deleted", "manual", "failed"])("hands off completion for clerkUser %s", async (clerkUser) => {
     api.mockResolvedValue({ deleted: accountCounts, clerkUser });
     mount();
     await confirmAccount();
-    expect(screen.getByRole("status").textContent).toContain(text);
-    expect(signOut).not.toHaveBeenCalled();
-    fireEvent.click(button("sign out and leave"));
-    expect(signOut).toHaveBeenCalledWith({ redirectUrl: "/" });
+    expect(api).toHaveBeenCalledWith("/me", { method: "DELETE" });
+    expect(onAccountDeleted).toHaveBeenCalledOnce();
+    expect(onAccountDeleted).toHaveBeenCalledWith(clerkUser);
   });
 
   it("an error leaves the account alone and nobody signed out", async () => {
@@ -276,6 +299,6 @@ describe("delete my account", () => {
     mount();
     await confirmAccount();
     expect(screen.getByRole("alert").textContent).toBe("something went wrong on our end.");
-    expect(signOut).not.toHaveBeenCalled();
+    expect(onAccountDeleted).not.toHaveBeenCalled();
   });
 });

@@ -1,16 +1,16 @@
 "use client";
 
-import { useClerk } from "@clerk/nextjs";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import Link from "next/link";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError, describeError, useApi } from "@/lib/api";
-import { OSButton, OSQuestPanel } from "./primitives";
+import { larperOsClassName } from "@/app/larper-os";
+import { OSButton, OSMenuBar, OSQuestPanel, OSWindow, osPrimaryButtonClass } from "./primitives";
 import "./your-data.css";
 
 /** "checking": /me hasn't answered. "unknown": it failed, so we can't tell if this is the demo. */
 export type AccountKind = "checking" | "user" | "demo" | "unknown";
 
-// Placeholder: the owner removes Clerk sign-ins by hand when the API can't (ADR 0005).
-export const MANUAL_REMOVAL_WINDOW = "within 7 days";
+export type ClerkRemoval = "manual" | "deleted" | "failed";
 
 const CONFIRM_WORD = "delete";
 
@@ -18,13 +18,13 @@ interface HistoryDeleted {
   deleted: { quests: number; checkInAttempts: number; hoursAnswers: number; savedPlaces: number; events: number };
 }
 interface AccountDeleted {
-  deleted: HistoryDeleted["deleted"] & { tasteProfile: number; account: number };
-  clerkUser: "manual" | "deleted" | "failed";
+  deleted: HistoryDeleted["deleted"] & { tasteProfile: boolean; account: boolean };
+  clerkUser: ClerkRemoval;
 }
 
 type Kind = "history" | "account";
 
-const COPY: Record<Kind, { open: string; title: string; deletes: string[]; keeps: string[]; confirm: string }> = {
+const COPY: Record<Kind, { open: string; title: string; deletes: string[]; keeps?: string[]; confirm: string }> = {
   history: {
     open: "delete my history",
     title: "delete your history?",
@@ -46,16 +46,16 @@ const COPY: Record<Kind, { open: string; title: string; deletes: string[]; keeps
     deletes: [
       "everything in “delete my history”: your journal, check-ins, “was it open?” answers and saved places.",
       "your taste profile.",
-      "your larper account. you'll be signed out.",
-      `your sign-in with clerk, our sign-in service. if it isn't removed straight away, we remove it by hand ${MANUAL_REMOVAL_WINDOW}.`,
+      "your larper account.",
     ],
-    keeps: ["nothing in the app. you can sign up again later as a new person."],
     confirm: "delete my account",
   },
 };
 
 const BACKUPS =
-  "deleting can't be undone from the app. copies can stay in our backups for about 3 weeks (60 days at the very most), and restoring a backup could bring deleted data back.";
+  "deleting can't be undone from the app. copies can stay for about 3 weeks under the usual backup schedule. backup storage has a 60-day cleanup rule for old objects. restoring a backup could bring deleted data back.";
+const BROKER_RETENTION =
+  "events already sent to our event broker can stay after deletion. closed segments are eligible for cleanup after about 7 days, with no fixed deadline.";
 
 function countLine(d: HistoryDeleted["deleted"]): string {
   const n = (c: number, one: string, many: string) => `${c} ${c === 1 ? one : many}`;
@@ -81,18 +81,29 @@ function failure(e: unknown): string {
   return describeError(e, "that didn't work. try again.").toLowerCase();
 }
 
-export function YourData({ account, onHistoryDeleted }: { account: AccountKind; onHistoryDeleted: () => void }) {
+export function YourData({ account, onHistoryDeleted, onAccountDeleted }: {
+  account: AccountKind;
+  onHistoryDeleted: () => void;
+  onAccountDeleted: (clerkUser: ClerkRemoval) => void;
+}) {
   const api = useApi();
-  const { signOut } = useClerk();
   const headingId = useId();
   const [downloading, setDownloading] = useState(false);
   const [downloadMsg, setDownloadMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [asking, setAsking] = useState<Kind | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [gone, setGone] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const deletePending = useRef(false);
+  const active = useRef(false);
   const historyButton = useRef<HTMLButtonElement>(null);
   const accountButton = useRef<HTMLButtonElement>(null);
   const lastAsked = useRef<Kind | null>(null);
+
+  // Ignore action replies after the journal has switched auth sessions or been closed.
+  useLayoutEffect(() => {
+    active.current = true;
+    return () => { active.current = false; };
+  }, []);
 
   // Closing a confirmation puts focus back on the button that opened it.
   useEffect(() => {
@@ -107,6 +118,7 @@ export function YourData({ account, onHistoryDeleted }: { account: AccountKind; 
     setDownloadMsg(null);
     try {
       const data = await api<unknown>("/me/export");
+      if (!active.current) return;
       const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
       const a = document.createElement("a");
       a.href = url;
@@ -124,6 +136,7 @@ export function YourData({ account, onHistoryDeleted }: { account: AccountKind; 
   }
 
   function ask(kind: Kind) {
+    if (asking || downloading || deletePending.current) return;
     setNotice(null);
     setDownloadMsg(null);
     lastAsked.current = kind;
@@ -131,31 +144,29 @@ export function YourData({ account, onHistoryDeleted }: { account: AccountKind; 
   }
 
   async function runDelete(kind: Kind) {
-    if (kind === "history") {
-      const r = await api<HistoryDeleted>("/me/history", { method: "DELETE" });
-      onHistoryDeleted();
-      setNotice(countLine(r.deleted));
-      return;
+    if (deletePending.current) return;
+    deletePending.current = true;
+    setDeleting(true);
+    try {
+      if (kind === "history") {
+        const r = await api<HistoryDeleted>("/me/history", { method: "DELETE" });
+        if (!active.current) return;
+        onHistoryDeleted();
+        setNotice(countLine(r.deleted));
+        setAsking(null);
+      } else {
+        const r = await api<AccountDeleted>("/me", { method: "DELETE" });
+        if (active.current) onAccountDeleted(r.clerkUser);
+      }
+    } finally {
+      deletePending.current = false;
+      setDeleting(false);
     }
-    const r = await api<AccountDeleted>("/me", { method: "DELETE" });
-    // Without a sign-out, the next API call would quietly make a new empty account.
-    if (r.clerkUser === "deleted") {
-      await signOut({ redirectUrl: "/" });
-      return;
-    }
-    // The sign-in is still waiting for a hand removal: say so before leaving.
-    lastAsked.current = null;
-    setGone(
-      r.clerkUser === "manual"
-        ? `your larper data is deleted. your sign-in will be removed by hand ${MANUAL_REMOVAL_WINDOW}.`
-        : `your larper data is deleted, but removing your sign-in didn't go through. we'll remove it by hand ${MANUAL_REMOVAL_WINDOW}.`,
-    );
   }
 
+  const actionsLocked = asking !== null || downloading;
   let body: ReactNode;
-  if (gone) {
-    body = <GonePanel text={gone} onLeave={() => signOut({ redirectUrl: "/" })} />;
-  } else if (account === "checking") {
+  if (account === "checking") {
     body = <p role="status">checking your account…</p>;
   } else if (account === "unknown") {
     body = <p>couldn&apos;t check your account. reload the page to see your data options.</p>;
@@ -164,15 +175,15 @@ export function YourData({ account, onHistoryDeleted }: { account: AccountKind; 
   } else {
     body = (
       <>
-        <p>take a copy of what larper holds about you, or wipe it.</p>
+        <p>download a copy of your larper records, or delete your history or account.</p>
         <div className="larper-data-actions">
-          <OSButton onClick={download} disabled={downloading} aria-busy={downloading}>
+          <OSButton onClick={download} disabled={actionsLocked} aria-busy={downloading}>
             {downloading ? "preparing…" : "download my data"}
           </OSButton>
-          <OSButton ref={historyButton} onClick={() => ask("history")} aria-expanded={asking === "history"}>
+          <OSButton ref={historyButton} onClick={() => ask("history")} disabled={actionsLocked} aria-expanded={asking === "history"}>
             {COPY.history.open}
           </OSButton>
-          <OSButton ref={accountButton} onClick={() => ask("account")} aria-expanded={asking === "account"}>
+          <OSButton ref={accountButton} onClick={() => ask("account")} disabled={actionsLocked} aria-expanded={asking === "account"}>
             {COPY.account.open}
           </OSButton>
         </div>
@@ -184,11 +195,11 @@ export function YourData({ account, onHistoryDeleted }: { account: AccountKind; 
           <Confirm
             key={asking}
             kind={asking}
-            onCancel={() => setAsking(null)}
-            run={async () => {
-              await runDelete(asking);
-              setAsking(null);
+            busy={deleting}
+            onCancel={() => {
+              if (!deletePending.current) setAsking(null);
             }}
+            run={() => runDelete(asking)}
           />
         )}
       </>
@@ -205,36 +216,61 @@ export function YourData({ account, onHistoryDeleted }: { account: AccountKind; 
   );
 }
 
-function GonePanel({ text, onLeave }: { text: string; onLeave: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [busy, setBusy] = useState(false);
+export function AccountDeletionComplete({ clerkUser, status, onRetry }: {
+  clerkUser: ClerkRemoval;
+  status: "pending" | "failed" | "done";
+  onRetry: () => void;
+}) {
+  const ref = useRef<HTMLHeadingElement>(null);
   useEffect(() => ref.current?.focus(), []);
+
   return (
-    <div ref={ref} tabIndex={-1} role="status" className="larper-data-confirm">
-      <p>{text}</p>
-      <p>you&apos;re still signed in here until you leave.</p>
-      <OSButton
-        primary
-        disabled={busy}
-        onClick={() => {
-          setBusy(true);
-          onLeave();
-        }}
-      >
-        {busy ? "signing out…" : "sign out and leave"}
-      </OSButton>
-    </div>
+    <main className={`${larperOsClassName} larper-journal`}>
+      <OSMenuBar />
+      <div className="larper-journal-stage">
+        <OSWindow title="your data">
+          <OSQuestPanel>
+            <div className="larper-data">
+              <div role="status">
+                <h1 ref={ref} tabIndex={-1} className="larper-journal-name">your larper data is deleted.</h1>
+                {clerkUser === "manual" && <p>larper didn&apos;t remove your clerk sign-in.</p>}
+                {clerkUser === "failed" && <p>larper couldn&apos;t remove your clerk sign-in.</p>}
+                {status === "pending" && <p>signing out…</p>}
+                {status === "done" && <p>you&apos;re signed out.</p>}
+              </div>
+              {status === "failed" && (
+                <>
+                  <p role="alert">couldn&apos;t sign you out. try signing out again.</p>
+                  <div className="larper-data-actions">
+                    <OSButton primary onClick={onRetry}>retry sign-out</OSButton>
+                  </div>
+                </>
+              )}
+              {status === "done" && (
+                <div className="larper-data-actions">
+                  <Link href="/" replace className={osPrimaryButtonClass}>back to larper</Link>
+                </div>
+              )}
+            </div>
+          </OSQuestPanel>
+        </OSWindow>
+      </div>
+    </main>
   );
 }
 
-function Confirm({ kind, onCancel, run }: { kind: Kind; onCancel: () => void; run: () => Promise<void> }) {
+function Confirm({ kind, busy, onCancel, run }: {
+  kind: Kind;
+  busy: boolean;
+  onCancel: () => void;
+  run: () => Promise<void>;
+}) {
   const copy = COPY[kind];
   const titleId = useId();
   const inputId = useId();
   const ref = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const [typed, setTyped] = useState("");
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const armed = typed.trim().toLowerCase() === CONFIRM_WORD;
 
@@ -243,13 +279,11 @@ function Confirm({ kind, onCancel, run }: { kind: Kind; onCancel: () => void; ru
 
   async function go() {
     if (!armed || busy) return;
-    setBusy(true);
     setError(null);
     try {
       await run();
     } catch (e) {
       setError(failure(e));
-      setBusy(false);
     }
   }
 
@@ -272,9 +306,15 @@ function Confirm({ kind, onCancel, run }: { kind: Kind; onCancel: () => void; ru
       <h3 id={titleId} className="larper-journal-name">{copy.title}</h3>
       <p>this deletes:</p>
       <ul>{copy.deletes.map((d) => <li key={d}>{d}</li>)}</ul>
-      <p>this keeps:</p>
-      <ul>{copy.keeps.map((d) => <li key={d}>{d}</li>)}</ul>
+      {copy.keeps && (
+        <>
+          <p>this keeps:</p>
+          <ul>{copy.keeps.map((d) => <li key={d}>{d}</li>)}</ul>
+        </>
+      )}
+      {kind === "account" && <p>larper tries to remove your sign-in with clerk when it can, then tries to sign you out.</p>}
       <p>{BACKUPS}</p>
+      <p>{BROKER_RETENTION}</p>
       <form
         onSubmit={(e) => {
           e.preventDefault();

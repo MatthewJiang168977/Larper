@@ -44,7 +44,8 @@ const YOUR_DATA: { title: string; points: string[] }[] = [
   {
     title: "Download my data",
     points: [
-      "One JSON file with everything Larper holds about you: your account (its ID and when it was made), your taste profile, every quest you've been offered with its place, your check-ins and check-in attempts (distances only, never a position), your answers to “was it open?”, and your saved places.",
+      "One JSON file with your Larper account record (its ID, Clerk ID and creation date), taste profile, quest journal with places, check-ins and check-in attempts, answers to “was it open?”, and saved places.",
+      "For open or accepted quests, the journal includes your precise location at the time of the offer if Larper still holds it. Check-in attempts include measurements such as distance and location accuracy.",
       "Find it under “your data” at the bottom of the journal.",
     ],
   },
@@ -59,15 +60,21 @@ const YOUR_DATA: { title: string; points: string[] }[] = [
     title: "Delete my account",
     points: [
       "Removes all of the above, plus your taste profile and your Larper account.",
-      "Your sign-in lives with Clerk. Larper asks Clerk to remove it where it can; otherwise we remove it by hand within 7 days. Either way you're signed out when you delete.",
+      "Your sign-in lives with Clerk. Larper tries to remove it when automatic removal is available, then tries to sign you out.",
     ],
   },
   {
     title: "Backups",
     points: [
-      "Deleting takes your data out of the live app straight away. It is not removed from backups: those copies can stay for about 3 weeks (60 days at the very most).",
-      "If we ever restore from a backup, data you deleted after that backup was taken would come back. Delete it again if that happens.",
-      "The shared demo account can't be exported or deleted: it belongs to every visitor.",
+      "Copies of deleted data can stay for about 3 weeks under the usual backup schedule. Backup storage has a 60-day cleanup rule for old objects.",
+      "Restoring a backup could bring back data deleted after that backup was taken. You can delete it again if that happens.",
+      "The shared demo account can't be exported or deleted because it belongs to every visitor.",
+    ],
+  },
+  {
+    title: "Events already sent",
+    points: [
+      "Events already sent to our event broker can remain after deletion. Closed event segments are eligible for cleanup after about 7 days, with no fixed deletion deadline.",
     ],
   },
 ];
