@@ -2,11 +2,14 @@
 
 import { useCallback, useRef, useState } from "react";
 import { QuestScreen } from "@/components/quest/quest-home";
-import { ApiError, type Today, type useApi } from "@/lib/api";
+import { ApiError, type PlaceView, type Today, type useApi, type WasOpenAnswer } from "@/lib/api";
 import type { LocationState } from "@/hooks/use-location";
 import { center, deck, quest } from "../quest-fixture-data";
 
-const scenarios = ["offered", "accepted", "completed", "loading", "error", "empty", "surveying", "rejected"] as const;
+const scenarios = [
+  "offered", "accepted", "completed", "answered", "loading", "error", "empty", "surveying", "rejected",
+  "hours unverified, website and phone", "hours unverified, nothing", "hours open", "hours closed, split shift", "hours unknown",
+] as const;
 type Scenario = typeof scenarios[number];
 const location: LocationState = {
   loc: { ...center, source: "override" },
@@ -18,6 +21,35 @@ const leadDetails = [
   { category: "tea_room", distanceM: 170 },
   { category: "bar", distanceM: 360 },
 ];
+const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+// What each hours scenario adds to the place (open the sheet to see it).
+const hoursFor: Partial<Record<Scenario, Partial<PlaceView>>> = {
+  "hours unverified, website and phone": { website: "https://example.com", phone: "(212) 555-0142", hours: { status: "unverified" } },
+  "hours unverified, nothing": { hours: { status: "unverified" } },
+  "hours open": {
+    hours: {
+      status: "known", state: "open", today: [{ from: "11:00", to: "22:00", nextDay: false }],
+      nextChange: { at: "22:00", to: "closed" }, source: "osm", sourceUrl: "https://www.openstreetmap.org/node/1",
+      fetchedAt: daysAgo(3), services: [],
+    },
+    openConfirmations: { count: 4, last: { day: "sat", part: "afternoon" } },
+  },
+  "hours closed, split shift": {
+    hours: {
+      status: "known", state: "closed",
+      today: [{ from: "11:30", to: "14:30", nextDay: false }, { from: "17:00", to: "02:00", nextDay: true }],
+      nextChange: { at: "17:00", to: "open" }, source: "website", sourceUrl: "https://example.com/hours",
+      fetchedAt: daysAgo(200),
+      services: [{ kind: "kitchen", state: "closed", today: [{ from: "17:00", to: "23:00", nextDay: false }] }],
+    },
+  },
+  "hours unknown": {
+    hours: {
+      status: "known", state: "unknown", today: [], nextChange: null, source: "nyc_open_data", sourceUrl: null,
+      fetchedAt: daysAgo(40), services: [],
+    },
+  },
+};
 const sampleDeck = deck.map((item, index) => ({
   ...item, place: { ...item.place, ...leadDetails[index] },
 }));
@@ -25,12 +57,13 @@ const sampleDeck = deck.map((item, index) => ({
 function Fixture({ scenario, controls }: { scenario: Scenario; controls: React.ReactNode }) {
   const current = useRef({
     ...quest,
-    status: scenario === "completed" ? "completed" as const : scenario === "accepted" || scenario === "rejected" ? "accepted" as const : "offered" as const,
-    place: { ...quest.place, category: "record_shop", tags: ["vinyl"], distanceM: 395 },
+    status: scenario === "completed" || scenario === "answered" ? "completed" as const : scenario === "accepted" || scenario === "rejected" ? "accepted" as const : "offered" as const,
+    place: { ...quest.place, category: "record_shop", tags: ["vinyl"], distanceM: 395, ...hoursFor[scenario] },
+    wasOpen: scenario === "answered" ? ("yes" as WasOpenAnswer) : null,
     reasons: { liked: ["vinyl"], rarest: null, indie: true },
   });
   const failed = useRef(false);
-  const api: ReturnType<typeof useApi> = useCallback(async <T,>(path: string) => {
+  const api: ReturnType<typeof useApi> = useCallback(async <T,>(path: string, init?: RequestInit) => {
     if (path === "/me") return { id: "fixture", onboarded: true, topTags: ["vinyl"] } as T;
     if (path.startsWith("/quests/today")) {
       if (scenario === "loading") return new Promise<T>(() => {});
@@ -48,6 +81,11 @@ function Fixture({ scenario, controls }: { scenario: Scenario; controls: React.R
         surveying: scenario === "surveying" ? { pending: ["sample"], failed: [] } : null,
       };
       return today as T;
+    }
+    if (path.endsWith("/was-open")) {
+      const { answer } = JSON.parse(String(init?.body)) as { answer: WasOpenAnswer };
+      current.current = { ...current.current, wasOpen: answer };
+      return { wasOpen: answer } as T;
     }
     if (path.endsWith("/accept")) current.current = { ...current.current, status: "accepted" };
     if (path.endsWith("/complete")) {

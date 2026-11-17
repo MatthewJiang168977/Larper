@@ -17,7 +17,7 @@
 //   No coordinates, addresses, place names or IDs: a quest is its category and a
 //   distance bucket.
 import type { CaptureResult, PostHog, PostHogConfig } from "posthog-js";
-import type { SkipReason } from "./api";
+import type { SkipReason, WasOpenAnswer } from "./api";
 
 /** How far a quest is, coarsely. */
 export type DistanceBucket = "<0.5km" | "0.5-1km" | "1-2km" | "2-5km" | ">5km";
@@ -50,6 +50,8 @@ export interface AnalyticsEvents {
   /** The optional reason after "Not today", as a second event. */
   not_today_reason: { reason: SkipReason };
   checkin_attempted: { result: CheckinResult; simulated: boolean };
+  /** The optional "was it open?" after a check-in: the answer, and nothing about the place. */
+  was_open_answered: { answer: WasOpenAnswer };
 }
 
 export type AnalyticsEvent = keyof AnalyticsEvents;

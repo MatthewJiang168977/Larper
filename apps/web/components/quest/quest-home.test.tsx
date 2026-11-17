@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { forwardRef, useEffect } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Located } from "@/hooks/use-location";
@@ -74,6 +74,9 @@ vi.mock("@/lib/analytics", async (importOriginal) => ({
 const preciseFix = vi.fn<() => Promise<{ lat: number; lng: number; accuracyM: number } | null>>();
 vi.mock("@/lib/precise-fix", () => ({ getPreciseFix: () => preciseFix() }));
 
+// What the stand-in sheet's "Answer yes" came to.
+const answerResult: string[] = [];
+
 // The peek height the stand-in sheet reports.
 const SHEET_PEEK = 333;
 
@@ -94,8 +97,9 @@ vi.mock("./quest-sheet", () => ({
       stampSlam?: boolean;
       onStampSlammed?: () => void;
       onSnapChange?: (s: "peek" | "full") => void;
+      wasOpen?: { answer: string | null; onAnswer: (a: "yes" | "no" | "didnt_check") => Promise<void> } | null;
     }
-  >(function QuestSheet({ quest, deck, onAction, topLimit, onCoveredChange, note, onDismissNote, demo, stampSlam, onStampSlammed, onSnapChange }, ref) {
+  >(function QuestSheet({ quest, deck, onAction, topLimit, onCoveredChange, note, onDismissNote, demo, stampSlam, onStampSlammed, onSnapChange, wasOpen }, ref) {
     useEffect(() => onCoveredChange({ bottom: SHEET_PEEK, right: 0 }), [onCoveredChange]);
     return (
       <section ref={ref} data-top-limit={topLimit}>
@@ -118,6 +122,10 @@ vi.mock("./quest-sheet", () => ({
         <p>status: {quest?.status ?? "none"}</p>
         <p>demo: {String(!!demo)}</p>
         <p>slam: {String(!!stampSlam)}</p>
+        <p>was open: {wasOpen ? `asked (${wasOpen.answer ?? "unanswered"})` : "not asked"}</p>
+        <button onClick={() => wasOpen?.onAnswer("yes").then(() => void answerResult.push("ok"), () => void answerResult.push("failed"))}>
+          Answer yes
+        </button>
         <button onClick={onStampSlammed}>Slammed</button>
         <button onClick={() => onAction("accept")}>Accept</button>
         <button onClick={() => onAction("complete")}>I went</button>
@@ -190,6 +198,7 @@ beforeEach(() => {
   calls.length = 0;
   tracked.events.length = 0;
   tracked.demo.length = 0;
+  answerResult.length = 0;
   for (const k of Object.keys(routes)) delete routes[k];
   routes["/me"] = ok(ME);
 });
@@ -720,6 +729,94 @@ describe("QuestHome: checking in", () => {
     expect(note.textContent).toContain("Simulated check-in · demo account");
     expect(note.textContent).toContain("You're 306 km from Cafe Uno, so the demo pretended you arrived.");
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("QuestHome: was it open?", () => {
+  const done = (over: Record<string, unknown> = {}): Today => ({
+    ...withQuest,
+    quest: { ...withQuest.quest!, status: "completed", ...over },
+    deck: [],
+  });
+  const asked = (text: string) => screen.getByText(text);
+
+  it("is asked of a completed quest nobody has answered for", async () => {
+    routes["/quests/today"] = ok(done());
+    render(<QuestHome />);
+    await settle();
+    asked("was open: asked (unanswered)");
+  });
+
+  it("is asked after a real check-in", async () => {
+    routes["/quests/today"] = ok(withQuest);
+    routes["/quests/q1/complete"] = ok({ id: "q1", status: "completed" });
+    render(<QuestHome />);
+    await settle();
+    asked("was open: not asked");
+    fireEvent.click(screen.getByText("I went"));
+    await settle();
+    asked("was open: asked (unanswered)");
+  });
+
+  it("is not asked after a simulated check-in", async () => {
+    location = demoSpot("denied");
+    routes["/quests/today"] = ok(withQuest);
+    routes["/quests/q1/complete"] = ok({ id: "q1", status: "completed", simulated: true, distanceM: 4000 });
+    render(<QuestHome />);
+    await settle();
+    fireEvent.click(screen.getByText("I went"));
+    await settle();
+    asked("was open: not asked");
+  });
+
+  it("is not asked once it has an answer, or of the shared demo account", async () => {
+    routes["/quests/today"] = ok(done({ wasOpen: "no" }));
+    render(<QuestHome />);
+    await settle();
+    asked("was open: not asked");
+    cleanup();
+    routes["/me"] = ok({ ...ME, demo: true });
+    routes["/quests/today"] = ok(done());
+    render(<QuestHome />);
+    await settle();
+    asked("was open: not asked");
+  });
+
+  it("sends the answer, counts it with the answer alone, and keeps it as answered", async () => {
+    routes["/quests/today"] = ok(done());
+    routes["/quests/q1/was-open"] = ok({ wasOpen: "yes" });
+    render(<QuestHome />);
+    await settle();
+    fireEvent.click(screen.getByText("Answer yes"));
+    await settle();
+    expect(bodies.find((b) => b.path === "/quests/q1/was-open")?.body).toEqual({ answer: "yes" });
+    expect(tracked.events).toContainEqual(["was_open_answered", { answer: "yes" }]);
+    expect(answerResult).toEqual(["ok"]);
+    asked("was open: asked (yes)");
+  });
+
+  it("rejects on a failure, tracks nothing, and keeps the question", async () => {
+    routes["/quests/today"] = ok(done());
+    routes["/quests/q1/was-open"] = fail(new ApiError("boom", 500));
+    render(<QuestHome />);
+    await settle();
+    fireEvent.click(screen.getByText("Answer yes"));
+    await settle();
+    expect(answerResult).toEqual(["failed"]);
+    expect(tracked.events.some(([e]) => e === "was_open_answered")).toBe(false);
+    asked("was open: asked (unanswered)");
+  });
+
+  it.each([404, 405, 409])("drops the question quietly on a %i", async (status) => {
+    routes["/quests/today"] = ok(done());
+    routes["/quests/q1/was-open"] = fail(new ApiError("no", status));
+    render(<QuestHome />);
+    await settle();
+    fireEvent.click(screen.getByText("Answer yes"));
+    await settle();
+    expect(answerResult).toEqual(["ok"]);
+    expect(tracked.events.some(([e]) => e === "was_open_answered")).toBe(false);
+    asked("was open: not asked");
   });
 });
 
