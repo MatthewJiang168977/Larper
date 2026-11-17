@@ -6,7 +6,7 @@ import { ThrottlerStorageService, getOptionsToken, getStorageToken } from '@nest
 import { ClerkAuthGuard } from '../auth/auth.guard';
 import { FailOpenStorage } from '../throttle/fail-open.storage';
 import { UserLimitGuard } from '../throttle/guards';
-import { LIMITS } from '../throttle/limits';
+import { LIMITS, MINUTE, USER_WINDOWS } from '../throttle/limits';
 import { ThrottleModule } from '../throttle/throttle.module';
 import { DEMO_REFUSAL, DataDeletionService } from './data-deletion';
 import { DataExportService } from './data-export';
@@ -139,43 +139,45 @@ describe('MeDataController', () => {
     expect(deleteAccount).not.toHaveBeenCalled();
   });
 
-  it('limits each route per user per minute, with Retry-After, and counts users separately', async () => {
+  it.each(['minute', 'hour'] as const)('enforces the %s limit per subject and route across recreated rows', async (window) => {
     exportFn.mockResolvedValue({});
     deleteAccount.mockResolvedValue({});
     deleteHistory.mockResolvedValue({});
-    for (const [method, path, limit] of [
-      ['GET', '/me/export', LIMITS.dataExport.minute],
-      ['DELETE', '/me/history', LIMITS.dataDelete.minute],
-      ['DELETE', '/me', LIMITS.dataDelete.minute],
-    ] as const) {
-      const user = `lim-${method}${path.replace(/\W/g, '')}`;
-      for (let i = 0; i < limit; i++) expect((await call(method, path, user)).status).toBe(200);
-      const over = await call(method, path, user);
-      expect(over.status).toBe(429);
-      expect(Number(over.headers.get('retry-after'))).toBeGreaterThan(0);
-      expect((await call(method, path, `${user}-other`)).status).toBe(200);
+    const subject = `replace-row-${window}`;
+    const name = USER_WINDOWS[window];
+    const start = Date.now();
+    // Space hourly test requests so the minute window expires between hits.
+    const step = window === 'hour' ? MINUTE + 1 : 0;
+    const clock = jest.spyOn(Date, 'now');
+    try {
+      for (const [method, path, handler, limits] of [
+        ['GET', '/me/export', 'export', LIMITS.dataExport],
+        ['DELETE', '/me/history', 'deleteHistory', LIMITS.dataDelete],
+        ['DELETE', '/me', 'deleteAccount', LIMITS.dataDelete],
+      ] as const) {
+        increment.mockClear();
+        const limit = limits[window];
+        for (let i = 0; i < limit; i++) {
+          clock.mockReturnValue(start + i * step);
+          expect((await call(method, path, subject, String(101 + i))).status).toBe(200);
+        }
+        clock.mockReturnValue(start + limit * step);
+        const over = await call(method, path, subject, '999');
+        expect(over.status).toBe(429);
+        expect(Number(over.headers.get('retry-after'))).toBeGreaterThan(0);
+
+        const keys = increment.mock.calls.filter((args) => args[4] === name).map(([key]) => key);
+        expect(keys).toHaveLength(limit + 1);
+        expect(new Set(keys).size).toBe(1);
+        expect(keys[0]).toMatch(new RegExp(`^rl:${name}:MeDataController\\.${handler}:[0-9a-f]{64}$`));
+        expect((await call(method, path, `${subject}-other`, '999')).status).toBe(200);
+      }
+    } finally {
+      clock.mockRestore();
     }
   });
 
   it('declares the Clerk and per-user limit guards on the controller', () => {
     expect(Reflect.getMetadata(GUARDS_METADATA, MeDataController)).toEqual([ClerkAuthGuard, UserLimitGuard]);
-  });
-
-  it('limits DELETE /me across recreated rows using hashed keys in both windows', async () => {
-    deleteAccount.mockResolvedValue({});
-    increment.mockClear();
-    for (let i = 0; i < LIMITS.dataDelete.minute; i++) {
-      expect((await call('DELETE', '/me', 'resteady', String(101 + i))).status).toBe(200);
-    }
-    expect((await call('DELETE', '/me', 'resteady', '999')).status).toBe(429);
-    expect(deleteAccount.mock.calls.map(([user]) => user.id)).toEqual(['101', '102', '103']);
-
-    for (const window of ['user', 'user-hour']) {
-      const keys = increment.mock.calls.filter((call) => call[4] === window).map(([key]) => key);
-      expect(keys.length).toBeGreaterThan(1);
-      expect(new Set(keys).size).toBe(1);
-      expect(keys[0]).toMatch(new RegExp(`^rl:${window}:MeDataController\\.deleteAccount:[0-9a-f]{64}$`));
-    }
-    expect((await call('DELETE', '/me', 'other-subject', '999')).status).toBe(200);
   });
 });

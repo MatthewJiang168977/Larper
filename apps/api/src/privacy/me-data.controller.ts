@@ -9,10 +9,10 @@ import { isDemoUser } from '../demo/demo-account';
 import { DataDeletionService } from './data-deletion';
 import { DataExportService } from './data-export';
 
-// The guard has already verified the Clerk subject. Deleting and recreating the
-// Larper row must not reset either rate-limit window.
-const accountDeleteTracker = (req: { user?: AuthUser }) => {
-  if (!req.user) throw new Error('account delete tracker must run after ClerkAuthGuard');
+// Keep the existing hash namespace so DELETE /me keeps its counters. UserLimitGuard
+// adds the route and window to the key for all three data routes.
+const dataTracker = (req: { user?: AuthUser }) => {
+  if (!req.user) throw new Error('data tracker must run after ClerkAuthGuard');
   return createHash('sha256').update('larper:delete-account\0').update(req.user.clerkId).digest('hex');
 };
 
@@ -28,6 +28,10 @@ export const DEMO_EXPORT_REFUSAL = {
 @Controller('me')
 @UseGuards(ClerkAuthGuard, UserLimitGuard)
 @SkipThrottle(OPT_IN_WINDOWS)
+@Throttle({
+  [USER_WINDOWS.minute]: { getTracker: dataTracker },
+  [USER_WINDOWS.hour]: { getTracker: dataTracker },
+})
 export class MeDataController {
   constructor(
     private readonly exporter: DataExportService,
@@ -70,8 +74,8 @@ export class MeDataController {
   @HttpCode(200)
   @SkipThrottle({ [USER_WINDOWS.hour]: false })
   @Throttle({
-    [USER_WINDOWS.minute]: { limit: LIMITS.dataDelete.minute, getTracker: accountDeleteTracker },
-    [USER_WINDOWS.hour]: { limit: LIMITS.dataDelete.hour, getTracker: accountDeleteTracker },
+    [USER_WINDOWS.minute]: { limit: LIMITS.dataDelete.minute },
+    [USER_WINDOWS.hour]: { limit: LIMITS.dataDelete.hour },
   })
   deleteAccount(@CurrentUser() user: AuthUser) {
     return this.deletion.deleteAccount(user);
