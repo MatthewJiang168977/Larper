@@ -33,6 +33,8 @@ export function WasOpenQuestion({
   // (or the retry). Otherwise the question appears and goes without touching focus.
   const hadFocus = useRef(false);
   const [saved, setSaved] = useState(false);
+  // Set at once, where state would still be the old value for a second tap.
+  const sending = useRef(false);
   const thanks = answer !== null || saved;
 
   useEffect(() => {
@@ -43,17 +45,29 @@ export function WasOpenQuestion({
     hadFocus.current = false;
   }, [thanks, failed, pending]);
 
+  // Taken away while focus was in it (an API that turns out not to have it): focus goes
+  // to the done message, not to the page.
+  useEffect(
+    () => () => {
+      if (hadFocus.current) document.querySelector<HTMLElement>("[data-done-message]")?.focus();
+    },
+    [],
+  );
+
   const choose = (choice: WasOpenAnswer) => {
-    if (pending) return;
+    if (sending.current) return;
+    sending.current = true;
     hadFocus.current = !!groupRef.current?.contains(document.activeElement);
     setFailed(null);
     setPending(choice);
     onAnswer(choice).then(
       () => {
+        sending.current = false;
         setPending(null);
         setSaved(true);
       },
       () => {
+        sending.current = false;
         setPending(null);
         setFailed(choice);
       },

@@ -88,4 +88,30 @@ describe("WasOpenQuestion", () => {
     expect(screen.getByRole("status").textContent).toBe("thanks, noted");
     expect(screen.queryByRole("group")).toBeNull();
   });
+
+  it("hands focus to the done message if it's taken away while focus was in it", async () => {
+    const onAnswer = vi.fn(() => new Promise<void>(() => {}));
+    const { rerender } = render(
+      <>
+        <p data-done-message tabIndex={-1}>done</p>
+        <WasOpenQuestion answer={null} onAnswer={onAnswer} />
+      </>,
+    );
+    const yes = screen.getByRole("button", { name: "yes" });
+    yes.focus();
+    fireEvent.click(yes);
+    rerender(<p data-done-message tabIndex={-1}>done</p>);
+    expect(document.activeElement).toBe(screen.getByText("done"));
+  });
+
+  it("leaves focus alone when it's taken away and focus was elsewhere", () => {
+    render(
+      <>
+        <p data-done-message tabIndex={-1}>done</p>
+        <WasOpenQuestion answer={null} onAnswer={vi.fn()} />
+      </>,
+    );
+    cleanup();
+    expect(document.activeElement).toBe(document.body);
+  });
 });

@@ -1,5 +1,7 @@
 import type { HoursSource, Weekday, OpenConfirmations, PlaceHours, PlaceView } from "@/lib/api";
 import { ageDays, formatAge, formatClock, formatSpans } from "@/lib/format";
+import { type KnownHours, readConfirmations, readHours } from "@/lib/hours";
+import { telUrl, webUrl } from "@/lib/web-url";
 
 /** Older than this, the hours get a "may be out of date" note. */
 export const STALE_DAYS = 180;
@@ -19,11 +21,8 @@ const DAYS: Record<Weekday, string> = {
   mon: "monday", tue: "tuesday", wed: "wednesday", thu: "thursday", fri: "friday", sat: "saturday", sun: "sunday",
 };
 
-// The API's link, but only a web address: it ends up in an href.
-const webUrl = (url: string | null | undefined) => (url && /^https?:\/\//i.test(url) ? url : null);
-
-function Source({ hours }: { hours: Extract<PlaceHours, { status: "known" }> }) {
-  const label = SOURCES[hours.source] ?? null;
+function Source({ hours }: { hours: KnownHours }) {
+  const label = Object.hasOwn(SOURCES, hours.source) ? SOURCES[hours.source] : null;
   const href = webUrl(hours.sourceUrl) ?? (hours.source === "osm" ? OSM_COPYRIGHT : null);
   // OpenStreetMap's licence asks for the credit to link to its copyright page (or the
   // object); the venue's website links to the page the hours came from.
@@ -56,13 +55,15 @@ export function PlaceHoursNote({
   phone: PlaceView["phone"];
   now?: Date;
 }) {
+  const safe = readHours(hours);
+  const confirmations = readConfirmations(openConfirmations);
   return (
     <div className="mt-4 space-y-1 text-sm text-ink-label" data-testid="place-hours">
-      {hours.status === "known" ? <Known hours={hours} now={now} /> : <Unverified website={website} phone={phone} />}
-      {openConfirmations && openConfirmations.count > 0 && (
+      {safe.status === "known" ? <Known hours={safe} now={now} /> : <Unverified website={website} phone={phone} />}
+      {confirmations && (
         <p>
-          confirmed open by {openConfirmations.count} {openConfirmations.count === 1 ? "person" : "people"}, most
-          recently {DAYS[openConfirmations.last.day] ?? openConfirmations.last.day} {openConfirmations.last.part}
+          confirmed open by {confirmations.count} {confirmations.count === 1 ? "person" : "people"}, most
+          recently {DAYS[confirmations.last.day] ?? confirmations.last.day} {confirmations.last.part}
         </p>
       )}
     </div>
@@ -70,16 +71,18 @@ export function PlaceHoursNote({
 }
 
 function Unverified({ website, phone }: Pick<PlaceView, "website" | "phone">) {
+  const site = webUrl(website);
+  const tel = telUrl(phone);
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
       <p>hours unverified, check before you go</p>
-      {website && (
-        <a className={LINK} href={website} target="_blank" rel="noreferrer">
+      {site && (
+        <a className={LINK} href={site} target="_blank" rel="noreferrer">
           website
         </a>
       )}
-      {phone && (
-        <a className={LINK} href={`tel:${phone.replace(/[^\d+]/g, "")}`}>
+      {tel && (
+        <a className={LINK} href={tel}>
           call
         </a>
       )}
@@ -87,25 +90,27 @@ function Unverified({ website, phone }: Pick<PlaceView, "website" | "phone">) {
   );
 }
 
-function Known({ hours, now }: { hours: Extract<PlaceHours, { status: "known" }>; now: Date }) {
+function Known({ hours, now }: { hours: KnownHours; now: Date }) {
   const { state, nextChange } = hours;
+  const at = nextChange && formatClock(nextChange.at);
   const right =
     state === "open"
-      ? `open now${nextChange?.to === "closed" ? ` · closes ${formatClock(nextChange.at)}` : ""}`
+      ? `open now${at && nextChange.to === "closed" ? ` · closes ${at}` : ""}`
       : state === "closed"
-        ? `closed now${nextChange?.to === "open" ? ` · opens ${formatClock(nextChange.at)}` : ""}`
+        ? `closed now${at && nextChange.to === "open" ? ` · opens ${at}` : ""}`
         : "hours may differ today, check before you go";
-  const today = hours.today.length > 0 ? formatSpans(hours.today) : state === "closed" ? "closed today" : null;
-  const age = formatAge(hours.fetchedAt, now);
-  const days = ageDays(hours.fetchedAt, now);
+  const spans = formatSpans(hours.today);
+  const today = spans || (hours.today.length === 0 && state === "closed" ? "closed today" : null);
+  const age = hours.fetchedAt ? formatAge(hours.fetchedAt, now) : null;
+  const days = hours.fetchedAt ? ageDays(hours.fetchedAt, now) : null;
   const manual = hours.source === "manual";
-  const known = hours.source in SOURCES;
+  const known = Object.hasOwn(SOURCES, hours.source);
   return (
     <>
       <p>{right}</p>
-      {hours.today.length > 0 ? <p>today: {today}</p> : today && <p>{today}</p>}
+      {spans ? <p>today: {today}</p> : today && <p>{today}</p>}
       {hours.services.map((s) => {
-        const text = s.today.length > 0 ? formatSpans(s.today) : s.state === "closed" ? "closed today" : null;
+        const text = formatSpans(s.today) || (s.today.length === 0 && s.state === "closed" ? "closed today" : null);
         return text && <p key={s.kind}>{s.kind}: {text}</p>;
       })}
       <p>

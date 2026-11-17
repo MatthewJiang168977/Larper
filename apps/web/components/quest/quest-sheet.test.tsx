@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DeckItem, QuestView } from "@/lib/api";
+import type { DeckItem, PlaceView, QuestView } from "@/lib/api";
 import { formatDistance } from "@/lib/format";
 import { hoursSearchUrl, QuestSheet } from "./quest-sheet";
 import { DOCK_MIN_WIDTH_PX, DOCK_RESERVED_PX } from "./dock";
@@ -556,6 +556,44 @@ describe("QuestSheet: the check-in note", () => {
     expect(screen.getByRole("button", { name: "Checking…" })).toHaveProperty("disabled", true);
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(dismiss).toHaveBeenCalled();
+  });
+});
+
+describe("QuestSheet: links from the API", () => {
+  const withPlace = (over: Partial<PlaceView>) =>
+    render(
+      <QuestSheet
+        quest={{ ...quest("offered"), place: { ...place("p1", "Cafe Uno"), ...over } }}
+        deck={[]}
+        selectedId={null}
+        onSelect={vi.fn()}
+        onAction={vi.fn()}
+        busy={false}
+        topLimit={120}
+        onCoveredChange={vi.fn()}
+      />,
+    );
+  const hrefs = () => within(rest()).queryAllByRole("link").map((l) => l.getAttribute("href"));
+
+  it.each(["javascript:alert(1)", "data:text/html,<b>x</b>", "ftp://x.example", "//x.example", "x.example"])(
+    "renders no website or instagram link for %s, nor a duplicate in the hours note",
+    (bad) => {
+      withPlace({ website: bad, instagram: bad });
+      expect(hrefs().filter((h) => h === bad)).toEqual([]);
+      expect(within(rest()).queryByRole("link", { name: /^website$/i })).toBeNull();
+      expect(within(rest()).queryByRole("link", { name: "Instagram" })).toBeNull();
+    },
+  );
+
+  it("renders a phone with no digits as no call link, in both places", () => {
+    withPlace({ phone: "call us" });
+    expect(within(rest()).queryByRole("link", { name: /^call$/i })).toBeNull();
+    expect(hrefs().some((h) => h?.startsWith("tel:"))).toBe(false);
+  });
+
+  it("keeps http(s) links working", () => {
+    withPlace({ website: "http://a.example", instagram: "https://instagram.com/a" });
+    expect(hrefs()).toEqual(expect.arrayContaining(["http://a.example", "https://instagram.com/a"]));
   });
 });
 

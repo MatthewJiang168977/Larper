@@ -15,8 +15,10 @@ describe("formatClock", () => {
     ["2:00", "2 am"],
   ])("%s is %s", (from, to) => expect(formatClock(from)).toBe(to));
 
-  it("returns what isn't a time as it came", () => {
-    for (const v of ["", "soon", "25:00", "24:30", "10:75"]) expect(formatClock(v)).toBe(v);
+  it("is null for what isn't a time", () => {
+    for (const v of ["", "soon", "25:00", "24:30", "10:75", "25:30", "2026-11-16T10:00:00Z", null, undefined, 5]) {
+      expect(formatClock(v)).toBeNull();
+    }
   });
 });
 
@@ -26,6 +28,12 @@ describe("spans", () => {
     expect(formatSpan({ from: "17:00", to: "02:00" })).toBe("5 pm–2 am");
     expect(formatSpan({ from: "17:00", to: "24:00" })).toBe("5 pm–midnight");
     expect(formatSpans([{ from: "11:30", to: "14:30" }, { from: "17:00", to: "00:00" }])).toBe("11:30 am–2:30 pm, 5 pm–midnight");
+  });
+
+  it("leaves out a span that can't be written", () => {
+    expect(formatSpan({ from: "", to: "22:00" })).toBeNull();
+    expect(formatSpan({ from: "11:00", to: "25:30" })).toBeNull();
+    expect(formatSpans([{ from: "", to: "22:00" }, { from: "17:00", to: "22:00" }])).toBe("5 pm–10 pm");
   });
 });
 
@@ -43,8 +51,9 @@ describe("formatAge", () => {
     [200, "6 months ago"],
   ])("%i days is %s", (days, text) => expect(formatAge(ago(days), now)).toBe(text));
 
-  it("calls a date in the future today, and a non-date nothing", () => {
-    expect(formatAge(ago(-3), now)).toBe("today");
+  it("calls a little clock skew today, a date well in the future nothing, and a non-date nothing", () => {
+    expect(formatAge(ago(-0.5), now)).toBe("today");
+    expect(formatAge(ago(-3), now)).toBeNull();
     expect(formatAge("soon", now)).toBeNull();
     expect(ageDays("soon", now)).toBeNull();
     expect(ageDays(ago(200), now)).toBe(200);

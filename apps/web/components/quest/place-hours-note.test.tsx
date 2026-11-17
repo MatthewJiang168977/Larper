@@ -218,3 +218,86 @@ describe("PlaceHoursNote: confirmations", () => {
     expect(text()).not.toContain("confirmed");
   });
 });
+
+describe("PlaceHoursNote: malformed data from the API", () => {
+  const bad = (raw: unknown, over: Partial<React.ComponentProps<typeof PlaceHoursNote>> = {}) =>
+    note({ hours: raw as PlaceHours, ...over });
+
+  it("never crashes, and says nothing is known, for each kind of mess", () => {
+    for (const raw of [
+      { status: "known" },
+      { status: "known", state: "open", today: null, services: undefined },
+      { status: "known", state: "open", today: [null, { from: "", to: "25:30" }], services: [null] },
+      { status: "weird", state: "closed" },
+      null,
+    ]) {
+      cleanup();
+      expect(() => bad(raw)).not.toThrow();
+    }
+  });
+
+  it("reads an unknown status as unverified, with no 'closed'", () => {
+    bad({ status: "weird", state: "closed", today: [] });
+    expect(text()).toBe("hours unverified, check before you go");
+  });
+
+  it("says closed only for a known hours whose state is exactly closed", () => {
+    bad({ ...known({ source: "osm" }), state: "CLOSED" });
+    expect(text().toLowerCase()).not.toContain("closed");
+    expect(screen.getByText("hours may differ today, check before you go")).toBeTruthy();
+  });
+
+  it("shows no today line for spans that can't be read", () => {
+    bad({ ...known(), today: [null, { from: "", to: "22:00" }, { from: "11:00", to: "25:30" }] });
+    expect(text()).not.toContain("today:");
+    expect(text()).not.toContain("closed today");
+  });
+
+  it("copes with a missing services list", () => {
+    bad({ ...known(), services: undefined });
+    expect(screen.getByText("open now")).toBeTruthy();
+  });
+
+  it("leaves out the clause when nextChange.at is a timestamp", () => {
+    bad(known({ nextChange: { at: "2026-11-16T22:00:00Z", to: "closed" } }));
+    expect(screen.getByText("open now")).toBeTruthy();
+  });
+
+  it("names no source for one it doesn't know, but keeps the hours", () => {
+    bad({ ...known(), source: "psychic" });
+    expect(text()).toContain("today: 11 am–10 pm");
+    expect(text()).not.toContain("from ");
+    expect(text()).toContain("3 days ago");
+  });
+
+  it("shows no age for a missing, garbage or future fetchedAt", () => {
+    for (const fetchedAt of [null, undefined, "garbage", "2099-01-01T00:00:00Z"]) {
+      cleanup();
+      bad({ ...known(), fetchedAt });
+      expect(text()).not.toContain("checked");
+      expect(text()).not.toContain("out of date");
+    }
+  });
+
+  it("shows no confirmation line for a broken one", () => {
+    for (const oc of [
+      { count: 2, last: null },
+      { count: 0, last: { day: "sat", part: "night" } },
+      { count: -3, last: { day: "sat", part: "night" } },
+      { count: 1.5, last: { day: "sat", part: "night" } },
+      { count: 2, last: { day: "someday", part: "night" } },
+    ]) {
+      cleanup();
+      note({ openConfirmations: oc as never });
+      expect(text()).not.toContain("confirmed");
+    }
+  });
+
+  it("links only http(s) websites and numbers with digits when unverified", () => {
+    note({ website: "javascript:alert(1)", phone: "call us" });
+    expect(screen.queryAllByRole("link")).toHaveLength(0);
+    cleanup();
+    note({ website: "data:text/html,x" });
+    expect(screen.queryAllByRole("link")).toHaveLength(0);
+  });
+});

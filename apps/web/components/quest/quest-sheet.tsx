@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import Link from "next/link";
 import type { DeckItem, PlaceView, QuestView, Reasons, WasOpenAnswer } from "@/lib/api";
 import { formatDistance } from "@/lib/format";
+import { telUrl, webUrl } from "@/lib/web-url";
 import { DOCK_MIN_WIDTH_PX, DOCK_RESERVED_PX } from "./dock";
 import { fullHeight, offsetFor, resolveSnap, type Snap, snapForKey } from "./sheet-snap";
 import { PlaceHoursNote } from "./place-hours-note";
@@ -468,7 +469,7 @@ function DoneStamp({ slam, onSlammed, onImpact }: { slam?: boolean; onSlammed?: 
 // One quest a day: after a check-in the sheet stays on it, and says when the next one comes.
 function DoneForToday({ demo }: { demo?: boolean }) {
   return (
-    <p className="mt-3 text-sm text-ink-soft">
+    <p data-done-message tabIndex={-1} className="mt-3 text-sm text-ink-soft">
       {demo
         ? "That's the demo's quest done. With your own account, the next one comes tomorrow."
         : "Done for today. Your next quest comes tomorrow."}{" "}
@@ -612,6 +613,10 @@ export function hoursSearchUrl(place: Pick<PlaceView, "name" | "lat" | "lng">) {
 }
 
 function Links({ place }: { place: PlaceView }) {
+  // Only web addresses go into an href (these strings come from the API).
+  const website = webUrl(place.website);
+  const instagram = webUrl(place.instagram);
+  const tel = telUrl(place.phone);
   return (
     <>
       {/* Each link has a 44 px hit area; the gaps keep neighbours' areas apart, also
@@ -625,18 +630,18 @@ function Links({ place }: { place: PlaceView }) {
         >
           Directions
         </a>
-        {place.website && (
-          <a className="hit-target underline underline-offset-4" href={place.website} target="_blank" rel="noreferrer">
+        {website && (
+          <a className="hit-target underline underline-offset-4" href={website} target="_blank" rel="noreferrer">
             Website
           </a>
         )}
-        {place.instagram && (
-          <a className="hit-target underline underline-offset-4" href={place.instagram} target="_blank" rel="noreferrer">
+        {instagram && (
+          <a className="hit-target underline underline-offset-4" href={instagram} target="_blank" rel="noreferrer">
             Instagram
           </a>
         )}
-        {place.phone && (
-          <a className="hit-target underline underline-offset-4" href={`tel:${place.phone.replace(/[^\d+]/g, "")}`}>
+        {tel && (
+          <a className="hit-target underline underline-offset-4" href={tel}>
             Call
           </a>
         )}

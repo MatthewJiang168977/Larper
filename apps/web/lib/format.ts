@@ -10,14 +10,15 @@ export function formatDistance(m: number) {
 
 /**
  * "17:00" as "5 pm", "11:30" as "11:30 am", "00:00" and "24:00" as "midnight", "12:00" as
- * "noon". Anything that isn't an "HH:MM" is returned as it came.
+ * "noon". Null for anything that isn't an "HH:MM" from 00:00 to 24:00.
  */
-export function formatClock(hhmm: string): string {
+export function formatClock(hhmm: unknown): string | null {
+  if (typeof hhmm !== "string") return null;
   const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm);
-  if (!m) return hhmm;
+  if (!m) return null;
   const h = Number(m[1]);
   const min = Number(m[2]);
-  if (h > 24 || min > 59 || (h === 24 && min !== 0)) return hhmm;
+  if (h > 24 || min > 59 || (h === 24 && min !== 0)) return null;
   if (min === 0 && (h === 0 || h === 24)) return "midnight";
   if (min === 0 && h === 12) return "noon";
   const suffix = h % 24 < 12 ? "am" : "pm";
@@ -25,14 +26,16 @@ export function formatClock(hhmm: string): string {
   return `${hour}${min === 0 ? "" : `:${m[2]}`} ${suffix}`;
 }
 
-/** "11 am–10 pm", "5 pm–2 am" (a span that runs past midnight reads the same way). */
-export function formatSpan(span: { from: string; to: string }): string {
-  return `${formatClock(span.from)}–${formatClock(span.to)}`;
+/** "11 am–10 pm", "5 pm–2 am" (past midnight reads the same). Null if either end isn't a time. */
+export function formatSpan(span: { from: string; to: string }): string | null {
+  const from = formatClock(span.from);
+  const to = formatClock(span.to);
+  return from && to ? `${from}–${to}` : null;
 }
 
-/** "11 am–2 pm, 5 pm–10 pm". */
+/** "11 am–2 pm, 5 pm–10 pm"; a span that can't be written is left out. */
 export function formatSpans(spans: { from: string; to: string }[]): string {
-  return spans.map(formatSpan).join(", ");
+  return spans.flatMap((s) => formatSpan(s) ?? []).join(", ");
 }
 
 const DAY_MS = 86_400_000;
@@ -45,6 +48,8 @@ export function formatAge(iso: string, now: Date): string | null {
   const then = Date.parse(iso);
   if (Number.isNaN(then)) return null;
   const days = Math.floor((now.getTime() - then) / DAY_MS);
+  // A little ahead of us is clock skew; further than that isn't a date to trust.
+  if (days < -1) return null;
   if (days < 1) return "today";
   if (days === 1) return "yesterday";
   if (days < 14) return `${days} days ago`;

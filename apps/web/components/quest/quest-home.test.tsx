@@ -784,6 +784,14 @@ describe("QuestHome: was it open?", () => {
     asked("was open: not asked");
   });
 
+  it("is not asked while who you are is still loading", async () => {
+    routes["/me"] = never;
+    routes["/quests/today"] = ok(done());
+    render(<QuestHome />);
+    await settle();
+    expect(screen.queryByText(/^was open:/)).toBeNull();
+  });
+
   it("is not asked once it has an answer, or of the shared demo account", async () => {
     routes["/quests/today"] = ok(done({ wasOpen: "no" }));
     render(<QuestHome />);
