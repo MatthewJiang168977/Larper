@@ -233,8 +233,9 @@ flowchart LR
      `QUEST_MIN_CONFIDENCE` (default 0.7), in a blocked category (medical, adult, worship, schools,
      government, residential, day care, funeral homes, courts and jails, casinos and other gambling venues)
      and duplicates (same name within 50 m), before anything is scored.
-     `QUEST_GATE_EVENING_UNKNOWN_HOURS=on` also holds back places with unknown opening hours from 6pm
-     to 6am New York time (off by default: no place has hours yet); it is applied after the cache.
+     `QUEST_GATE_EVENING_UNKNOWN_HOURS=on` also offers, from 6pm to 6am New York time, only places whose
+     regular schedule (`place_hours_facts`, migration 0018) says they are open right then: unknown or closed
+     places are held back (off by default: few places have hours on file yet); it is applied after the cache.
    - Candidates are scored in TypeScript, and the top 200 are cached for 10 min.
 6. **Re-rank.** Places finished recently are dropped, for a window that depends on how the
    quest ended (`REOFFER_AFTER_DAYS` in `quests/transitions.ts`):

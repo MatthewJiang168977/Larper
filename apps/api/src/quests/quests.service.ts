@@ -17,11 +17,14 @@ import { QuestAction as EventAction, SkipReason as EventSkipReason } from '../ge
 import { TagsService } from '../profile/tags.service';
 import { AreasService } from './areas.service';
 import { attemptParams, CheckInAttempt, checkInLogLine, judgeCheckIn, RECORD_ATTEMPT_SQL, rejection } from './checkin';
+import { loadPlaceHours, loadRegularSchedules, NO_HOURS, type PlaceHours, type OpenConfirmations } from '../hours/place-hours';
+import { type Schedule, stateAt } from '../hours/schedule';
 import {
   applyStaticGate,
   BLOCKED_CATEGORIES,
   GateConfig,
   gateConfigFromEnv,
+  isEveningInNyc,
   passesHoursRule,
 } from './eligibility';
 import { cellOf, cellsCovering, haversineM } from './geo';
@@ -86,6 +89,12 @@ export interface PlaceView {
   website: string | null;
   instagram: string | null;
   phone: string | null;
+  // Opening hours (migration 0018). 'unverified' = no usable schedule on file, which says nothing
+  // about whether the place is open. Never shown as closed.
+  hours: PlaceHours;
+  // How many different people said it was open when they checked in (last 180 days), and the
+  // newest one's day and part of day in New York. No dates, no times, no people.
+  openConfirmations: OpenConfirmations | null;
 }
 
 export interface SavedPlaceView {
@@ -97,6 +106,11 @@ export interface SavedPlaceView {
   savedAt: string;
 }
 
+export const WAS_OPEN_ANSWERS = ['yes', 'no', 'didnt_check'] as const;
+export type WasOpenAnswer = (typeof WAS_OPEN_ANSWERS)[number];
+export const isWasOpenAnswer = (x: unknown): x is WasOpenAnswer =>
+  typeof x === 'string' && (WAS_OPEN_ANSWERS as readonly string[]).includes(x);
+
 export interface QuestView {
   id: string;
   status: QuestStatus;
@@ -104,6 +118,8 @@ export interface QuestView {
   reasons: Reasons;
   createdAt: string;
   place: PlaceView;
+  // This user's answer to "was it open?" for this quest (null: not asked, or not yet answered).
+  wasOpen: WasOpenAnswer | null;
 }
 
 export interface DeckItem {
@@ -147,9 +163,14 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     // The cached deck already holds only places that pass the gate's static rules (rank).
     // The evening rule depends on the clock, so it is applied here, like the exclusions:
     // an empty deck is the usual empty state, and a quest the user already has stays.
+    // Its hours are looked up only when the rule is active (flag on, New York evening), in
+    // one query for the candidates that survive the exclusions.
     const excluded = await this.recentlyDone(userId);
+    const candidates = ranked.filter((p) => !excluded.has(p.id));
+    const eveningRule = this.gate.eveningUnknownHours && isEveningInNyc(now);
+    const schedules = eveningRule ? await loadRegularSchedules(this.pg, candidates.map((p) => p.id)) : null;
     const deck = mmr(
-      ranked.filter((p) => !excluded.has(p.id) && passesHoursRule(hoursKnown(p), now, this.gate.eveningUnknownHours)),
+      candidates.filter((p) => passesHoursRule(openAt(schedules, p.id, now), now, this.gate.eveningUnknownHours)),
       DECK_SIZE,
     );
 
@@ -160,15 +181,16 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     if (!quest && !demo) quest = await this.doneToday(userId, lat, lng);
     if (!quest && deck.length && surveyed) quest = await this.offer(userId, deck[0], lat, lng);
     const done = quest?.status === 'completed';
+    const leads = done ? [] : deck.filter((p) => p.id !== quest?.place.id).slice(0, DECK_SIZE - 1);
+
+    // Hours and confirmations for the places in this response (the quest and the leads, at
+    // most ten), in one query. The deck cache never holds them: they change with the clock.
+    const hours = await loadPlaceHours(this.pg, [...(quest ? [quest.place.id] : []), ...leads.map((p) => p.id)], now);
+    const withHours = (p: PlaceView): PlaceView => ({ ...p, ...(hours.get(p.id) ?? NO_HOURS) });
 
     return {
-      quest,
-      deck: done
-        ? []
-        : deck
-            .filter((p) => p.id !== quest?.place.id)
-            .slice(0, DECK_SIZE - 1)
-            .map((p) => ({ score: p.score, reasons: p.reasons, place: toPlaceView(p, lat, lng) })),
+      quest: quest ? { ...quest, place: withHours(quest.place) } : quest,
+      deck: leads.map((p) => ({ score: p.score, reasons: p.reasons, place: withHours(toPlaceView(p, lat, lng)) })),
       cache: hit ? 'hit' : 'miss',
       surveying: survey.pending.length || survey.failed.length || survey.outside.length ? survey : null,
     };
@@ -316,6 +338,37 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     } finally {
       tx.release();
     }
+  }
+
+  // After a check-in: "was it open?". Stored as a hours fact (source 'check-in', migration 0018),
+  // one per quest, and the FIRST answer stands: a repeat call changes nothing and returns it.
+  // The place, the user and the time come from the quest row, never from the request. Nobody
+  // went on a simulated demo check-in, so it has nothing to say. A "no" is only recorded:
+  // nothing reacts to it yet (no event, no taste, no effect on the schedule).
+  async wasOpen(userId: string, questId: string, answer: WasOpenAnswer): Promise<{ wasOpen: WasOpenAnswer }> {
+    const { rows } = await this.pg.query<{ status: QuestStatus; placeId: string; at: Date; simulated: boolean }>(
+      `SELECT status, place_id::text AS "placeId", coalesce(completed_at, updated_at) AS at,
+              coalesce((reasons->>'simulated')::boolean, false) AS simulated
+       FROM quests WHERE id = $1 AND user_id = $2`,
+      [questId, userId],
+    );
+    if (!rows.length) throw new NotFoundException('no such quest');
+    const q = rows[0];
+    if (q.status !== 'completed') throw new ConflictException('only a quest you checked in at can be asked about');
+    if (q.simulated) throw new ConflictException('a simulated check-in has no answer: nobody went');
+
+    await this.pg.query(
+      `INSERT INTO place_hours_facts (place_id, kind, source, fetched_at, confidence, was_open, quest_id, user_id)
+       VALUES ($1, 'observation', 'check-in', $2, $3::real, $4::boolean, $5, $6)
+       ON CONFLICT (quest_id) WHERE quest_id IS NOT NULL DO NOTHING`,
+      [q.placeId, q.at, answer === 'didnt_check' ? 0 : 0.9, answer === 'didnt_check' ? null : answer === 'yes', questId, userId],
+    );
+    const stored = await this.pg.query<{ wasOpen: boolean | null }>(
+      'SELECT was_open AS "wasOpen" FROM place_hours_facts WHERE quest_id = $1 AND user_id = $2',
+      [questId, userId],
+    );
+    const w = stored.rows[0]?.wasOpen;
+    return { wasOpen: w === true ? 'yes' : w === false ? 'no' : 'didnt_check' };
   }
 
   // A check-in counts only near the place (the rule and its messages: checkin.ts).
@@ -580,7 +633,9 @@ const QUEST_SELECT = `
   SELECT q.id::text, q.status, q.score::float8 AS score, q.reasons, q.created_at AS "createdAt",
          p.id::text AS "placeId", p.name, ST_Y(p.geom::geometry) AS lat, ST_X(p.geom::geometry) AS lng,
          p.categories[array_length(p.categories, 1)] AS category, p.tags,
-         p.website, p.instagram, p.phone
+         p.website, p.instagram, p.phone,
+         (SELECT CASE WHEN h.was_open IS TRUE THEN 'yes' WHEN h.was_open IS FALSE THEN 'no' ELSE 'didnt_check' END
+          FROM place_hours_facts h WHERE h.quest_id = q.id) AS "wasOpen"
   FROM quests q JOIN places p ON p.id = q.place_id`;
 
 interface QuestRow {
@@ -598,6 +653,7 @@ interface QuestRow {
   website: string | null;
   instagram: string | null;
   phone: string | null;
+  wasOpen: WasOpenAnswer | null;
 }
 
 function toQuestView(r: QuestRow, lat: number, lng: number): QuestView {
@@ -608,12 +664,13 @@ function toQuestView(r: QuestRow, lat: number, lng: number): QuestView {
     reasons: r.reasons,
     createdAt: r.createdAt.toISOString(),
     place: toPlaceView({ ...r, id: r.placeId }, lat, lng),
+    wasOpen: r.wasOpen,
   };
 }
 
 // Distances in the cached deck are from the cell center; report them from the user.
 function toPlaceView(
-  p: Omit<PlaceView, 'distanceM'>,
+  p: Omit<PlaceView, 'distanceM' | 'hours' | 'openConfirmations'>,
   lat: number,
   lng: number,
 ): PlaceView {
@@ -628,13 +685,13 @@ function toPlaceView(
     website: p.website,
     instagram: p.instagram,
     phone: p.phone,
+    ...NO_HOURS, // today() fills the real ones in, for the places it returns
   };
 }
 
-// Places have no opening hours yet (nothing in the schema holds them), so none is known.
-// When real hours land, this is where they plug in: true when the place has hours on
-// file, which then lets it through the evening rule (eligibility.ts, passesHoursRule).
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- the place is what real hours will be looked up by
-function hoursKnown(_place: { id: string }): boolean {
-  return false;
+// Whether the place's regular schedule says it is open at this instant. No schedule, an invalid
+// one, or one that cannot say (unknown) is NOT open: the evening rule only offers what is known
+// to be open. A check-in's "it was open" answer is not a schedule and never counts here.
+function openAt(schedules: Map<string, Schedule> | null, placeId: string, now: Date): boolean {
+  return stateAt(schedules?.get(placeId) ?? null, now) === 'open';
 }
