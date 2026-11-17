@@ -1,17 +1,20 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Pool } from 'pg';
 import { PG } from '../db/db.module';
 import { TagsService } from '../profile/tags.service';
 import { topTags } from '../profile/taste';
 
 export const EXPORT_VERSION = 1;
+export const ONBOARDING_NOTE = "your onboarding picks only seeded the taste profile; they aren't kept separately";
 
 /** Everything Larper holds about one signed-in user (GET /me/export). */
 export interface DataExport {
   version: number;
   exportedAt: string;
   account: { id: string; clerkId: string; createdAt: string };
-  /** The taste profile. Onboarding answers aren't stored: they only seeded this. */
+  /** Onboarding answers aren't kept: they only seeded the taste profile. Said here so it is visible. */
+  onboarding: { stored: false; note: string };
+  /** The taste profile. */
   taste: null | {
     source: string;
     updatedAt: string;
@@ -129,16 +132,21 @@ export class DataExportService {
   // reads only that user's rows. Nothing from another user, and nothing internal: no
   // outbox, jobs or processed-events rows.
   async export(userId: string, now = new Date()): Promise<DataExport> {
-    const [account, taste, quests, attempts, answers, saved] = await Promise.all([
-      this.pg.query<{ id: string; clerk_id: string; created_at: Date }>(
+    // One snapshot: the six reads see the same moment, on one connection, in a read-only
+    // REPEATABLE READ transaction (a delete or an accept in between can't tear the file).
+    const db = await this.pg.connect();
+    let account, taste, quests, attempts, answers, saved;
+    try {
+      await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY');
+      account = await db.query<{ id: string; clerk_id: string; created_at: Date }>(
         'SELECT id::text, clerk_id, created_at FROM users WHERE id = $1',
         [userId],
-      ),
-      this.pg.query<{ vec: string; source: string; updated_at: Date }>(
+      );
+      taste = await db.query<{ vec: string; source: string; updated_at: Date }>(
         'SELECT vec::text AS vec, source, updated_at FROM taste_profiles WHERE user_id = $1',
         [userId],
-      ),
-      this.pg.query<QuestRow>(
+      );
+      quests = await db.query<QuestRow>(
         `SELECT q.id::text, q.status, q.skip_reason, q.score::float8 AS score, q.rarity::float8 AS rarity,
                 q.reasons - 'simulated' AS reasons,
                 coalesce((q.reasons->>'simulated')::boolean, false) AS simulated,
@@ -147,22 +155,30 @@ export class DataExportService {
          FROM quests q JOIN places p ON p.id = q.place_id
          WHERE q.user_id = $1 ORDER BY q.created_at DESC, q.id DESC`,
         [userId],
-      ),
-      this.pg.query<AttemptRow>('SELECT * FROM export_my_checkin_attempts($1)', [userId]),
-      this.pg.query<AnswerRow>(
+      );
+      attempts = await db.query<AttemptRow>('SELECT * FROM export_my_checkin_attempts($1)', [userId]);
+      answers = await db.query<AnswerRow>(
         `SELECT h.quest_id::text, h.was_open, h.fetched_at, ${PLACE_COLS}
          FROM place_hours_facts h JOIN places p ON p.id = h.place_id
          WHERE h.user_id = $1 AND h.kind = 'observation' ORDER BY h.fetched_at DESC, h.id DESC`,
         [userId],
-      ),
-      this.pg.query<SavedRow>(
+      );
+      saved = await db.query<SavedRow>(
         `SELECT s.quest_id::text, s.created_at, ${PLACE_COLS}
          FROM saved_places s JOIN places p ON p.id = s.place_id
          WHERE s.user_id = $1 ORDER BY s.created_at DESC, p.id DESC`,
         [userId],
-      ),
-    ]);
+      );
+      await db.query('COMMIT');
+    } catch (err) {
+      await db.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      db.release();
+    }
 
+    // Gone between the session check and here (the account was just deleted).
+    if (!account.rows.length) throw new NotFoundException('no such account');
     const acct = account.rows[0];
     let tasteOut: DataExport['taste'] = null;
     if (taste.rows.length) {
@@ -185,6 +201,7 @@ export class DataExportService {
       version: EXPORT_VERSION,
       exportedAt: now.toISOString(),
       account: { id: acct.id, clerkId: acct.clerk_id, createdAt: acct.created_at.toISOString() },
+      onboarding: { stored: false, note: ONBOARDING_NOTE },
       taste: tasteOut,
       journal: quests.rows.map((r) => ({
         id: r.id,

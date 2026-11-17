@@ -48,12 +48,18 @@ behind. `place_hours_facts` schedule facts (`user_id` NULL) are places' data, no
 
 After either delete the API drops the user's cached decks (`deck:*:<id>:*` in Redis).
 
+### Races
+
+A request running while `DELETE /me` executes may fail with a 500 (its user row vanishes
+under it), and a quest created while `DELETE /me/history` runs may survive it. Repeating the
+delete clears both.
+
 ### The exact offer position
 
 `quests.origin` (where the user was when an offer was made) is now nullable and is set to NULL
 as soon as the offer is resolved: when a quest is skipped, completed or expired (in the same
 statement that does it), and by a sweep on API start and every six hours for the rest
-(`SCRUB_ORIGINS_SQL`). Migration 0020 also clears every existing resolved quest. It is only
+(`SCRUB_ORIGINS_SQL`). Migration 0020 also clears every existing resolved quest; that backfill holds an ACCESS EXCLUSIVE lock on `quests` while it runs (it is the `ALTER TABLE`'s lock, held to the end of the migration's transaction; fine at today's size). It is only
 needed while the offer is open (the 5 km stale-offer check), so open and accepted quests keep
 it. Apply the migration before the new pods: they write NULL.
 
@@ -90,23 +96,31 @@ them out after a delete.
 
 Deleted rows are not removed from backups; they age out.
 
-- **Base backups and WAL:** CloudNativePG's Barman Cloud plugin (`templates/backup.yaml`,
-  `retentionPolicy` taken from `postgres.backup.retention`, which is `14d`
-  (`infra/helm/larper/values.yaml`; the Oracle values don't override it) keeps a 14-day recovery window. Base backups are weekly
-  (`schedule: "0 0 3 * * 0"`, Sunday 03:00); WAL is archived continuously. A row deleted today
-  is therefore recoverable from backups for up to 14 days, and gone from the plugin's own
-  retention after that.
+- **Base backups and WAL:** CloudNativePG's Barman Cloud plugin (`templates/backup.yaml`)
+  gets `retentionPolicy` from `postgres.backup.retention`, which is `14d`
+  (`infra/helm/larper/values.yaml`; the Oracle values don't override it). Base backups are
+  weekly (`schedule: "0 0 3 * * 0"`, Sunday 03:00); WAL is archived continuously. Retention
+  keeps the newest base backup that is older than now minus 14 days, and all WAL after it, so
+  that any point in the last 14 days can be restored. A row deleted on day D can be in a base
+  backup taken up to 7 days before D, and that backup must stay until it is no longer the
+  newest one older than 14 days, which is about D + 21 days, plus the lag before the plugin's
+  cleanup runs. So: **about 3 weeks**.
 - **Backstop:** the bucket `larper-pg-backups` has a lifecycle rule deleting objects older than
   60 days (`infra/oci-k3s/README.md`, "Backups"), for what retention misses (an old server
-  folder after a rebuild). So the hard upper bound for anything in the bucket is 60 days.
+  folder after a rebuild). So the hard upper bound for anything in the bucket is **60 days**.
 - **No restore resurrects it unnoticed:** a restore replays the database as of its point in
   time, so a restore would bring deleted rows back. There is no deletion ledger to replay.
   After any restore, ask users who deleted since the restore point to delete again, or accept
   the gap; keeping a ledger of deleted user ids is possible but would itself be personal data
   (decision for the owner).
-- **Kafka:** `user.events` is created with no retention setting in the chart
-  (`templates/workers.yaml`), so the broker default applies (check with `rpk topic describe
-  user.events`). Its records carry user, quest and place ids only, no positions.
+- **Kafka:** neither `user.events` nor `user.events.dlq` has a retention setting anywhere in
+  the chart: `templates/workers.yaml` creates them with `rpk topic create <name> -p <n> -r 1`
+  and no `-c`, and `templates/redpanda.yaml` (image `redpanda:v24.2.7`, `--mode=dev-container`)
+  sets none. So the broker default applies: Redpanda's cluster property `log_retention_ms`,
+  documented default 604800000 ms, **7 days** (Redpanda docs, cluster properties; not
+  checked on the running cluster: `rpk topic describe user.events` shows it). Both topics
+  hold user ids (the dead-letter queue keeps a copy of any record that could not be decoded),
+  with quest and place ids, and no positions. They age out within 7 days.
 
 The privacy page should say: deleted from the live app immediately; copies in
-backups expire within 14 days (at most 60).
+backups expire after about 3 weeks (60 days at most).

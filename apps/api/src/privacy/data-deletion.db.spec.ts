@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Pool } from 'pg';
 import type { CacheService } from '../cache/cache.service';
 import { createPool } from '../db/db.module';
@@ -182,6 +182,7 @@ describeDb('export and delete my data (real database)', () => {
     const out = await exporter.export(a.id, new Date('2026-11-17T12:00:00Z'));
 
     expect(out).toMatchObject({ version: 1, exportedAt: '2026-11-17T12:00:00.000Z', account: { id: a.id, clerkId: a.clerkId } });
+    expect(out.onboarding).toEqual({ stored: false, note: expect.stringContaining('only seeded the taste profile') });
     expect(out.taste).toMatchObject({ source: 'onboarding', topTags: ['cafe'] });
     expect(out.taste?.weights).toEqual({ cafe: expect.closeTo(0.1, 5) });
     expect(out.journal).toHaveLength(1);
@@ -199,7 +200,13 @@ describeDb('export and delete my data (real database)', () => {
     expect(text).not.toContain(b.clerkId);
     expect(text).not.toContain('ExpB');
     // Nothing internal: no outbox, jobs or processed-event fields.
-    expect(Object.keys(out).sort()).toEqual(['account', 'checkIns', 'exportedAt', 'hoursAnswers', 'journal', 'savedPlaces', 'taste', 'version']);
+    expect(Object.keys(out).sort()).toEqual(['account', 'checkIns', 'exportedAt', 'hoursAnswers', 'journal', 'onboarding', 'savedPlaces', 'taste', 'version']);
+  });
+
+  it('export of an account that no longer exists is a 404, not a TypeError', async () => {
+    const a = await user();
+    await deletion.deleteAccount(a);
+    await expect(exporter.export(a.id)).rejects.toThrow(NotFoundException);
   });
 
   it('export of a user with no data is empty lists and a null taste, not an error', async () => {
