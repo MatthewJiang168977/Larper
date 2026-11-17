@@ -22,8 +22,9 @@ kept the exact position of every offer forever.
 | `DELETE /me/history` | Deletes the journal, check-ins, "was it open?" answers and saved places. Keeps the account and the taste profile. | 3 a minute, 10 an hour |
 | `DELETE /me` | Deletes all of the above, the taste profile and the account row. | 3 a minute, 10 an hour |
 
-`DELETE /me` uses a route-scoped hash of the verified Clerk subject for both rate
-limit windows. The counters carry over if the Larper account row is recreated.
+All three routes use the same hash of the verified Clerk subject in both rate limit
+windows. The rate limit key includes the route and window, so each counter is independent
+and carries over if the Larper account row is recreated.
 
 Both deletes answer 200 with the counts, and **403 `{"code":"demo_account"}` for the shared
 demo account** (it is reset nightly by `ops/demo-reset.ts`; a visitor must not be able to
@@ -61,6 +62,11 @@ return 404. A new offer's foreign key also needs a user key-share lock. It can p
 after a history clear, and its foreign key fails if the account row was deleted. The
 account delete holds its lock until after the outbox sweep and user removal commit.
 
+Older API pods can take the locks in reverse order. Acceptance updates the quest before
+the saved-place insert checks the user foreign key. The old hours-answer insert can also
+take its quest foreign-key lock before its user lock. Either can deadlock with deletion
+if the delete holds the user lock and is waiting for the quest.
+
 ### The exact offer position
 
 `quests.origin` (where the user was when an offer was made) is now nullable and is set to NULL
@@ -79,28 +85,39 @@ is acquired. Missing users or quests cause the worker to skip the event. A taste
 that commits before a history clear remains in the retained profile. Only `larper_api`
 and `larper_taste` can execute the locking function.
 
-Apply migration 0020 before starting the API and taste worker that use this function.
-Run the updated taste worker before making history deletion available so every consumer
-checks quest ownership. `processed_events` keeps event IDs. The outbox sweep waits on rows
-the relay has claimed with `FOR UPDATE SKIP LOCKED`. The ingest jobs are keyed by area.
+`processed_events` keeps event IDs. The outbox sweep waits on rows the relay has claimed
+with `FOR UPDATE SKIP LOCKED`. The ingest jobs are keyed by area.
 
-### Deleting the Clerk user (D7): off by default
+### Rollout and rollback
 
-`CLERK_DELETE_USERS` (`1` or `true`; default unset = off). Off: `DELETE /me` removes Larper's
-data and the owner removes the Clerk user by hand (Clerk dashboard), as D7 asked for. On:
-after the database delete succeeds, the API calls `DELETE https://api.clerk.com/v1/users/<id>`
-with `CLERK_SECRET_KEY`; a 404 counts as deleted; any other failure leaves the data deleted and
-answers `"clerkUser": "failed"` (repeating `DELETE /me` retries Clerk). With it on and no
-`CLERK_SECRET_KEY` the API refuses to start. The database goes first so a failure never leaves
-data that its owner can no longer sign in to delete.
+Use a phased rollout before enabling either delete route. Apply migration 0020 first,
+then roll out the updated taste worker and API. Keep the delete routes unavailable until
+all consumers are compatible and old API pods and their in-flight quest writes are
+drained. Account deletion also depends on the lifecycle decision below. The mechanism
+for staging enablement is a separate decision.
 
-Not wired into Helm yet, on purpose: that is a live change and needs approval. To turn it on,
-the API Deployment needs `CLERK_SECRET_KEY` (today only the demo's `larper.demoEnv` provides
-it, and only when `demo.enabled`) and `CLERK_DELETE_USERS=1`, e.g. a `clerk.deleteUsers` value
-rendering the second variable, plus the secret key from a Secret for the non-demo case. Note
-that with it off, a user who deleted their account is still signed in at Clerk, and their
-next API call creates a fresh empty account (`UsersService.ensure`); the web app should sign
-them out after a delete.
+The pre-PR taste worker treats a missing user's taste-profile foreign-key violation
+(`23503`) as retryable, which can stall the consumer batch. A worker that handles only
+that violation can still learn from a cleared quest for a retained user. Choose a rollback
+target that skips events for missing users and quests and keeps the user-first lock order
+while deletes can run. That event handling is still needed after disabling the routes,
+because already-published records can be replayed after a rollback. Before reverting
+migration 0020, move both services to compatible builds that work without its functions.
+
+### Account deletion lifecycle (D7)
+
+**Account deletion is blocked pending a policy for reprovisioning.** The API verifies
+Clerk JWTs locally and calls `UsersService.ensure` on authenticated requests. A previously
+issued token that still passes verification can create a fresh Larper row after the
+local purge, even if Clerk user removal succeeded. Signing out in the web app does not
+invalidate a copy of that token at the API.
+
+`CLERK_DELETE_USERS` is off by default. With it off, `"clerkUser": "manual"` means the API
+purged the local data and made no Clerk call. It does not create an operator handoff or
+guarantee manual removal. With it on (`1` or `true`), the API requires `CLERK_SECRET_KEY`
+and calls Clerk after the local purge commits. A Clerk 404 counts as deleted. Other
+failures leave the local purge committed and return `"clerkUser": "failed"`. Another
+authenticated `DELETE /me` can retry the Clerk call.
 
 ## What happens to deleted data in backups
 
@@ -129,5 +146,5 @@ Copies of deleted rows can persist until the stores' normal cleanup runs.
   records the consumer could not decode.
   [Redpanda v24.2 cluster properties](https://docs.redpanda.com/streaming/24.2/reference/properties/cluster-properties/)
 
-The privacy page should say that deletion removes data from the live app and that
+When deletion is available, the privacy page should describe the local purge and how
 copies may persist in backups and event logs until scheduled cleanup.
