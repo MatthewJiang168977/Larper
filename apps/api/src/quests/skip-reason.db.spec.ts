@@ -8,7 +8,7 @@ import { QuestAction, QuestEventSchema, SkipReason } from '../gen/larper/events/
 import type { TagsService } from '../profile/tags.service';
 import type { AreasService } from './areas.service';
 import { QuestsService } from './quests.service';
-import { REOFFER_AFTER_DAYS, type ReofferKey } from './transitions';
+import { REOFFER_AFTER_DAYS, SKIP_REASONS, type ReofferKey } from './transitions';
 
 // "Not today" and its optional reason against a real database: the column, the
 // events in the outbox, and which ones move taste. Skipped unless TEST_DATABASE_URL is
@@ -267,5 +267,85 @@ describeDb('re-offering a place after a skip, by reason (real database)', () => 
     expect((await excluded()).has(place)).toBe(true);
     await owner.query(`UPDATE quests SET updated_at = now() - make_interval(hours => 73) WHERE id = $1`, [id]);
     expect((await excluded()).has(place)).toBe(false);
+  });
+});
+
+// "Not today" never counts as a dislike, through the real service: for the action itself
+// and for each reason, the events in the outbox (what taste-worker reads) are NOT_TODAY and
+// never SKIPPED, except the one reason that says "not my thing".
+describeDb('Not today is never a dislike (real database)', () => {
+  let pool: Pool;
+  let owner: Pool;
+  let quests: QuestsService;
+  let userId: string;
+  let placeId: string;
+
+  beforeAll(async () => {
+    pool = createPool(URL);
+    owner = createPool(OWNER_URL);
+    await assertDisposableDatabase(owner, 'skip-reason.db.spec (never a dislike)');
+    quests = new QuestsService(pool, {} as CacheService, {} as TagsService, {} as AreasService);
+    userId = (
+      await owner.query<{ id: string }>(
+        `INSERT INTO users (clerk_id) VALUES ('test_neverdislike_' || gen_random_uuid()) RETURNING id::text`,
+      )
+    ).rows[0].id;
+    placeId = (
+      await owner.query<{ id: string }>(
+        `INSERT INTO places (overture_id, name, geom, categories, chain_key, tags, tag_vec, confidence)
+         VALUES ('test-neverdislike-' || gen_random_uuid(), 'Test Cafe',
+                 ST_SetSRID(ST_MakePoint(-73.9971, 40.7312), 4326)::geography, '{cafe}', 'test-cafe', '{cafe}',
+                 array_fill(0, ARRAY[160])::vector, 0.9)
+         RETURNING id::text`,
+      )
+    ).rows[0].id;
+  });
+
+  afterAll(async () => {
+    if (userId) {
+      await owner.query('DELETE FROM outbox WHERE key = $1', [userId]);
+      await owner.query('DELETE FROM users WHERE id = $1', [userId]);
+      await owner.query('DELETE FROM places WHERE id = $1', [placeId]);
+    }
+    await pool.end();
+    await owner.end();
+  });
+
+  const accepted = async () => {
+    await owner.query('DELETE FROM quests WHERE user_id = $1', [userId]);
+    await owner.query('DELETE FROM outbox WHERE key = $1', [userId]);
+    return (
+      await owner.query<{ id: string }>(
+        `INSERT INTO quests (user_id, place_id, status, score, reasons, origin)
+         VALUES ($1, $2, 'accepted', 1, '{}', ST_SetSRID(ST_MakePoint(-73.9971, 40.7312), 4326)::geography)
+         RETURNING id::text`,
+        [userId, placeId],
+      )
+    ).rows[0].id;
+  };
+  const actions = async () =>
+    (await owner.query<{ payload: Buffer }>('SELECT payload FROM outbox WHERE key = $1 ORDER BY id', [userId])).rows.map(
+      (r) => fromBinary(QuestEventSchema, r.payload).action,
+    );
+
+  it('the "not-today" action alone enqueues one NOT_TODAY event', async () => {
+    const id = await accepted();
+    await quests.act(userId, id, 'not-today');
+    expect(await actions()).toEqual([QuestAction.NOT_TODAY]);
+  });
+
+  it.each(SKIP_REASONS)('"not-today" then the reason %s: the events are as pinned', async (reason) => {
+    const id = await accepted();
+    await quests.act(userId, id, 'not-today');
+    await quests.giveReason(userId, id, reason);
+    const second = reason === 'not_my_thing' ? QuestAction.SKIPPED : QuestAction.NOT_TODAY;
+    expect(await actions()).toEqual([QuestAction.NOT_TODAY, second]);
+  });
+
+  it.each(['too_far', 'not_today', 'closed'] as const)('%s never produces a SKIPPED event', async (reason) => {
+    const id = await accepted();
+    await quests.act(userId, id, 'not-today');
+    await quests.giveReason(userId, id, reason);
+    expect(await actions()).not.toContain(QuestAction.SKIPPED);
   });
 });
