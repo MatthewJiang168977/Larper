@@ -1,0 +1,1 @@
+ALTER TABLE place_hours_facts DROP CONSTRAINT IF EXISTS place_hours_facts_observation_user;

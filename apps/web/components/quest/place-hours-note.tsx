@@ -1,4 +1,4 @@
-import type { HoursSource, Weekday, OpenConfirmations, PlaceHours, PlaceView } from "@/lib/api";
+import type { ConfirmationRecency, HoursSource, OpenConfirmations, PlaceHours, PlaceView } from "@/lib/api";
 import { ageDays, formatAge, formatClock, formatSpans } from "@/lib/format";
 import { type KnownHours, readConfirmations, readHours } from "@/lib/hours";
 import { telUrl, webUrl } from "@/lib/web-url";
@@ -17,8 +17,10 @@ const SOURCES: Record<HoursSource, string> = {
   manual: "checked by Larper",
 };
 
-const DAYS: Record<Weekday, string> = {
-  mon: "monday", tue: "tuesday", wed: "wednesday", thu: "thursday", fri: "friday", sat: "saturday", sun: "sunday",
+const RECENCY: Record<ConfirmationRecency, string> = {
+  this_week: "this week",
+  this_month: "this month",
+  a_while_ago: "a while ago",
 };
 
 function Source({ hours }: { hours: KnownHours }) {
@@ -63,7 +65,7 @@ export function PlaceHoursNote({
       {confirmations && (
         <p>
           confirmed open by {confirmations.count} {confirmations.count === 1 ? "person" : "people"}, most
-          recently {DAYS[confirmations.last.day] ?? confirmations.last.day} {confirmations.last.part}
+          recently {RECENCY[confirmations.last]}
         </p>
       )}
     </div>
@@ -92,12 +94,14 @@ function Unverified({ website, phone }: Pick<PlaceView, "website" | "phone">) {
 
 function Known({ hours, now }: { hours: KnownHours; now: Date }) {
   const { state, nextChange } = hours;
-  const at = nextChange && formatClock(nextChange.at);
+  // Tomorrow's change says so: "opens tomorrow 9 am", never a bare clock that reads as today.
+  const clock = nextChange && formatClock(nextChange.at);
+  const at = clock && nextChange?.day === "tomorrow" ? `tomorrow ${clock}` : clock;
   const right =
     state === "open"
-      ? `open now${at && nextChange.to === "closed" ? ` · closes ${at}` : ""}`
+      ? `open now${at && nextChange?.to === "closed" ? ` · closes ${at}` : ""}`
       : state === "closed"
-        ? `closed now${at && nextChange.to === "open" ? ` · opens ${at}` : ""}`
+        ? `closed now${at && nextChange?.to === "open" ? ` · opens ${at}` : ""}`
         : "hours may differ today, check before you go";
   const spans = formatSpans(hours.today);
   const today = spans || (hours.today.length === 0 && state === "closed" ? "closed today" : null);

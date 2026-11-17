@@ -6,7 +6,7 @@ const good = {
   status: "known",
   state: "open",
   today: [{ from: "11:00", to: "24:00", nextDay: true }],
-  nextChange: { at: "22:00", to: "closed" },
+  nextChange: { at: "22:00", day: "today", weekday: "sat", to: "closed" },
   source: "osm",
   sourceUrl: "https://www.openstreetmap.org/node/1",
   fetchedAt: "2026-11-01T00:00:00Z",
@@ -63,12 +63,16 @@ describe("readHours", () => {
       null,
       "22:00",
       { at: "2026-11-16T22:00:00Z", to: "closed" },
-      { at: "22:00", to: "soon" },
-      { at: 22, to: "closed" },
+      { at: "22:00", day: "today", weekday: "sat", to: "soon" },
+      { at: 22, day: "today", weekday: "sat", to: "closed" },
+      { at: "09:00", to: "open" }, // an older API: no day, so it could be read as today when it isn't
+      { at: "09:00", day: "yesterday", weekday: "sat", to: "open" },
+      { at: "09:00", day: "tomorrow", weekday: "funday", to: "open" },
     ]) {
       expect(readHours({ ...good, nextChange })).toMatchObject({ nextChange: null });
     }
-    expect(readHours({ ...good, nextChange: { at: "09:00", to: "open" } })).toMatchObject({ nextChange: { at: "09:00", to: "open" } });
+    const tomorrow = { at: "09:00", day: "tomorrow", weekday: "sun", to: "open" };
+    expect(readHours({ ...good, nextChange: tomorrow })).toMatchObject({ nextChange: tomorrow });
   });
 
   it("keeps an unknown source as it came, and a bad fetchedAt as nothing", () => {
@@ -79,21 +83,28 @@ describe("readHours", () => {
 });
 
 describe("readConfirmations", () => {
-  const ok = { count: 2, last: { day: "tue", part: "evening" } };
+  const ok = { count: 3, last: "this_week" };
   it("keeps good data", () => expect(readConfirmations(ok)).toEqual(ok));
+  it.each(["this_week", "this_month", "a_while_ago"])("keeps the recency %s", (last) =>
+    expect(readConfirmations({ count: 5, last })).toEqual({ count: 5, last }));
+  it("reads fewer than 3 people as nothing (the boundary: 2 hides, 3 shows)", () => {
+    expect(readConfirmations({ ...ok, count: 2 })).toBeNull();
+    expect(readConfirmations({ ...ok, count: 3 })).toEqual({ count: 3, last: "this_week" });
+  });
   it.each([
     undefined,
     null,
-    "2",
+    "3",
     { ...ok, count: 0 },
+    { ...ok, count: 1 },
     { ...ok, count: -1 },
-    { ...ok, count: 1.5 },
-    { ...ok, count: "2" },
+    { ...ok, count: 3.5 },
+    { ...ok, count: "3" },
     { ...ok, count: Number.NaN },
-    { count: 2 },
+    { count: 3 },
     { ...ok, last: null },
-    { ...ok, last: { day: "funday", part: "evening" } },
-    { ...ok, last: { day: "tue", part: "teatime" } },
+    { ...ok, last: "yesterday" },
+    { ...ok, last: { day: "tue", part: "evening" } }, // the old, precise shape is never shown
   ])("reads %j as nothing", (raw) => expect(readConfirmations(raw)).toBeNull());
 });
 

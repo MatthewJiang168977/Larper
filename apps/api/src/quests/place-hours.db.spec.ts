@@ -158,6 +158,13 @@ describeDb('opening hours (real database)', () => {
       expect(await sqlstate(insert(cols, [pid, 'schedule', 'kitchen', 'nyc_open_data', NOW, 0.9, SCHED]))).toBe('ok'); // another service
       expect(await sqlstate(insert(cols, [pid, 'schedule', 'regular', 'alltheplaces', NOW, 0.9, SCHED]))).toBe('ok'); // another source
     });
+    it('an observation always has a user (migration 0019); a schedule does not need one', async () => {
+      const cols = 'place_id, kind, source, fetched_at, confidence, was_open, user_id';
+      expect(await sqlstate(insert(cols, [pid, 'observation', 'check-in', NOW, 0.9, true, null]))).toBe('23514');
+      expect(await sqlstate(observation(pid, null, true, NOW.toISOString()))).toBe('23514');
+      expect(await sqlstate(observation(pid, await user(), true, NOW.toISOString()))).toBe('ok');
+      expect(await sqlstate(scheduleFact(pid, DAILY_9_TO_17, { source: 'website' }))).toBe('ok');
+    });
     it('one answer per quest; facts without a quest are not limited', async () => {
       const u = await user();
       const q = await quest(u, pid, spot(), 'completed');
@@ -193,7 +200,7 @@ describeDb('opening hours (real database)', () => {
         status: 'known',
         state: 'open',
         today: [{ from: '09:00', to: '17:00', nextDay: false }],
-        nextChange: { at: '17:00', to: 'closed' },
+        nextChange: { at: '17:00', day: 'today', weekday: 'wed', to: 'closed' },
         source: 'osm',
         sourceUrl: 'https://example.test/osm/node/1',
         fetchedAt: '2026-06-01T12:00:00.000Z',
@@ -201,7 +208,7 @@ describeDb('opening hours (real database)', () => {
       });
       // The same schedule on a Sunday evening: closed (a known schedule says so), opening tomorrow at 09:00.
       const sunday = await service().today(await user(), at.lat, at.lng, RADIUS, false, new Date('2026-07-19T22:00:00Z'));
-      expect(hoursOf(sunday, p).hours).toMatchObject({ status: 'known', state: 'closed', today: [], nextChange: { at: '09:00', to: 'open' } });
+      expect(hoursOf(sunday, p).hours).toMatchObject({ status: 'known', state: 'closed', today: [], nextChange: { at: '09:00', day: 'tomorrow', weekday: 'mon', to: 'open' } });
     });
 
     it('known and unknown: a schedule that cannot say is "unknown", never closed', async () => {
@@ -269,31 +276,41 @@ describeDb('opening hours (real database)', () => {
       expect(hoursOf(r, kitchenOnly).hours).toEqual({ status: 'unverified' });
     });
 
-    it('open confirmations: distinct people, "open" answers only, the last 180 days, bucketed in New York time', async () => {
+    it('open confirmations: 3 or more distinct people, "open" answers only, the last 180 days, shown as a coarse recency', async () => {
       const at = spot();
       const p = await place(at, 'Confirmed Cafe');
-      const [u1, u2, u3, u4] = [await user(), await user(), await user(), await user()];
-      await observation(p, u1, true, '2026-07-10T01:30:00Z'); // Thursday 21:30 EDT
-      await observation(p, u1, true, '2026-07-12T14:00:00Z'); // the same person again (Sunday 10:00 EDT): counted once
+      const [u1, u2, u3, u4, u5] = [await user(), await user(), await user(), await user(), await user()];
+      await observation(p, u1, true, '2026-07-10T01:30:00Z'); // 5 days before NOW
+      await observation(p, u1, true, '2026-07-12T14:00:00Z'); // the same person again (3 days before NOW): counted once
       await observation(p, u2, true, '2026-03-20T12:00:00Z'); // 117 days before NOW: counted
-      await observation(p, u3, true, '2026-01-10T12:00:00Z'); // 186 days: too old
+      await observation(p, u3, true, '2026-06-20T12:00:00Z'); // counted
+      await observation(p, u5, true, '2026-01-10T12:00:00Z'); // 186 days: too old
       await observation(p, u4, false, '2026-07-14T12:00:00Z'); // "no" does not count
       await observation(p, u4, null, '2026-07-14T13:00:00Z'); // "didn't check" does not count
       const r = await service().today(await user(), at.lat, at.lng, RADIUS, false, NOW);
       const c = hoursOf(r, p).openConfirmations;
-      // The newest "open" is 2026-07-12 10:00 EDT: a Sunday morning. Nothing else leaves the API.
-      expect(c).toEqual({ count: 2, last: { day: 'sun', part: 'morning' } });
-      expect(Object.keys(c!.last).sort()).toEqual(['day', 'part']);
-      expect(JSON.stringify(c)).toBe('{"count":2,"last":{"day":"sun","part":"morning"}}'); // no dates, no times, no people
+      // The newest "open" is 2026-07-12, within 7 days of NOW. No day, no time, no people leaves the API.
+      expect(c).toEqual({ count: 3, last: 'this_week' });
+      expect(JSON.stringify(c)).toBe('{"count":3,"last":"this_week"}');
       expect(hoursOf(r, p).hours).toEqual({ status: 'unverified' }); // confirmations never make hours known
+    });
+
+    it('two people are not enough: no count, no time', async () => {
+      const at = spot();
+      const p = await place(at, 'Two Person Cafe');
+      await observation(p, await user(), true, '2026-07-14T12:00:00Z');
+      await observation(p, await user(), true, '2026-07-13T12:00:00Z');
+      const r = await service().today(await user(), at.lat, at.lng, RADIUS, false, NOW);
+      expect(hoursOf(r, p).openConfirmations).toBeNull();
+      expect(JSON.stringify(r)).not.toContain('2026-07-14'); // nothing of the check-ins is in the response
     });
 
     it('the 180-day edge is relative to now, and nothing within it from before is counted twice', async () => {
       const at = spot();
       const p = await place(at, 'Window Cafe');
-      await observation(p, await user(), true, '2026-01-16T16:00:01Z'); // 180 days minus a second before NOW
+      for (let i = 0; i < 3; i++) await observation(p, await user(), true, '2026-01-16T16:00:01Z'); // 180 days minus a second before NOW
       const inside = await service().today(await user(), at.lat, at.lng, RADIUS, false, NOW);
-      expect(hoursOf(inside, p).openConfirmations).toMatchObject({ count: 1 });
+      expect(hoursOf(inside, p).openConfirmations).toEqual({ count: 3, last: 'a_while_ago' });
       const outside = await service().today(await user(), at.lat, at.lng, RADIUS, false, new Date('2026-07-15T16:00:02Z'));
       expect(hoursOf(outside, p).openConfirmations).toBeNull();
     });
@@ -413,7 +430,7 @@ describeDb('opening hours (real database)', () => {
       expect(await factsOfQuest(q)).toEqual([]);
     });
 
-    it('QuestView.wasOpen reflects the answer, and the confirmation shows on the place', async () => {
+    it('QuestView.wasOpen reflects your own answer, and one confirmation is not shown on the place', async () => {
       const { at, p, u, q } = await checkedIn();
       // completed_at is "now" for doneToday() to find it; the quest is today's.
       await owner.query(`UPDATE quests SET completed_at = now(), updated_at = now() WHERE id = $1`, [q]);
@@ -423,7 +440,7 @@ describeDb('opening hours (real database)', () => {
       const after = await s.today(u, at.lat, at.lng, RADIUS);
       expect(after.quest).toMatchObject({ id: q, wasOpen: 'yes' });
       expect(after.quest?.place.id).toBe(p);
-      expect(after.quest?.place.openConfirmations).toMatchObject({ count: 1 });
+      expect(after.quest?.place.openConfirmations).toBeNull(); // one person is below the threshold of 3
     });
 
     it.each([

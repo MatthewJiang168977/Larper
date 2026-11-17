@@ -65,23 +65,33 @@ describe("PlaceHoursNote: unverified", () => {
 
 describe("PlaceHoursNote: right now", () => {
   it("open, with when it closes", () => {
-    note({ hours: known({ nextChange: { at: "22:00", to: "closed" } }) });
+    note({ hours: known({ nextChange: { at: "22:00", day: "today", weekday: "mon", to: "closed" } }) });
     expect(screen.getByText("open now · closes 10 pm")).toBeTruthy();
     expect(screen.getByText("today: 11 am–10 pm")).toBeTruthy();
   });
 
   it("open, with no change to report", () => {
-    note({ hours: known({ nextChange: { at: "09:00", to: "open" } }) });
+    note({ hours: known({ nextChange: { at: "09:00", day: "tomorrow", weekday: "tue", to: "open" } }) });
     expect(screen.getByText("open now")).toBeTruthy();
   });
 
   it("closed, with when it opens", () => {
-    note({ hours: known({ state: "closed", nextChange: { at: "17:30", to: "open" } }) });
+    note({ hours: known({ state: "closed", nextChange: { at: "17:30", day: "today", weekday: "mon", to: "open" } }) });
     expect(screen.getByText("closed now · opens 5:30 pm")).toBeTruthy();
   });
 
+  it("closed, opening tomorrow: says tomorrow, so 9 am can't be read as this morning", () => {
+    note({ hours: known({ state: "closed", nextChange: { at: "09:00", day: "tomorrow", weekday: "tue", to: "open" } }) });
+    expect(screen.getByText("closed now · opens tomorrow 9 am")).toBeTruthy();
+  });
+
+  it("open past midnight: closes tomorrow 2 am", () => {
+    note({ hours: known({ nextChange: { at: "02:00", day: "tomorrow", weekday: "tue", to: "closed" } }) });
+    expect(screen.getByText("open now · closes tomorrow 2 am")).toBeTruthy();
+  });
+
   it("closed, with nothing to say about opening", () => {
-    note({ hours: known({ state: "closed", nextChange: { at: "01:00", to: "closed" } }) });
+    note({ hours: known({ state: "closed", nextChange: { at: "01:00", day: "today", weekday: "mon", to: "closed" } }) });
     expect(screen.getByText("closed now")).toBeTruthy();
   });
 
@@ -200,22 +210,39 @@ describe("PlaceHoursNote: source and freshness", () => {
 });
 
 describe("PlaceHoursNote: confirmations", () => {
-  it("says one person, with the whole day name", () => {
-    note({ openConfirmations: { count: 1, last: { day: "tue", part: "evening" } } });
-    expect(screen.getByText("confirmed open by 1 person, most recently tuesday evening")).toBeTruthy();
+  it("says 3 people, and how recently in coarse words", () => {
+    note({ openConfirmations: { count: 3, last: "this_week" } });
+    expect(screen.getByText("confirmed open by 3 people, most recently this week")).toBeTruthy();
   });
 
-  it("says people, beside known hours", () => {
-    note({ hours: known(), openConfirmations: { count: 4, last: { day: "sat", part: "afternoon" } } });
-    expect(screen.getByText("confirmed open by 4 people, most recently saturday afternoon")).toBeTruthy();
+  it.each([
+    ["this_month", "this month"],
+    ["a_while_ago", "a while ago"],
+  ] as const)("says %s as %s", (last, words) => {
+    note({ hours: known(), openConfirmations: { count: 4, last } });
+    expect(screen.getByText(`confirmed open by 4 people, most recently ${words}`)).toBeTruthy();
+  });
+
+  it("shows nothing below 3 people, even if the API sent it", () => {
+    for (const count of [1, 2]) {
+      cleanup();
+      note({ openConfirmations: { count, last: "this_week" } });
+      expect(text()).not.toContain("confirmed");
+      expect(text()).not.toContain("most recently");
+    }
   });
 
   it("shows nothing for none, or for null", () => {
-    note({ openConfirmations: { count: 0, last: { day: "sat", part: "night" } } });
+    note({ openConfirmations: { count: 0, last: "a_while_ago" } });
     expect(text()).not.toContain("confirmed");
     cleanup();
     note({ openConfirmations: null });
     expect(text()).not.toContain("confirmed");
+  });
+
+  it("never shows a weekday or time of day, even from an older API that sends them", () => {
+    note({ openConfirmations: { count: 5, last: { day: "tue", part: "evening" } } as never });
+    expect(text()).not.toMatch(/tuesday|evening|confirmed/);
   });
 });
 
@@ -259,7 +286,7 @@ describe("PlaceHoursNote: malformed data from the API", () => {
   });
 
   it("leaves out the clause when nextChange.at is a timestamp", () => {
-    bad(known({ nextChange: { at: "2026-11-16T22:00:00Z", to: "closed" } }));
+    bad(known({ nextChange: { at: "2026-11-16T22:00:00Z", day: "today", weekday: "mon", to: "closed" } }));
     expect(screen.getByText("open now")).toBeTruthy();
   });
 
@@ -281,11 +308,11 @@ describe("PlaceHoursNote: malformed data from the API", () => {
 
   it("shows no confirmation line for a broken one", () => {
     for (const oc of [
-      { count: 2, last: null },
-      { count: 0, last: { day: "sat", part: "night" } },
-      { count: -3, last: { day: "sat", part: "night" } },
-      { count: 1.5, last: { day: "sat", part: "night" } },
-      { count: 2, last: { day: "someday", part: "night" } },
+      { count: 4, last: null },
+      { count: 0, last: "this_week" },
+      { count: -3, last: "this_week" },
+      { count: 3.5, last: "this_week" },
+      { count: 4, last: "someday" },
     ]) {
       cleanup();
       note({ openConfirmations: oc as never });

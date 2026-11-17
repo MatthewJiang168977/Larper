@@ -41,12 +41,20 @@ export interface DisplaySpan {
   to: string;
   nextDay: boolean;
 }
+export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 export interface NextChange {
+  /** "HH:MM" on the New York wall clock */
   at: string;
+  /** the New York day `at` falls on, relative to the instant asked about */
+  day: 'today' | 'tomorrow';
+  /** that day's name, so a reader never has to work it out from a clock it might not share */
+  weekday: Weekday;
   to: 'open' | 'closed';
 }
 
 const DAY = 1440;
+/** The most dated exceptions a schedule may carry (a year's worth, leap day included). More is rejected as invalid. */
+export const MAX_DATES = 366;
 
 // --- validation ---------------------------------------------------------------------
 
@@ -108,6 +116,7 @@ export function validateSchedule(json: unknown): Schedule | null {
   const rawWeekly = json.weekly ?? [];
   const rawDates = json.dates ?? [];
   if (!Array.isArray(rawWeekly) || !Array.isArray(rawDates)) return null;
+  if (rawDates.length > MAX_DATES) return null; // checked before any entry is read, so a huge list costs nothing
   if (always && (rawWeekly.length > 0 || rawDates.length > 0 || holidays !== null)) return null;
 
   const weekly: WeeklySpan[] = [];
@@ -180,6 +189,7 @@ const addDays = ({ y, m, d }: Ymd, n: number): Ymd => {
 };
 /** ISO weekday, 1 = Monday ... 7 = Sunday. */
 export const isoWeekday = ({ y, m, d }: Ymd): number => new Date(Date.UTC(y, m - 1, d)).getUTCDay() || 7;
+export const WEEKDAYS: readonly Weekday[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const pad = (n: number) => String(n).padStart(2, '0');
 
 function isMajorHoliday({ y, m, d }: Ymd): boolean {
@@ -267,7 +277,7 @@ export function spansOn(schedule: Schedule, at: Date): DisplaySpan[] {
 }
 
 /**
- * The next time within the next 24 hours of wall clock (minute by minute, with the same rules as
+ * The next time (with its day: today or tomorrow) within the next 24 hours of wall clock (minute by minute, with the same rules as
  * stateAt) that the state changes between open and closed. null when there is none, the schedule
  * is always open, or the state now, or the state it would change to, is unknown.
  */
@@ -278,11 +288,14 @@ export function nextChange(schedule: Schedule, at: Date): NextChange | null {
   if (current === 'unknown') return null;
   for (let i = 1; i <= DAY; i++) {
     const absolute = now.min + i;
-    const day = addDays(now, Math.floor(absolute / DAY));
+    const offset = Math.floor(absolute / DAY);
+    const day = addDays(now, offset);
     const min = absolute % DAY;
     const state = stateAtLocal(schedule, { ...day, min });
     if (state === current) continue;
-    return state === 'unknown' ? null : { at: hhmm(min), to: state };
+    return state === 'unknown'
+      ? null
+      : { at: hhmm(min), day: offset === 0 ? 'today' : 'tomorrow', weekday: WEEKDAYS[isoWeekday(day) - 1], to: state };
   }
   return null;
 }
