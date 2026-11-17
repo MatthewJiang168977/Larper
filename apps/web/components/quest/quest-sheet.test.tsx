@@ -1,9 +1,13 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeckItem, QuestView } from "@/lib/api";
 import { formatDistance } from "@/lib/format";
 import { hoursSearchUrl, QuestSheet } from "./quest-sheet";
+import { DOCK_MIN_WIDTH_PX, DOCK_RESERVED_PX } from "./dock";
 import { fullHeight } from "./sheet-snap";
+
+beforeEach(() => vi.stubGlobal("innerWidth", 390));
+afterEach(() => vi.unstubAllGlobals());
 
 const reasons = { liked: ["noodles", "ramen"], rarest: { tag: "hand_pulled_noodles", nearby: 2 }, indie: true };
 const place = (id: string, name: string) => ({
@@ -42,7 +46,7 @@ const sheet = (status: QuestView["status"], over: { onAction?: () => void; onCov
     />,
   );
 
-const handle = () => screen.getByRole("button", { name: /^Show (more|less)/ });
+const handle = () => screen.getByRole("button", { name: /^Quest details, show (more|less)/ });
 const rest = () => document.getElementById(handle().getAttribute("aria-controls")!)!;
 const expand = () => fireEvent.click(handle());
 const peekPart = () => screen.getByTestId("sheet-peek");
@@ -74,18 +78,104 @@ describe("QuestSheet on a phone: peek", () => {
     const onCoveredChange = vi.fn();
     sheet("offered", { onCoveredChange });
     // The handle strip and peek's content, 150 each in this stub.
-    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 300, right: 0 });
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 310, right: 0 });
+  });
+});
+
+describe("QuestSheet on a phone: the map's inset", () => {
+  it("keeps the peek inset when expanded, and reports it again on collapse", () => {
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(150);
+    const onCoveredChange = vi.fn();
+    sheet("offered", { onCoveredChange });
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 310, right: 0 });
+    const calls = onCoveredChange.mock.calls.length;
+    expand();
+    expect(onCoveredChange).toHaveBeenCalledTimes(calls);
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 310, right: 0 });
+    expand();
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 310, right: 0 });
   });
 });
 
 describe("QuestSheet on a phone: the handle", () => {
+  describe("the first-visit hint", () => {
+    const HINT = "tap or drag up for details";
+    const KEY = "larper:quest-handle-hint-seen";
+    let stored: Map<string, string>;
+    const show = () => {
+      const r = sheet("offered");
+      act(() => vi.advanceTimersByTime(30));
+      return r;
+    };
+    beforeEach(() => {
+      vi.useFakeTimers();
+      stored = new Map();
+      vi.stubGlobal("localStorage", {
+        getItem: (key: string) => stored.get(key) ?? null,
+        setItem: (key: string, value: string) => stored.set(key, value),
+        removeItem: (key: string) => stored.delete(key),
+      });
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it("shows on a first visit without marking it seen", () => {
+      show();
+      expect(screen.getByText(HINT)).toBeTruthy();
+      expect(stored.has(KEY)).toBe(false);
+    });
+
+    it("shows again after a reload if the sheet was never opened", () => {
+      show().unmount();
+      show();
+      expect(screen.getByText(HINT)).toBeTruthy();
+      expect(stored.has(KEY)).toBe(false);
+    });
+
+    it("is marked seen and hidden when the handle expands the sheet, and stays gone", () => {
+      const first = show();
+      expand();
+      expect(stored.get(KEY)).toBe("1");
+      expect(screen.queryByText(HINT)).toBeNull();
+      first.unmount();
+      show();
+      expect(screen.queryByText(HINT)).toBeNull();
+    });
+
+    it("is marked seen by a keyboard expand too", () => {
+      show();
+      fireEvent.keyDown(handle(), { key: "ArrowUp" });
+      expect(stored.get(KEY)).toBe("1");
+    });
+
+    it("doesn't mark it seen when collapsing", () => {
+      show();
+      fireEvent.keyDown(handle(), { key: "ArrowDown" });
+      expect(stored.has(KEY)).toBe(false);
+    });
+
+    it("shows no hint, and opens fine, when storage is unavailable", () => {
+      vi.stubGlobal("localStorage", {
+        getItem: () => {
+          throw new Error("denied");
+        },
+        setItem: () => {
+          throw new Error("denied");
+        },
+      });
+      show();
+      expect(screen.queryByText(HINT)).toBeNull();
+      expand();
+      expect(handle().getAttribute("aria-expanded")).toBe("true");
+    });
+  });
+
   it("is a real button that says what it will do and whether the sheet is open", () => {
     sheet("offered");
     expect(handle().getAttribute("aria-expanded")).toBe("false");
-    expect(handle().getAttribute("aria-label")).toBe("Show more about this place");
+    expect(handle().getAttribute("aria-label")).toBe("Quest details, show more");
     expand();
     expect(handle().getAttribute("aria-expanded")).toBe("true");
-    expect(handle().getAttribute("aria-label")).toBe("Show less");
+    expect(handle().getAttribute("aria-label")).toBe("Quest details, show less");
     expect(rest().hasAttribute("inert")).toBe(false);
   });
 
@@ -171,20 +261,15 @@ describe("QuestSheet on a phone: the handle", () => {
   });
 });
 
-// Peek has two copies of the quieter action, one per screen size; the other is
-// display:none (jsdom applies no CSS). This is the phone's.
-const phoneSecondary = (name: string) =>
-  within(peekPart())
-    .getAllByRole("button", { name })
-    .find((b) => b.className.split(" ").includes("lg:hidden"))!;
+const phoneSecondary = (name: string) => within(peekPart()).getByRole("button", { name });
 
 describe("QuestSheet on a phone: Skip at peek", () => {
-  it("puts a quiet text Skip beside Accept, with a 44 px hit area, and none in full", () => {
+  it("puts one secondary Skip button beside Accept and none in full", () => {
     sheet("offered");
     const skip = phoneSecondary("Skip");
     expect(skip.parentElement).toBe(within(peekPart()).getByRole("button", { name: "Accept quest" }).parentElement);
     const classes = skip.className.split(" ");
-    expect(classes).toEqual(expect.arrayContaining(["hit-target", "underline", "lg:hidden"]));
+    expect(classes).toContain("larper-os-button");
     expect(classes).not.toContain("stamp-btn");
     expect(within(rest()).queryByRole("button", { name: "Skip" })).toBeNull();
   });
@@ -253,7 +338,7 @@ describe("QuestSheet on a phone: full", () => {
       const chip = screen.getByRole("button", { name });
       expect(chip.classList).toContain("hit-target");
       expect(chip.classList).not.toContain("truncate"); // overflow: hidden would clip ::before
-      expect(chip.querySelector(".truncate")).toBeTruthy();
+      expect(chip.textContent).toContain(chip.getAttribute("aria-label") === "Quest" ? "Cafe Uno" : "A Very Long Lead Name That Truncates");
     }
   });
 
@@ -304,95 +389,112 @@ describe("QuestSheet on a phone: full", () => {
   });
 });
 
+describe("QuestSheet on a wide screen: starts open", () => {
+  const HINT = "tap or drag up for details";
+  const KEY = "larper:quest-handle-hint-seen";
+  let stored: Map<string, string>;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal("innerWidth", 1440);
+    stored = new Map();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => stored.set(key, value),
+      removeItem: (key: string) => stored.delete(key),
+    });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("mounts at full: expanded, the rest reachable, and the page told so", () => {
+    const onSnapChange = vi.fn();
+    const onCoveredChange = vi.fn();
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(150);
+    render(
+      <QuestSheet quest={quest("offered")} deck={deck} selectedId="p1" onSelect={vi.fn()} onAction={vi.fn()} busy={false}
+        topLimit={120} onCoveredChange={onCoveredChange} onSnapChange={onSnapChange} />,
+    );
+    expect(handle().getAttribute("aria-expanded")).toBe("true");
+    expect(document.querySelector("[data-snap]")!.getAttribute("data-snap")).toBe("full");
+    expect(rest().hasAttribute("inert")).toBe(false);
+    expect(onSnapChange).toHaveBeenCalledTimes(1);
+    expect(onSnapChange).toHaveBeenLastCalledWith("full");
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 0, right: DOCK_RESERVED_PX });
+  });
+
+  it("opens without announcing, taking focus, showing the hint or marking it seen", () => {
+    sheet("offered");
+    act(() => vi.advanceTimersByTime(30));
+    expect(screen.queryByText("Quest details expanded")).toBeNull();
+    expect(document.querySelector("[aria-live]")?.textContent ?? "").toBe("");
+    expect(document.activeElement).toBe(document.body);
+    expect(screen.queryByText(HINT)).toBeNull();
+    expect(stored.has(KEY)).toBe(false);
+  });
+
+  it("can be collapsed and expanded by hand; expanding it then writes the key", () => {
+    sheet("offered");
+    act(() => vi.advanceTimersByTime(30));
+    expand();
+    expect(handle().getAttribute("aria-expanded")).toBe("false");
+    expect(stored.has(KEY)).toBe(false);
+    expand();
+    expect(handle().getAttribute("aria-expanded")).toBe("true");
+    expect(stored.get(KEY)).toBe("1");
+  });
+
+  it("does not force the snap when the window is resized across the breakpoint", () => {
+    sheet("offered");
+    expand();
+    vi.stubGlobal("innerWidth", 390);
+    act(() => void window.dispatchEvent(new Event("resize")));
+    expect(handle().getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("still starts at peek on a phone, one pixel under the dock's minimum", () => {
+    vi.stubGlobal("innerWidth", DOCK_MIN_WIDTH_PX - 1);
+    sheet("offered");
+    expect(handle().getAttribute("aria-expanded")).toBe("false");
+    expect(document.querySelector("[data-snap]")!.getAttribute("data-snap")).toBe("peek");
+  });
+});
+
 describe("QuestSheet on a wide screen", () => {
-  // jsdom has no layout or media queries: these pin the classes that do the work.
-  it("is the same bottom sheet, a card centred at the bottom no wider than 36rem", () => {
-    sheet("offered");
-    const section = screen.getByRole("region", { name: "Quest details" });
-    expect(section.className.split(" ")).toContain("inset-x-0");
-    expect(section.className.split(" ")).toContain("mx-auto");
-    expect(section.className.split(" ")).toContain("max-w-xl");
-    expect(handle()).toBeTruthy(); // the same handle, snaps and keys as on a phone
-  });
-
-  it("open on a wide screen, tells the map to keep pins left of the card, not behind it", () => {
+  it("reserves the right dock for the map at either snap", () => {
+    vi.stubGlobal("innerWidth", 1440);
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(150);
-    vi.spyOn(HTMLElement.prototype, "offsetLeft", "get").mockReturnValue(352); // (1280 - 576) / 2
-    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1280);
-    vi.stubGlobal("innerWidth", 1280); // jsdom: no positioned parent, so the window's width
     const onCoveredChange = vi.fn();
     sheet("offered", { onCoveredChange });
-    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 300, right: 0 }); // peek
-    expect(onCoveredChange).toHaveBeenCalledTimes(1);
-    expand();
-    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 0, right: 1280 - 352 + 24 });
-    expand();
-    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 300, right: 0 });
-    vi.unstubAllGlobals();
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 0, right: DOCK_RESERVED_PX });
+    expand(); // starts open: this collapses it
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 0, right: DOCK_RESERVED_PX });
+    expect(screen.getByRole("region", { name: "Quest details" })).toBeTruthy();
   });
 
-  it("open on a phone, keeps the peek inset (the map is mostly hidden then)", () => {
+  it("reserves the dock from exactly the dock's minimum width, and not below it", () => {
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(150);
-    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(390); // offsetLeft 0: full width
-    const onCoveredChange = vi.fn();
-    sheet("offered", { onCoveredChange });
-    expand();
-    expect(onCoveredChange).toHaveBeenCalledTimes(1);
-    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 300, right: 0 });
+    vi.stubGlobal("innerWidth", DOCK_MIN_WIDTH_PX);
+    const wide = vi.fn();
+    sheet("offered", { onCoveredChange: wide });
+    expect(wide).toHaveBeenLastCalledWith({ bottom: 0, right: DOCK_RESERVED_PX });
+    cleanup();
+    vi.stubGlobal("innerWidth", DOCK_MIN_WIDTH_PX - 1);
+    const narrow = vi.fn();
+    sheet("offered", { onCoveredChange: narrow });
+    expect(narrow).toHaveBeenLastCalledWith({ bottom: 310, right: 0 });
   });
 
-  it("is 60% of the screen, at most 960 px", () => {
-    sheet("offered");
-    const classes = screen.getByRole("region", { name: "Quest details" }).className.split(" ");
-    expect(classes).toContain("lg:w-[60vw]");
-    expect(classes).toContain("lg:max-w-[960px]");
-  });
-
-  it("lays full out in two columns, about 55/45 with a 24 px gap: details left, leads right (phones keep one scrolling row)", () => {
-    sheet("offered");
-    const nav = screen.getByRole("navigation", { name: "Leads" });
-    const grid = nav.parentElement!;
-    expect(grid.className).toContain("lg:grid-cols-[minmax(0,11fr)_minmax(0,9fr)]");
-    expect(grid.className).toContain("lg:gap-x-6");
-    expect(nav.className).toContain("overflow-x-auto"); // phones
-    expect(nav.className).toContain("lg:col-start-2");
-    expect(nav.className).toContain("lg:flex-col");
-    expect(nav.className).toContain("lg:gap-0.5");
-    const details = screen.getByRole("list", { name: "Why this place" }).parentElement!;
-    expect(details.className).toContain("lg:col-start-1");
-    expect(within(details).getByRole("link", { name: "Check hours" })).toBeTruthy();
-  });
-
-  it("shows each lead as a compact borderless row: name over category and distance; the selected one stays filled", () => {
+  it("shows numbered lead rows with category and distance, and a pressed cue", () => {
+    vi.stubGlobal("innerWidth", 1440);
     sheet("offered", { selectedId: "p2" });
     const row = screen.getByRole("button", { name: "1. A Very Long Lead Name That Truncates" });
-    const classes = row.className.split(" ");
-    expect(classes).toEqual(expect.arrayContaining(["rounded-full", "border", "max-w-[11rem]"])); // phones: the pill
-    expect(classes).toEqual(expect.arrayContaining(["lg:border-0", "lg:flex", "lg:w-full", "lg:py-1"]));
     expect(row.getAttribute("aria-pressed")).toBe("true");
-    expect(classes).toContain("bg-ink"); // the highlight, on every screen
     expect(row.textContent).toContain("A Very Long Lead Name That Truncates");
     expect(row.textContent).toContain("ramen restaurant · 100 m");
-    const quest = screen.getByRole("button", { name: "Quest" });
-    expect(quest.textContent).toContain("Cafe Uno"); // the list shows the quest's name too
-    expect(quest.querySelector("svg")).toBeTruthy(); // its flag
-  });
-
-  it("puts Skip beside Accept in peek on wide screens, as a stamped button", () => {
-    sheet("offered");
-    const wide = within(peekPart())
-      .getAllByRole("button", { name: "Skip" })
-      .find((b) => b.className.split(" ").includes("lg:inline-flex"))!;
-    expect(wide.parentElement).toBe(within(peekPart()).getByRole("button", { name: "Accept quest" }).parentElement);
-    expect(wide.className.split(" ")).toEqual(expect.arrayContaining(["hidden", "stamp-btn"]));
-  });
-
-  it("sets the lead rows in the app's serif and mono, not a sans face", () => {
-    sheet("offered");
-    const row = screen.getByRole("button", { name: "1. A Very Long Lead Name That Truncates" });
-    expect(row.className).not.toContain("font-sans");
-    expect(row.className.split(" ")).toContain("lg:font-serif");
-    expect(within(row).getByText("ramen restaurant · 100 m").className.split(" ")).toContain("font-mono");
+    const questRow = screen.getByRole("button", { name: "Quest" });
+    expect(questRow.textContent).toContain("Cafe Uno");
+    expect(questRow.querySelector("svg")).toBeTruthy(); // its flag
+    expect(questRow.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("link", { name: "Check hours" })).toBeTruthy();
   });
 
   it("formats distances", () => {
@@ -515,7 +617,7 @@ describe("QuestSheet at 200% text or zoom", () => {
     stubHeights({ handle: 44, peek: 140, rest: 400 });
     const onCoveredChange = vi.fn();
     sheet("offered", { onCoveredChange });
-    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 184, right: 0 });
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 194, right: 0 });
     expect(peekPart().style.maxHeight).toBe("");
     expect(body().className).not.toContain("overflow-y-auto");
     expect(rest().className).toContain("overflow-y-auto"); // only the rest scrolls
@@ -526,7 +628,7 @@ describe("QuestSheet at 200% text or zoom", () => {
     stubHeights({ handle: 88, peek: 700, rest: 900 });
     const onCoveredChange = vi.fn();
     sheet("offered", { onCoveredChange });
-    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 422, right: 0 });
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 432, right: 0 });
     expect(peekPart().style.maxHeight).toBe(`${422 - 88}px`);
     expect(peekPart().className).toContain("overflow-y-auto");
     // The name and the main action are in that scrolling part, not cut off below it.
@@ -540,7 +642,7 @@ describe("QuestSheet at 200% text or zoom", () => {
     sheet("offered", { selectedId: "p1" });
     expand();
     // As tall as the screen allows below the notices, the whole of it one scroll box.
-    expect(section().style.height).toBe(`${fullHeight(844, 120, 422)}px`);
+    expect(section().style.height).toBe(`${fullHeight(834, 120, 422)}px`);
     expect(body().className).toContain("overflow-y-auto");
     expect(peekPart().style.maxHeight).toBe("");
     // The rest isn't squeezed into what peek leaves over: it keeps its own height.

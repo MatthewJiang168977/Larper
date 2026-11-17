@@ -13,6 +13,8 @@ import {
   SURVEY_POLL_MS,
 } from "./quest-home";
 
+vi.mock("@/app/larper-os", () => ({ larperOsClassName: "larper-os" }));
+
 // --- the component's world, replaced -------------------------------------------
 
 type UserButtonProps = { appearance?: unknown; userProfileProps?: { appearance?: unknown } };
@@ -589,7 +591,7 @@ describe("QuestHome: touch targets", () => {
       appearance: { elements: { userButtonTrigger: "hit-target" } },
       userProfileProps: { appearance: undefined },
     });
-    expect(screen.getByRole("link", { name: "Journal" }).classList).toContain("hit-target");
+    expect(screen.getByRole("link", { name: "journal" }).classList).toContain("larper-quest-menu-link");
 
     fireEvent.click(screen.getByText("I went"));
     await settle();
@@ -1006,9 +1008,9 @@ describe("QuestHome: room for the quest sheet", () => {
     const slot = screen.getByTestId("map-controls");
     const header = slot.parentElement!;
     expect(header.tagName).toBe("HEADER");
-    expect(header.className.split(" ")).toEqual(expect.arrayContaining(["flex-wrap", "justify-between"]));
-    expect(slot.className.split(" ")).toContain("ml-auto"); // right-aligned on its own line too
-    expect(header.contains(screen.getByRole("link", { name: "Journal" }))).toBe(true);
+    expect(header.classList.contains("larper-quest-menu")).toBe(true);
+    expect(slot.classList.contains("larper-quest-map-controls")).toBe(true); // right-aligned on its own line too
+    expect(header.contains(screen.getByRole("link", { name: "journal" }))).toBe(true);
   });
 });
 
@@ -1017,7 +1019,7 @@ describe("QuestHome: keyboard and screen readers", () => {
     routes["/quests/today"] = ok(withQuest);
     render(<QuestHome />);
     await settle();
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Larper");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("larper");
   });
 
   it("puts the header and the sheet before the map in the page, so Tab reaches the quest first", async () => {

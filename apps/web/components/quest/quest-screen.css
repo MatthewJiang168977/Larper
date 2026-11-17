@@ -1,0 +1,139 @@
+.larper-quest-screen {
+  --paper: var(--larper-os-window);
+  --paper-deep: var(--larper-os-paper);
+  --paper-edge: var(--larper-os-ink);
+  --ink: var(--larper-os-ink);
+  --ink-soft: #3a2432;
+  --ink-label: #3a2432;
+  --ink-faint: #5c5552;
+  --rule: var(--larper-os-ink);
+  --oxblood: var(--larper-os-red);
+  --moss: #285736;
+  background: var(--larper-os-pink);
+  color: var(--larper-os-ink);
+  font: 17px/1.4 var(--larper-os-font-body), system-ui, sans-serif;
+  color-scheme: light;
+}
+
+.larper-quest-screen .font-mono { font-family: var(--larper-os-font-body), system-ui, sans-serif; }
+.larper-quest-screen .field-label { font: 400 20px/1.15 var(--larper-os-font-pixel), system-ui, sans-serif; letter-spacing: 0; text-transform: lowercase; color: var(--larper-os-ink); }
+.larper-quest-screen :where(a, button):focus-visible { outline: 2px solid var(--larper-os-ink); outline-offset: 2px; }
+
+.larper-quest-menu {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  min-height: 45px;
+  padding-inline: 10px;
+  background: var(--larper-os-window);
+  border-bottom: 1px solid var(--larper-os-ink);
+}
+.larper-quest-navigation, .larper-quest-map-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.larper-quest-map-controls:not(:empty) { margin-inline-start: auto; padding-block: 4px; }
+.larper-quest-brand { font: 400 28px/1 var(--larper-os-font-pixel), system-ui, sans-serif; }
+.larper-quest-menu-link { display: grid; min-height: 44px; min-width: 44px; place-items: center; padding-inline: 8px; font: 400 24px/1 var(--larper-os-font-pixel), system-ui, sans-serif; }
+
+.larper-quest-dock {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: max(10px, env(safe-area-inset-bottom));
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  max-width: 560px;
+  margin-inline: auto;
+  background: var(--larper-os-window);
+  border: 1px solid var(--larper-os-ink);
+  border-radius: var(--larper-os-radius-window);
+  box-shadow: var(--larper-os-shadow-window);
+}
+.larper-quest-state { max-height: calc(100% - 100px); overflow-y: auto; }
+.larper-quest-state > :last-child { padding-block: 12px; }
+.larper-quest-state-title, .larper-quest-place {
+  font: 400 38px/1 var(--larper-os-font-pixel), system-ui, sans-serif;
+  overflow-wrap: anywhere;
+}
+.larper-quest-state-title { font-size: 30px; }
+.larper-quest-titlebar { padding: 0 10px; flex-shrink: 0; border-bottom: 1px solid var(--larper-os-ink); }
+.larper-quest-titlebar, .larper-quest-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  font: 400 23px/1 var(--larper-os-font-pixel), system-ui, sans-serif;
+}
+.larper-quest-handle { padding: 6px 10px; color: var(--larper-os-ink); cursor: grab; text-transform: lowercase; }
+.larper-quest-handle:active { cursor: grabbing; background: var(--larper-os-butter); }
+.larper-quest-titlebar .larper-quest-handle { width: calc(100% + 20px); margin-inline: -10px; border-radius: 6px 6px 0 0; }
+.larper-quest-grille { flex: 1; min-width: 8px; height: 13px; background: repeating-linear-gradient(var(--larper-os-ink) 0 1px, transparent 1px 3px); }
+.larper-quest-hint { padding: 3px 12px; text-align: center; font-size: 15px; background: var(--larper-os-butter); border-bottom: 1px solid var(--larper-os-ink); }
+
+.larper-quest-sheet [data-testid="sheet-peek"] { padding-inline: 12px; padding-top: 10px; }
+.larper-quest-sheet [data-testid="sheet-peek"] > div { padding-bottom: 12px; }
+.larper-quest-sheet [inert], .larper-quest-sheet [id] { scrollbar-width: thin; scrollbar-color: var(--larper-os-ink) transparent; }
+.larper-quest-sheet .larper-os-button { text-transform: lowercase; }
+.larper-quest-screen .larper-quest-done { border: 2px solid var(--larper-os-ink); background: var(--larper-os-mint); color: var(--larper-os-ink); border-radius: 4px; padding: 4px 8px; font: 400 25px/1 var(--larper-os-font-pixel), system-ui, sans-serif; text-transform: lowercase; }
+.larper-quest-rest { display: flex; flex-direction: column; gap: 12px; }
+.larper-quest-facts { order: -1; background: var(--larper-os-paper); padding: 10px; border: 1px solid var(--larper-os-ink); border-radius: 6px; }
+.larper-quest-why { display: grid; gap: 6px; font-size: 16px; }
+.larper-quest-links { gap: 8px; }
+.larper-quest-links a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; padding: 4px 10px; border: 1px solid var(--larper-os-ink); border-radius: 6px; background: var(--larper-os-window); box-shadow: var(--larper-os-shadow-raised); text-decoration: none; text-transform: lowercase; font: 400 23px/1 var(--larper-os-font-pixel), system-ui, sans-serif; }
+.larper-quest-leads { display: grid; gap: 6px; padding-bottom: 4px; }
+.larper-quest-lead { display: flex; gap: 10px; align-items: center; min-height: 58px; width: 100%; padding: 6px 4px; text-align: left; color: var(--larper-os-ink); border-bottom: 1px solid var(--larper-os-ink); cursor: pointer; }
+.larper-quest-lead:last-child { border-bottom: 0; }
+.larper-quest-lead-icon { display: grid; place-items: center; flex: none; width: 44px; height: 44px; background: var(--larper-os-paper); border: 1px solid var(--larper-os-ink); border-radius: 5px; box-shadow: var(--larper-os-shadow-raised); font: 400 40px/1 var(--larper-os-font-pixel), system-ui, sans-serif; }
+.larper-quest-lead[aria-pressed="true"] .larper-quest-lead-icon { background: var(--larper-os-butter); box-shadow: inset 0 0 0 2px var(--larper-os-ink); }
+.larper-quest-lead-copy { min-width: 0; overflow-wrap: anywhere; }
+.larper-quest-lead-name { display: block; font-weight: 650; }
+.larper-quest-lead-meta { display: block; font-size: 15px; }
+
+.larper-quest-screen .pin-quest, .larper-quest-screen .pin-lead {
+  width: 44px; height: 44px;
+  border: 1px solid var(--larper-os-ink);
+  border-radius: 6px;
+  background: var(--larper-os-window);
+  color: var(--larper-os-ink);
+  box-shadow: var(--larper-os-shadow-raised);
+  font: 400 40px/1 var(--larper-os-font-pixel), system-ui, sans-serif;
+}
+.larper-quest-screen .pin-quest { width: 52px; height: 52px; background: var(--larper-os-butter); }
+.larper-quest-screen :is(.pin-quest, .pin-lead)[data-selected="true"] { background: var(--larper-os-butter); outline: 2px solid var(--larper-os-ink); outline-offset: 2px; transform: none; }
+.larper-quest-screen .pin-name { background: var(--larper-os-window); color: var(--larper-os-ink); border-color: var(--larper-os-ink); font-family: var(--larper-os-font-body), system-ui, sans-serif; }
+.larper-quest-screen .pin-me { background: var(--larper-os-pool); }
+.larper-quest-map-controls > div { position: static; }
+.larper-quest-map-controls button { background: var(--larper-os-window); border: 1px solid var(--larper-os-ink); border-radius: 6px; box-shadow: var(--larper-os-shadow-raised); backdrop-filter: none; color: var(--larper-os-ink); font-family: var(--larper-os-font-body), system-ui, sans-serif; }
+.larper-quest-screen .maplibregl-ctrl-attrib { background: var(--larper-os-window); color: var(--larper-os-ink); font-family: var(--larper-os-font-body), system-ui, sans-serif; }
+
+@media (hover: hover) {
+  .larper-quest-handle:hover, .larper-quest-links a:hover, .larper-quest-menu-link:hover, .larper-quest-lead:hover, .larper-quest-screen .pin-lead:hover { background: var(--larper-os-butter); }
+}
+@media (min-width: 1024px) {
+  .larper-quest-dock { left: auto; width: var(--larper-os-dock-width); max-width: var(--larper-os-dock-width); margin: 0; }
+  .larper-quest-screen .maplibregl-ctrl-bottom-right { right: calc(var(--larper-os-dock-width) + 10px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .larper-quest-screen :is(.pin-quest, .pin-lead) { transition: none; }
+}
+
+.larper-quest-sheet > .larper-quest-titlebar { flex-direction: column; gap: 0; }
+.larper-quest-hint { width: calc(100% + 20px); margin-inline: -10px; border-bottom: 0; border-top: 1px solid var(--larper-os-ink); }
+.larper-quest-preview { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 15px; }
+.larper-quest-preview select { min-height: 44px; padding-inline: 6px; }
+
+.larper-quest-facts-table { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 12px; margin-bottom: 10px; }
+.larper-quest-facts-table dt { font: 400 23px/1 var(--larper-os-font-pixel), system-ui, sans-serif; }
+.larper-quest-facts-table dd { margin: 0; }
+.larper-quest-facts > p { font-size: 15px; }
+
+.larper-quest-welcome { display: grid; place-items: center; min-height: 100svh; padding: 12px; }
+.larper-quest-welcome .larper-os-window { width: min(100%, 520px); }
+.larper-quest-welcome h1 { font: 400 38px/1 var(--larper-os-font-pixel), system-ui, sans-serif; text-transform: lowercase; }
+.larper-quest-welcome .larper-os-button, .larper-quest-welcome p { text-transform: lowercase; }
+.larper-quest-screen select:focus-visible { outline: 2px solid var(--larper-os-ink); outline-offset: 2px; }
