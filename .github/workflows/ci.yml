@@ -85,7 +85,11 @@ jobs:
     timeout-minutes: 10
     services:
       postgres:
-        image: pgvector/pgvector:0.8.0-pg17
+        # PostGIS comes from apt (below), built against the newest Postgres 17 minor, so
+        # this image must be recent enough to load it: 0.8.0-pg17 stopped loading
+        # postgis-3.so on 2026-11-16. When "Add PostGIS" or the step after it fails with
+        # an undefined symbol, bump this tag.
+        image: pgvector/pgvector:0.8.7-pg17
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: larper

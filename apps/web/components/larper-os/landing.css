@@ -1,0 +1,64 @@
+.larper-landing {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 100svh;
+  background: var(--larper-os-pink);
+  color: var(--larper-os-ink);
+  font: 18px/1.4 var(--larper-os-font-body), system-ui, sans-serif;
+}
+
+.larper-landing-stage {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  padding: 20px 12px max(20px, env(safe-area-inset-bottom));
+  background:
+    repeating-linear-gradient(120deg, transparent 0 42px, var(--larper-os-paper) 42px 45px),
+    repeating-linear-gradient(30deg, transparent 0 66px, var(--larper-os-window) 66px 69px);
+}
+
+.larper-landing-dock {
+  width: min(100%, var(--larper-os-dock-width));
+}
+
+.larper-landing-title,
+.larper-landing-list-title {
+  font-family: var(--larper-os-font-pixel), system-ui, sans-serif;
+  font-weight: 400;
+}
+
+.larper-landing-title {
+  margin-block-end: 8px;
+  font-size: clamp(72px, 28vw, 112px);
+  line-height: 0.9;
+}
+
+.larper-landing-list-title { font-size: 25px; }
+.larper-landing-list { padding-inline-start: 1.2em; list-style-type: square; }
+
+.larper-landing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.larper-landing-actions > * { flex: 1 1 auto; }
+.larper-landing-demo-button { width: 100%; }
+
+.larper-landing-privacy {
+  justify-self: center;
+  display: grid;
+  min-width: var(--larper-os-tap-min);
+  min-height: var(--larper-os-tap-min);
+  place-items: center;
+  padding-inline: 6px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.larper-landing-privacy:focus-visible {
+  outline: 2px solid var(--larper-os-ink);
+  outline-offset: 2px;
+}
