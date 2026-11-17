@@ -12,10 +12,13 @@ import { seedTasteVector, toVectorLiteral } from '../profile/taste';
 // (DEMO_TASTE), as if onboarded with those cards. A new updated_at is a new taste
 // version, so no deck cached for the day's taste is served.
 //
-// As larper_demo_reset (migrations 0012, 0013): it reads users and tags, deletes
-// quests, and writes taste profiles, and nothing else.
+// As larper_demo_reset (migrations 0012, 0013, 0017): it reads users and tags, deletes
+// quests and saved places, and writes taste profiles, and nothing else.
 
 export const DELETE_QUESTS_SQL = `DELETE FROM quests WHERE user_id = (SELECT id FROM users WHERE clerk_id = $1)`;
+// The "want to go" list (migration 0017): accepting a quest saves its place, so the demo
+// account's list is cleared with its quests.
+export const DELETE_SAVED_PLACES_SQL = `DELETE FROM saved_places WHERE user_id = (SELECT id FROM users WHERE clerk_id = $1)`;
 export const TAGS_SQL = 'SELECT slot, tag FROM tags';
 // No row when the account has never called the API (no users row): nothing to restore.
 export const RESTORE_TASTE_SQL = `INSERT INTO taste_profiles (user_id, vec, source)
@@ -43,13 +46,14 @@ async function main() {
 
   const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1, connectionTimeoutMillis: 10_000 });
   try {
+    const { rowCount: savedPlacesDeleted } = await pool.query(DELETE_SAVED_PLACES_SQL, [cfg.userId]);
     const { rowCount: questsDeleted } = await pool.query(DELETE_QUESTS_SQL, [cfg.userId]);
     const { rows } = await pool.query<{ slot: number; tag: string }>(TAGS_SQL);
     if (!rows.length) throw new Error('no tags yet (load-places has not run)');
     const vec = demoTasteVector(new Map(rows.map((r) => [r.tag, r.slot])));
     const { rowCount: taste } = await pool.query(RESTORE_TASTE_SQL, [cfg.userId, toVectorLiteral(vec)]);
     console.log(
-      `demo-reset ${JSON.stringify({ ok: true, clerk, questsDeleted: questsDeleted ?? 0, tasteRestored: taste === 1 })}`,
+      `demo-reset ${JSON.stringify({ ok: true, clerk, questsDeleted: questsDeleted ?? 0, savedPlacesDeleted: savedPlacesDeleted ?? 0, tasteRestored: taste === 1 })}`,
     );
   } finally {
     await pool.end().catch(() => undefined);
