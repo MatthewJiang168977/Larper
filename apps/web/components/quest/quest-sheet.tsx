@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import Link from "next/link";
 import type { DeckItem, PlaceView, QuestView, Reasons } from "@/lib/api";
 import { formatDistance } from "@/lib/format";
+import { DOCK_MIN_WIDTH_PX, DOCK_RESERVED_PX } from "./dock";
 import { fullHeight, offsetFor, resolveSnap, type Snap, snapForKey } from "./sheet-snap";
 import { humanize, whyLines } from "./why-lines";
 
@@ -86,9 +87,8 @@ function BottomSheet(props: Props) {
     if (!hasPlace) return;
     const frame = requestAnimationFrame(() => {
       try {
-        if (window.localStorage.getItem(HANDLE_HINT_KEY)) return;
-        window.localStorage.setItem(HANDLE_HINT_KEY, "1");
-        setShowHint(true);
+        // Only read here: the key is written when the sheet is actually opened (go).
+        if (!window.localStorage.getItem(HANDLE_HINT_KEY)) setShowHint(true);
       } catch {}
     });
     return () => cancelAnimationFrame(frame);
@@ -174,7 +174,7 @@ function BottomSheet(props: Props) {
   // Keep pins left of the dock on desktop and above the collapsed sheet on phones.
   useEffect(() => {
     if (peekH <= 0) return;
-    if (viewW >= 1024) onCoveredChange({ bottom: 0, right: 530 });
+    if (viewW >= DOCK_MIN_WIDTH_PX) onCoveredChange({ bottom: 0, right: DOCK_RESERVED_PX });
     else if (snap === "peek") onCoveredChange({ bottom: peekH + dockGap, right: 0 });
   }, [snap, peekH, viewW, dockGap, onCoveredChange]);
 
@@ -186,7 +186,12 @@ function BottomSheet(props: Props) {
   const go = useCallback(
     (next: Snap) => {
       setSnap(next);
-      if (next === "full") setShowHint(false);
+      if (next === "full") {
+        setShowHint(false);
+        try {
+          window.localStorage.setItem(HANDLE_HINT_KEY, "1");
+        } catch {}
+      }
       setAnnounce(next === "full" ? "Quest details expanded" : "Quest details collapsed");
       if (next !== "peek") return;
       // Collapsing hides the rest: don't leave focus on something you can't see.
@@ -240,7 +245,7 @@ function BottomSheet(props: Props) {
           aria-expanded={snap === "full"}
           aria-controls={restId}
           aria-describedby={showHint ? hintId : undefined}
-          aria-label={snap === "full" ? "Show less" : "Show more about this place"}
+          aria-label={snap === "full" ? "Quest details, show less" : "Quest details, show more"}
           aria-keyshortcuts="ArrowUp ArrowDown Home End"
           onPointerDown={(e) => {
             pressDragged.current = false;

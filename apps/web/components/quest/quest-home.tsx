@@ -15,6 +15,7 @@ import { ApiError, describeError, useApi, type DeckItem, type Me, type QuestView
 import { DEMO_MIDTOWN, DEMO_SPOT } from "@/lib/demo-spot";
 import { getPreciseFix } from "@/lib/precise-fix";
 import { formatDistance } from "@/lib/format";
+import { DOCK_MIN_WIDTH_PX, DOCK_RESERVED_PX } from "./dock";
 import { DemoNotice } from "./demo-notice";
 import { StateCard } from "./state-card";
 import { type Covered, QuestSheet, type QuestAction, type SheetNote } from "./quest-sheet";
@@ -252,8 +253,8 @@ export function QuestScreen({ api, location, accountControl, previewControls }: 
   useEffect(() => {
     const el = cardEl;
     if (!el) return;
-    const measure = () => onCoveredChange(window.innerWidth >= 1024
-      ? { bottom: 0, right: 530 }
+    const measure = () => onCoveredChange(window.innerWidth >= DOCK_MIN_WIDTH_PX
+      ? { bottom: 0, right: DOCK_RESERVED_PX }
       : { bottom: el.offsetHeight + (Number.parseFloat(getComputedStyle(el).bottom) || 10), right: 0 });
     const ro = new ResizeObserver(measure);
     ro.observe(el);

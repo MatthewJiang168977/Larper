@@ -1,8 +1,9 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeckItem, QuestView } from "@/lib/api";
 import { formatDistance } from "@/lib/format";
 import { hoursSearchUrl, QuestSheet } from "./quest-sheet";
+import { DOCK_MIN_WIDTH_PX, DOCK_RESERVED_PX } from "./dock";
 import { fullHeight } from "./sheet-snap";
 
 beforeEach(() => vi.stubGlobal("innerWidth", 390));
@@ -45,7 +46,7 @@ const sheet = (status: QuestView["status"], over: { onAction?: () => void; onCov
     />,
   );
 
-const handle = () => screen.getByRole("button", { name: /^Show (more|less)/ });
+const handle = () => screen.getByRole("button", { name: /^Quest details, show (more|less)/ });
 const rest = () => document.getElementById(handle().getAttribute("aria-controls")!)!;
 const expand = () => fireEvent.click(handle());
 const peekPart = () => screen.getByTestId("sheet-peek");
@@ -81,34 +82,100 @@ describe("QuestSheet on a phone: peek", () => {
   });
 });
 
-describe("QuestSheet on a phone: the handle", () => {
-  it("shows the first-visit hint once and dismisses it when expanded", () => {
-    vi.useFakeTimers();
-    const stored = new Map<string, string>();
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) => stored.get(key) ?? null,
-      setItem: (key: string, value: string) => stored.set(key, value),
-      removeItem: (key: string) => stored.delete(key),
-    });
-    const first = sheet("offered");
-    act(() => vi.advanceTimersByTime(30));
-    expect(screen.getByText("tap or drag up for details")).toBeTruthy();
+describe("QuestSheet on a phone: the map's inset", () => {
+  it("keeps the peek inset when expanded, and reports it again on collapse", () => {
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(150);
+    const onCoveredChange = vi.fn();
+    sheet("offered", { onCoveredChange });
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 310, right: 0 });
+    const calls = onCoveredChange.mock.calls.length;
     expand();
-    expect(screen.queryByText("tap or drag up for details")).toBeNull();
-    first.unmount();
-    sheet("offered");
-    act(() => vi.advanceTimersByTime(30));
-    expect(screen.queryByText("tap or drag up for details")).toBeNull();
-    window.localStorage.removeItem("larper:quest-handle-hint-seen");
+    expect(onCoveredChange).toHaveBeenCalledTimes(calls);
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 310, right: 0 });
+    expand();
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 310, right: 0 });
+  });
+});
+
+describe("QuestSheet on a phone: the handle", () => {
+  describe("the first-visit hint", () => {
+    const HINT = "tap or drag up for details";
+    const KEY = "larper:quest-handle-hint-seen";
+    let stored: Map<string, string>;
+    const show = () => {
+      const r = sheet("offered");
+      act(() => vi.advanceTimersByTime(30));
+      return r;
+    };
+    beforeEach(() => {
+      vi.useFakeTimers();
+      stored = new Map();
+      vi.stubGlobal("localStorage", {
+        getItem: (key: string) => stored.get(key) ?? null,
+        setItem: (key: string, value: string) => stored.set(key, value),
+        removeItem: (key: string) => stored.delete(key),
+      });
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it("shows on a first visit without marking it seen", () => {
+      show();
+      expect(screen.getByText(HINT)).toBeTruthy();
+      expect(stored.has(KEY)).toBe(false);
+    });
+
+    it("shows again after a reload if the sheet was never opened", () => {
+      show().unmount();
+      show();
+      expect(screen.getByText(HINT)).toBeTruthy();
+      expect(stored.has(KEY)).toBe(false);
+    });
+
+    it("is marked seen and hidden when the handle expands the sheet, and stays gone", () => {
+      const first = show();
+      expand();
+      expect(stored.get(KEY)).toBe("1");
+      expect(screen.queryByText(HINT)).toBeNull();
+      first.unmount();
+      show();
+      expect(screen.queryByText(HINT)).toBeNull();
+    });
+
+    it("is marked seen by a keyboard expand too", () => {
+      show();
+      fireEvent.keyDown(handle(), { key: "ArrowUp" });
+      expect(stored.get(KEY)).toBe("1");
+    });
+
+    it("doesn't mark it seen when collapsing", () => {
+      show();
+      fireEvent.keyDown(handle(), { key: "ArrowDown" });
+      expect(stored.has(KEY)).toBe(false);
+    });
+
+    it("shows no hint, and opens fine, when storage is unavailable", () => {
+      vi.stubGlobal("localStorage", {
+        getItem: () => {
+          throw new Error("denied");
+        },
+        setItem: () => {
+          throw new Error("denied");
+        },
+      });
+      show();
+      expect(screen.queryByText(HINT)).toBeNull();
+      expand();
+      expect(handle().getAttribute("aria-expanded")).toBe("true");
+    });
   });
 
   it("is a real button that says what it will do and whether the sheet is open", () => {
     sheet("offered");
     expect(handle().getAttribute("aria-expanded")).toBe("false");
-    expect(handle().getAttribute("aria-label")).toBe("Show more about this place");
+    expect(handle().getAttribute("aria-label")).toBe("Quest details, show more");
     expand();
     expect(handle().getAttribute("aria-expanded")).toBe("true");
-    expect(handle().getAttribute("aria-label")).toBe("Show less");
+    expect(handle().getAttribute("aria-label")).toBe("Quest details, show less");
     expect(rest().hasAttribute("inert")).toBe(false);
   });
 
@@ -328,10 +395,23 @@ describe("QuestSheet on a wide screen", () => {
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(150);
     const onCoveredChange = vi.fn();
     sheet("offered", { onCoveredChange });
-    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 0, right: 530 });
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 0, right: DOCK_RESERVED_PX });
     expand();
-    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 0, right: 530 });
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 0, right: DOCK_RESERVED_PX });
     expect(screen.getByRole("region", { name: "Quest details" })).toBeTruthy();
+  });
+
+  it("reserves the dock from exactly the dock's minimum width, and not below it", () => {
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(150);
+    vi.stubGlobal("innerWidth", DOCK_MIN_WIDTH_PX);
+    const wide = vi.fn();
+    sheet("offered", { onCoveredChange: wide });
+    expect(wide).toHaveBeenLastCalledWith({ bottom: 0, right: DOCK_RESERVED_PX });
+    cleanup();
+    vi.stubGlobal("innerWidth", DOCK_MIN_WIDTH_PX - 1);
+    const narrow = vi.fn();
+    sheet("offered", { onCoveredChange: narrow });
+    expect(narrow).toHaveBeenLastCalledWith({ bottom: 310, right: 0 });
   });
 
   it("shows numbered lead rows with category and distance, and a pressed cue", () => {
@@ -341,7 +421,10 @@ describe("QuestSheet on a wide screen", () => {
     expect(row.getAttribute("aria-pressed")).toBe("true");
     expect(row.textContent).toContain("A Very Long Lead Name That Truncates");
     expect(row.textContent).toContain("ramen restaurant · 100 m");
-    expect(screen.getByRole("button", { name: "Quest" }).textContent).toContain("Cafe Uno");
+    const questRow = screen.getByRole("button", { name: "Quest" });
+    expect(questRow.textContent).toContain("Cafe Uno");
+    expect(questRow.querySelector("svg")).toBeTruthy(); // its flag
+    expect(questRow.getAttribute("aria-pressed")).toBe("false");
     expect(screen.getByRole("link", { name: "Check hours" })).toBeTruthy();
   });
 
@@ -349,6 +432,7 @@ describe("QuestSheet on a wide screen", () => {
     expect(formatDistance(66)).toBe("66 m");
     expect(formatDistance(999.6)).toBe("1000 m");
     expect(formatDistance(1234)).toBe("1.2 km");
+    expect(formatDistance(306_412)).toBe("306 km");
   });
 });
 

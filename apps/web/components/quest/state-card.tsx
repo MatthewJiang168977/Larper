@@ -11,7 +11,7 @@ interface StateCardProps {
   label: string;
   body?: string;
   /** "alert" for a failure, "status" for the rest (loading, surveying, nothing here). */
-  role: "alert" | "status";
+  role?: "alert" | "status";
   action?: StateAction;
   /** While loading: an outline of the peek where the quest will be. */
   placeholder?: boolean;
@@ -28,7 +28,7 @@ export function StateCard({ label, body, role, action, placeholder, ref }: State
     <div
       ref={ref}
       aria-labelledby={titleId}
-      role={role}
+      role={role ?? "group"}
       data-testid="state-card"
       className="larper-quest-dock larper-quest-state"
     >

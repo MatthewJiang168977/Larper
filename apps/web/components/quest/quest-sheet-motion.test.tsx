@@ -46,7 +46,7 @@ describe("QuestSheet: the peek's motion", () => {
     sheet();
     expect(fade().style.filter).toBe("");
     expect(fade().style.transform).toBe("");
-    expect(distance().textContent).toContain("· 1,340 m"); // the count starts from 0
+    expect(distance().textContent).toContain("· 1,340 m"); // the count shows its final value at once
   });
 
   it("with reduced motion: no blur, no slide, and the distance as a plain number", () => {
