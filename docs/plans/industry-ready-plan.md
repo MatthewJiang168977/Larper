@@ -4,8 +4,8 @@ Written 2026-11-16. Assesses Larper as it will be once the Larper OS redesign
 (#84 → #85 → #86 → #87) merges, reading the `web/larper-os-quest-screen` branch for
 the web app and `origin/main` (bb2e1a9) for the API, workers, database and infra.
 
-Constraints taken as fixed: solo developer (student, job hunting), $0 API fees for
-now, NYC only, the Larper OS redesign is final.
+Constraints taken as fixed: solo developer, $0 API fees for now, NYC only, the
+Larper OS redesign is final.
 
 Goal: **30 geo-verified check-ins from 15+ people who aren't the owner.**
 
@@ -212,44 +212,11 @@ Target: 30 cumulative from 15+ distinct people by week 12.
 | R2 | Hand-verifying places doesn't scale | It doesn't need to. 150 places serve 15 people. It's also the best user research available: walk the neighborhoods. |
 | R3 | 15 people is too few for any statistics | Correct. Treat every number as a count, talk to each person, and don't A/B test anything. |
 | R4 | OpenStreetMap hours bring ODbL share-alike questions if merged into the places table | Keep OSM-derived data in its own table with its own attribution, and read the licence before week 9. This plan is not legal advice. |
-| R5 | Job hunt takes the time | The roadmap's first four weeks are the story. Weeks 5–12 are mostly manual and flexible. |
+| R5 | Other commitments take the time | The first four weeks carry most of the value. Weeks 5–12 are mostly manual and flexible. |
 | D1 | Does "not my thing" after Not today count as a dislike? | Yes, keep it. It's the user saying so in words. |
 | D2 | Open sign-up, or invite codes? | Invite codes. Keeps the pilot small and the data clean. |
 | D3 | Re-engagement channel | One weekly email. Push on iOS needs an installed PWA; SMS costs money. |
 | D4 | Turn on the after-6pm rule before hours exist? | No. Ship it off; turn it on with PR 8. |
-| D5 | Keep the shared demo account once real sign-up exists? | Keep it for recruiters, exclude it from every metric (already the case). |
+| D5 | Keep the shared demo account once real sign-up exists? | Keep it as the public demo, exclude it from every metric (already the case). |
 | D6 | What happens to the two unpushed M9-plan commits? | Push them as a docs PR or drop them; they shouldn't live only on a laptop. |
 | D7 | Is deleting a Clerk user from the API acceptable? | It's a live-system write and puts a second use of the Clerk secret in the cluster. Alternative: delete Larper's data immediately, and the owner removes the Clerk user by hand weekly. Start with the alternative. |
-
-## The recruiter story
-
-What's true today:
-
-> I built a location-based discovery app end to end: a ranking service over 80,000
-> NYC places with vector taste profiles, an event pipeline, and a single $0/month VM
-> with tested backup restores, per-service database roles and privacy-preserving
-> analytics. It handles 195 requests a second at a 47 ms p95.
-
-That is an infrastructure story about a product nobody uses. Every interviewer's next
-question is "who uses it?", and today the answer is "me".
-
-What it should be in twelve weeks:
-
-> I cut the roadmap to one goal, real people walking to a place the app chose, and
-> got there: N check-ins verified by GPS from M people in three neighborhoods. The
-> hard part wasn't ranking, it was trust: X% of early quests were closed or wrong, so
-> I added an eligibility gate, verified places by hand, and asked "was it open?" at
-> every check-in, which brought wasted walks down to Y%. I did it for $0 and without
-> tracking where anyone went.
-
-Numbers needed, all from the weekly metrics script:
-
-- check-ins verified by GPS, and distinct people (target 30 and 15);
-- wasted-walk rate before and after the gate;
-- weekly return count ("9 of 15 came back a second week");
-- accept → check-in rate;
-- time to first quest card, before and after, by one written method;
-- monthly cost ($0) and restore time (77 s, already measured).
-
-The first paragraph gets an interview for infrastructure roles. The second gets one
-anywhere, because it shows judgment about what not to build.
