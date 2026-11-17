@@ -91,7 +91,7 @@ describe('CSV', () => {
     const [ranked] = rankPilotCandidates([place('7', { name: 'Joe, "J" & Co', website: 'https://j.example', phone: '+1 212' })], 5);
     const lines = toCsv([ranked]).split('\r\n');
     expect(lines[0]).toBe('place_id,neighborhood,name,address,website,phone,opening_hours,source,date_checked');
-    expect(lines[1]).toBe('7,East Village,"Joe, ""J"" & Co",,https://j.example,+1 212,,,');
+    expect(lines[1]).toBe('7,East Village,"Joe, ""J"" & Co",,https://j.example,\'+1 212,,,'); // a leading + would run as a formula
     expect(lines[2]).toBe('');
   });
 
