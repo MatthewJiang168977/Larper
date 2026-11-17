@@ -17,6 +17,13 @@ import { QuestAction as EventAction, SkipReason as EventSkipReason } from '../ge
 import { TagsService } from '../profile/tags.service';
 import { AreasService } from './areas.service';
 import { attemptParams, CheckInAttempt, checkInLogLine, judgeCheckIn, RECORD_ATTEMPT_SQL, rejection } from './checkin';
+import {
+  applyStaticGate,
+  BLOCKED_CATEGORIES,
+  GateConfig,
+  gateConfigFromEnv,
+  passesHoursRule,
+} from './eligibility';
 import { cellOf, cellsCovering, haversineM } from './geo';
 import { AreaStats, Candidate, mmr, Reasons, score, Scored, weightsFromEnv } from './scoring';
 import { QuestAction, QuestStatus, REOFFER_AFTER_DAYS, SkipReason, TRANSITIONS } from './transitions';
@@ -24,14 +31,18 @@ import { QuestAction, QuestStatus, REOFFER_AFTER_DAYS, SkipReason, TRANSITIONS }
 const DECK_SIZE = 10;
 const CACHED_TOP_N = 200; // enough headroom to survive exclusions + MMR
 const MAX_CANDIDATES = 3000;
+const SAVED_PLACES_LIMIT = 100;
 const DECK_TTL_S = 600;
 const AREA_TTL_S = 3600;
 const OFFER_STALE_AFTER = '20 hours';
 const OFFER_STALE_METERS = 5000;
-const DAY_TIME_ZONE = 'America/New_York'; // when "today" ends (doneToday)
+const DAY_TIME_ZONE = 'America/New_York'; // when "today" ends (doneToday); the evening rule's clock too (eligibility.ts)
+// Bumped from v3 when the trust gate (eligibility.ts) began filtering before ranking:
+// decks cached by older pods hold places the gate now refuses.
+const DECK_CACHE_VERSION = 'v4';
 const PRUNE_ATTEMPTS_EVERY_MS = 6 * 3600_000; // retention is 90 days; this only bounds the overshoot
 
-const EVENT_ACTION: Record<QuestAction, EventAction> = {
+export const EVENT_ACTION: Record<QuestAction, EventAction> = {
   accept: EventAction.ACCEPTED,
   skip: EventAction.SKIPPED,
   'not-today': EventAction.NOT_TODAY,
@@ -40,6 +51,16 @@ const EVENT_ACTION: Record<QuestAction, EventAction> = {
 
 // For messages: "cannot set aside a quest that is offered".
 const VERB: Record<QuestAction, string> = { accept: 'accept', skip: 'skip', 'not-today': 'set aside', complete: 'complete' };
+
+// The reasons that count as saying "I don't like this place": they re-emit the quest's
+// event as SKIPPED, which taste-worker turns into the -0.05 step. Every other reason
+// (and "Not today" with no reason) is NOT_TODAY, which moves nothing. Deciding that "Not
+// my thing" should stop counting as a dislike is a change to this one list.
+export const REASONS_THAT_COUNT_AS_DISLIKE: readonly SkipReason[] = ['not_my_thing'];
+
+/** The event giveReason() emits for a reason: SKIPPED only for a dislike, else NOT_TODAY. */
+export const eventActionForReason = (reason: SkipReason): EventAction =>
+  REASONS_THAT_COUNT_AS_DISLIKE.includes(reason) ? EventAction.SKIPPED : EventAction.NOT_TODAY;
 
 const EVENT_SKIP_REASON: Record<SkipReason, EventSkipReason> = {
   not_my_thing: EventSkipReason.NOT_MY_THING,
@@ -67,6 +88,15 @@ export interface PlaceView {
   phone: string | null;
 }
 
+export interface SavedPlaceView {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  category: string;
+  savedAt: string;
+}
+
 export interface QuestView {
   id: string;
   status: QuestStatus;
@@ -86,6 +116,9 @@ export interface DeckItem {
 export class QuestsService implements OnModuleInit, OnModuleDestroy {
   private readonly weights = weightsFromEnv();
 
+  // The trust gate's settings (eligibility.ts). Not readonly: the database specs set it.
+  gate: GateConfig = gateConfigFromEnv();
+
   private readonly logger = new Logger(QuestsService.name);
 
   constructor(
@@ -95,7 +128,7 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     private readonly areas: AreasService,
   ) {}
 
-  async today(userId: string, lat: number, lng: number, radiusM: number, demo = false) {
+  async today(userId: string, lat: number, lng: number, radiusM: number, demo = false, now = new Date()) {
     const center = cellOf(lat, lng);
     await this.expireStaleOffer(userId, lat, lng);
 
@@ -108,12 +141,15 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     const taste = await this.loadTaste(userId);
     const rank = () => this.rank(userId, taste.vec, center.lat, center.lng, center.cell, radiusM, surveyed);
     const { value: ranked, hit } = surveyed
-      ? await this.cache.getOrSet(`deck:v3:${userId}:${taste.version}:${center.cell}:${radiusM}`, DECK_TTL_S, rank)
+      ? await this.cache.getOrSet(`deck:${DECK_CACHE_VERSION}:${userId}:${taste.version}:${center.cell}:${radiusM}`, DECK_TTL_S, rank)
       : { value: await rank(), hit: false };
 
+    // The cached deck already holds only places that pass the gate's static rules (rank).
+    // The evening rule depends on the clock, so it is applied here, like the exclusions:
+    // an empty deck is the usual empty state, and a quest the user already has stays.
     const excluded = await this.recentlyDone(userId);
     const deck = mmr(
-      ranked.filter((p) => !excluded.has(p.id)),
+      ranked.filter((p) => !excluded.has(p.id) && passesHoursRule(hoursKnown(p), now, this.gate.eveningUnknownHours)),
       DECK_SIZE,
     );
 
@@ -177,6 +213,16 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
         throw new ConflictException(`cannot ${VERB[action]} a quest that is ${cur.rows[0].status}`);
       }
 
+      // Accepting also puts the place on the user's "want to go" list, in the same
+      // transaction. Both ids come from the UPDATE above (this user's own quest), never
+      // from the request. Idempotent: a second quest at the same place changes nothing.
+      if (action === 'accept') {
+        await tx.query(
+          `INSERT INTO saved_places (user_id, place_id, quest_id) VALUES ($1, $2, $3)
+           ON CONFLICT (user_id, place_id) DO NOTHING`,
+          [userId, rows[0].placeId, questId],
+        );
+      }
       await enqueueQuestEvent(tx, { userId, questId, placeId: rows[0].placeId, action: EVENT_ACTION[action] });
       await tx.query('COMMIT');
       // A simulated demo check-in keeps the geofence's own outcome on record.
@@ -259,7 +305,7 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
         userId,
         questId,
         placeId: rows[0].placeId,
-        action: reason === 'not_my_thing' ? EventAction.SKIPPED : EventAction.NOT_TODAY,
+        action: eventActionForReason(reason),
         skipReason: EVENT_SKIP_REASON[reason],
       });
       await tx.query('COMMIT');
@@ -319,6 +365,19 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     return rows;
   }
 
+  // The "want to go" list: places the user accepted a quest at, newest first.
+  async savedPlaces(userId: string): Promise<SavedPlaceView[]> {
+    const { rows } = await this.pg.query<SavedPlaceView & { savedAt: Date }>(
+      `SELECT p.id::text, p.name, ST_Y(p.geom::geometry) AS lat, ST_X(p.geom::geometry) AS lng,
+              p.categories[array_length(p.categories, 1)] AS category, s.created_at AS "savedAt"
+       FROM saved_places s JOIN places p ON p.id = s.place_id
+       WHERE s.user_id = $1
+       ORDER BY s.created_at DESC, p.id DESC LIMIT ${SAVED_PLACES_LIMIT}`,
+      [userId],
+    );
+    return rows.map((r) => ({ ...r, savedAt: r.savedAt.toISOString() }));
+  }
+
   // --- ranking ---------------------------------------------------------------
 
   private async rank(
@@ -331,10 +390,18 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     cacheAreaStats: boolean,
   ): Promise<Scored[]> {
     await this.tags.ready();
-    const [area, candidates] = await Promise.all([
+    const [area, rows] = await Promise.all([
       this.areaStats(cell, lat, lng, radiusM, cacheAreaStats),
       this.candidates(userId, lat, lng, radiusM),
     ]);
+    // The trust gate, before scoring, so the cached deck is already clean (the query
+    // filtered confidence and categories too, so its LIMIT isn't spent on them; this is
+    // the rules' source of truth, and the dedupe only happens here).
+    const candidates: Candidate[] = applyStaticGate(rows, this.gate.minConfidence).map((row) => {
+      const c: Candidate & { categories?: string[] } = { ...row };
+      delete c.categories; // only the gate needs it; keep it out of the cached deck
+      return c;
+    });
     const weightOf = (tag: string) => {
       const slot = this.tags.slotOf(tag);
       return userVec && slot !== undefined ? userVec[slot] : 0;
@@ -384,8 +451,18 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
   // Ties are broken by id: in dense cells thousands of places share the lowest taste
   // (no tags in common), the limit cuts through them, and without a tiebreak which
   // ones made it depended on the plan, so the same request could get another deck.
-  private async candidates(userId: string, lat: number, lng: number, radiusM: number): Promise<Candidate[]> {
-    const { rows } = await this.pg.query<Candidate>(
+  //
+  // The trust gate's confidence and category rules are in the WHERE too (eligibility.ts
+  // is the source of truth; the blocked names are passed in from its constant), so the
+  // limit is spent on places that can be offered. confidence is compared as a float4,
+  // the column's type, as meetsConfidence() does.
+  private async candidates(
+    userId: string,
+    lat: number,
+    lng: number,
+    radiusM: number,
+  ): Promise<(Candidate & { categories: string[] })[]> {
+    const { rows } = await this.pg.query<Candidate & { categories: string[] }>(
       `WITH o AS (SELECT ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography AS g),
        top AS (
          SELECT p.id, coalesce(1 - (p.tag_vec <=> t.vec), 0)::float8 AS taste
@@ -394,12 +471,14 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
          LEFT JOIN taste_profiles t ON t.user_id = $1
          WHERE ST_DWithin(p.geom, o.g, $4)
            AND p.location_suspect IS NULL -- its address says it's elsewhere (migration 0015)
+           AND p.confidence >= $5::real
+           AND NOT EXISTS (SELECT FROM unnest(p.categories) c WHERE lower(c) = ANY($6::text[]))
          ORDER BY taste DESC, p.id
          LIMIT ${MAX_CANDIDATES}
        )
        SELECT p.id::text, p.name,
               ST_Y(p.geom::geometry) AS lat, ST_X(p.geom::geometry) AS lng,
-              p.categories[array_length(p.categories, 1)] AS category, p.tags,
+              p.categories[array_length(p.categories, 1)] AS category, p.categories, p.tags,
               top.taste,
               p.chain_locations AS "chainLocations",
               p.confidence::float8 AS confidence,
@@ -409,7 +488,7 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
        JOIN places p ON p.id = top.id
        CROSS JOIN o
        ORDER BY top.taste DESC, top.id`,
-      [userId, lng, lat, radiusM],
+      [userId, lng, lat, radiusM, this.gate.minConfidence, BLOCKED_CATEGORIES],
     );
     return rows;
   }
@@ -550,4 +629,12 @@ function toPlaceView(
     instagram: p.instagram,
     phone: p.phone,
   };
+}
+
+// Places have no opening hours yet (nothing in the schema holds them), so none is known.
+// When real hours land, this is where they plug in: true when the place has hours on
+// file, which then lets it through the evening rule (eligibility.ts, passesHoursRule).
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- the place is what real hours will be looked up by
+function hoursKnown(_place: { id: string }): boolean {
+  return false;
 }

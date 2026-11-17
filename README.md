@@ -221,7 +221,7 @@ flowchart LR
    user row is created on first sight.
 3. **Expire stale offers.** An offer older than 20 h, or more than 5 km from where it was made,
    becomes `expired`.
-4. **Cache-aside.** The deck key is `deck:v3:{user}:{tasteVersion}:{geohash6}:{radius}`. Ranking
+4. **Cache-aside.** The deck key is `deck:v4:{user}:{tasteVersion}:{geohash6}:{radius}`. Ranking
    runs from the **geohash6 cell center**, so a cached deck is exact for anyone in that cell.
    Because the key contains the taste profile's version, a taste update can never serve a stale
    deck, and nothing has to be deleted.
@@ -229,6 +229,12 @@ flowchart LR
    - PostGIS `ST_DWithin` on a GiST index finds candidates in the radius, and pgvector `<=>`
      computes taste similarity in the same query.
    - Area tag counts for the surrounding cells come from their own shared cache (1 h).
+   - The **trust gate** ([`eligibility.ts`](apps/api/src/quests/eligibility.ts)) keeps out places below
+     `QUEST_MIN_CONFIDENCE` (default 0.7), in a blocked category (medical, adult, worship, schools,
+     government, residential, day care, funeral homes, courts and jails, casinos and other gambling venues)
+     and duplicates (same name within 50 m), before anything is scored.
+     `QUEST_GATE_EVENING_UNKNOWN_HOURS=on` also holds back places with unknown opening hours from 6pm
+     to 6am New York time (off by default: no place has hours yet); it is applied after the cache.
    - Candidates are scored in TypeScript, and the top 200 are cached for 10 min.
 6. **Re-rank.** Places finished recently are dropped, for a window that depends on how the
    quest ended (`REOFFER_AFTER_DAYS` in `quests/transitions.ts`):
