@@ -389,6 +389,75 @@ describe("QuestSheet on a phone: full", () => {
   });
 });
 
+describe("QuestSheet on a wide screen: starts open", () => {
+  const HINT = "tap or drag up for details";
+  const KEY = "larper:quest-handle-hint-seen";
+  let stored: Map<string, string>;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal("innerWidth", 1440);
+    stored = new Map();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => stored.set(key, value),
+      removeItem: (key: string) => stored.delete(key),
+    });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("mounts at full: expanded, the rest reachable, and the page told so", () => {
+    const onSnapChange = vi.fn();
+    const onCoveredChange = vi.fn();
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(150);
+    render(
+      <QuestSheet quest={quest("offered")} deck={deck} selectedId="p1" onSelect={vi.fn()} onAction={vi.fn()} busy={false}
+        topLimit={120} onCoveredChange={onCoveredChange} onSnapChange={onSnapChange} />,
+    );
+    expect(handle().getAttribute("aria-expanded")).toBe("true");
+    expect(document.querySelector("[data-snap]")!.getAttribute("data-snap")).toBe("full");
+    expect(rest().hasAttribute("inert")).toBe(false);
+    expect(onSnapChange).toHaveBeenCalledTimes(1);
+    expect(onSnapChange).toHaveBeenLastCalledWith("full");
+    expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 0, right: DOCK_RESERVED_PX });
+  });
+
+  it("opens without announcing, taking focus, showing the hint or marking it seen", () => {
+    sheet("offered");
+    act(() => vi.advanceTimersByTime(30));
+    expect(screen.queryByText("Quest details expanded")).toBeNull();
+    expect(document.querySelector("[aria-live]")?.textContent ?? "").toBe("");
+    expect(document.activeElement).toBe(document.body);
+    expect(screen.queryByText(HINT)).toBeNull();
+    expect(stored.has(KEY)).toBe(false);
+  });
+
+  it("can be collapsed and expanded by hand; expanding it then writes the key", () => {
+    sheet("offered");
+    act(() => vi.advanceTimersByTime(30));
+    expand();
+    expect(handle().getAttribute("aria-expanded")).toBe("false");
+    expect(stored.has(KEY)).toBe(false);
+    expand();
+    expect(handle().getAttribute("aria-expanded")).toBe("true");
+    expect(stored.get(KEY)).toBe("1");
+  });
+
+  it("does not force the snap when the window is resized across the breakpoint", () => {
+    sheet("offered");
+    expand();
+    vi.stubGlobal("innerWidth", 390);
+    act(() => void window.dispatchEvent(new Event("resize")));
+    expect(handle().getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("still starts at peek on a phone, one pixel under the dock's minimum", () => {
+    vi.stubGlobal("innerWidth", DOCK_MIN_WIDTH_PX - 1);
+    sheet("offered");
+    expect(handle().getAttribute("aria-expanded")).toBe("false");
+    expect(document.querySelector("[data-snap]")!.getAttribute("data-snap")).toBe("peek");
+  });
+});
+
 describe("QuestSheet on a wide screen", () => {
   it("reserves the right dock for the map at either snap", () => {
     vi.stubGlobal("innerWidth", 1440);
@@ -396,7 +465,7 @@ describe("QuestSheet on a wide screen", () => {
     const onCoveredChange = vi.fn();
     sheet("offered", { onCoveredChange });
     expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 0, right: DOCK_RESERVED_PX });
-    expand();
+    expand(); // starts open: this collapses it
     expect(onCoveredChange).toHaveBeenLastCalledWith({ bottom: 0, right: DOCK_RESERVED_PX });
     expect(screen.getByRole("region", { name: "Quest details" })).toBeTruthy();
   });
@@ -415,8 +484,8 @@ describe("QuestSheet on a wide screen", () => {
   });
 
   it("shows numbered lead rows with category and distance, and a pressed cue", () => {
+    vi.stubGlobal("innerWidth", 1440);
     sheet("offered", { selectedId: "p2" });
-    expand();
     const row = screen.getByRole("button", { name: "1. A Very Long Lead Name That Truncates" });
     expect(row.getAttribute("aria-pressed")).toBe("true");
     expect(row.textContent).toContain("A Very Long Lead Name That Truncates");

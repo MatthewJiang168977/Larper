@@ -111,7 +111,14 @@ function BottomSheet(props: Props) {
   const shake = useCallback(() => {
     if (!reduce) animate(x, [0, -2, 2, -1, 0], { duration: 0.1, ease: "linear" });
   }, [reduce, x]);
-  const [snap, setSnap] = useState<Snap>("peek");
+  // Where it starts: open beside the map on a desktop viewport (the side dock is there to
+  // show the details), at peek on a phone. Read once, as initial state, so the first render
+  // is already settled: nothing springs open, and nothing is announced, focused or stored
+  // (only `go` does those, for what the person does). The sheet only mounts on the client,
+  // after the quest has loaded, so there's no server render for this to disagree with.
+  const [snap, setSnap] = useState<Snap>(() =>
+    typeof window !== "undefined" && window.innerWidth >= DOCK_MIN_WIDTH_PX ? "full" : "peek",
+  );
   const [handleH, setHandleH] = useState(0);
   // Peek's content at its natural height (the part under the handle).
   const [peekContentH, setPeekContentH] = useState(0);
