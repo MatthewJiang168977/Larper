@@ -65,11 +65,13 @@ describe("readHours", () => {
       { at: "2026-11-16T22:00:00Z", to: "closed" },
       { at: "22:00", day: "today", weekday: "sat", to: "soon" },
       { at: 22, day: "today", weekday: "sat", to: "closed" },
-      { at: "09:00", to: "open" }, // an older API: no day, so it could be read as today when it isn't
-      { at: "09:00", day: "yesterday", weekday: "sat", to: "open" },
-      { at: "09:00", day: "tomorrow", weekday: "funday", to: "open" },
     ]) {
       expect(readHours({ ...good, nextChange })).toMatchObject({ nextChange: null });
+    }
+    // An older API (no day) or a bad day or weekday: the bare time, as the web showed before.
+    for (const extra of [{}, { day: "yesterday", weekday: "sat" }, { day: "tomorrow", weekday: "funday" }, { day: "tomorrow" }]) {
+      const got = readHours({ ...good, nextChange: { at: "09:00", to: "open", ...extra } }) as { nextChange: object };
+      expect(got.nextChange).toEqual({ at: "09:00", to: "open" });
     }
     const tomorrow = { at: "09:00", day: "tomorrow", weekday: "sun", to: "open" };
     expect(readHours({ ...good, nextChange: tomorrow })).toMatchObject({ nextChange: tomorrow });

@@ -412,6 +412,20 @@ describe('nextChange across days', () => {
   });
 });
 
+describe('nextChange across a DST change', () => {
+  const sunday = base({ weekly: days([7], 540, 1020) }); // Sundays 09:00-17:00
+  it('fall back: Sat 22:00 EDT, opens Sunday 09:00 EST, the instant being 14:00Z', () => {
+    expect(nextChange(sunday, at('2026-11-01T02:00:00Z'))).toEqual({ at: '09:00', day: 'tomorrow', weekday: 'sun', to: 'open' }); // Sat Oct 31 22:00 EDT
+    expect(stateAt(sunday, at('2026-11-01T13:59:00Z'))).toBe('closed'); // 08:59 EST
+    expect(stateAt(sunday, at('2026-11-01T14:00:00Z'))).toBe('open'); // 09:00 EST
+  });
+  it('spring forward: Sat 22:00 EST, opens Sunday 09:00 EDT, the instant being 13:00Z', () => {
+    expect(nextChange(sunday, at('2026-03-08T03:00:00Z'))).toEqual({ at: '09:00', day: 'tomorrow', weekday: 'sun', to: 'open' }); // Sat Mar 7 22:00 EST
+    expect(stateAt(sunday, at('2026-03-08T12:59:00Z'))).toBe('closed'); // 08:59 EDT
+    expect(stateAt(sunday, at('2026-03-08T13:00:00Z'))).toBe('open'); // 09:00 EDT
+  });
+});
+
 describe('the dated exceptions cap', () => {
   const dateRules = (n: number) =>
     Array.from({ length: n }, (_, i) => ({ on: new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10), closed: true }));

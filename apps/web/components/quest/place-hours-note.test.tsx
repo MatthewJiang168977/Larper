@@ -85,6 +85,11 @@ describe("PlaceHoursNote: right now", () => {
     expect(screen.getByText("closed now · opens tomorrow 9 am")).toBeTruthy();
   });
 
+  it("an older API with no day: the bare time, as before", () => {
+    note({ hours: known({ state: "closed", nextChange: { at: "09:00", to: "open" } }) });
+    expect(screen.getByText("closed now · opens 9 am")).toBeTruthy();
+  });
+
   it("open past midnight: closes tomorrow 2 am", () => {
     note({ hours: known({ nextChange: { at: "02:00", day: "tomorrow", weekday: "tue", to: "closed" } }) });
     expect(screen.getByText("open now · closes tomorrow 2 am")).toBeTruthy();

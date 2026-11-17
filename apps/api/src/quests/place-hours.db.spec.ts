@@ -135,14 +135,15 @@ describeDb('opening hours (real database)', () => {
       expect(await sqlstate(insert(cols, [pid, 'schedule', 'manual', NOW, 0.8, SCHED]))).toBe('ok');
     });
     it('an observation is a check-in, and a check-in is an observation', async () => {
-      const cols = 'place_id, kind, source, fetched_at, confidence, was_open';
-      expect(await sqlstate(insert(cols, [pid, 'observation', 'osm', NOW, 0.9, true]))).toBe('23514');
+      const cols = 'place_id, kind, source, fetched_at, confidence, was_open, user_id';
+      const u = await user(); // an observation always has a user (migration 0019)
+      expect(await sqlstate(insert(cols, [pid, 'observation', 'osm', NOW, 0.9, true, u]))).toBe('23514');
       expect(await sqlstate(insert('place_id, kind, source, fetched_at, confidence, schedule', [pid, 'schedule', 'check-in', NOW, 0.9, SCHED]))).toBe('23514');
-      expect(await sqlstate(insert(cols, [pid, 'observation', 'check-in', NOW, 0.9, true]))).toBe('ok');
+      expect(await sqlstate(insert(cols, [pid, 'observation', 'check-in', NOW, 0.9, true, u]))).toBe('ok');
     });
     it('only a schedule can name a service other than regular', async () => {
-      const cols = 'place_id, kind, service, source, fetched_at, confidence, was_open';
-      expect(await sqlstate(insert(cols, [pid, 'observation', 'kitchen', 'check-in', NOW, 0.9, true]))).toBe('23514');
+      const cols = 'place_id, kind, service, source, fetched_at, confidence, was_open, user_id';
+      expect(await sqlstate(insert(cols, [pid, 'observation', 'kitchen', 'check-in', NOW, 0.9, true, await user()]))).toBe('23514');
       expect(await sqlstate(insert('place_id, kind, service, source, fetched_at, confidence, schedule', [pid, 'schedule', 'brunch', 'osm', NOW, 0.9, SCHED]))).toBe('23514');
     });
     it('confidence is within 0..1, and the source is one of the known ones', async () => {

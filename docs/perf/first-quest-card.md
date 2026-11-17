@@ -52,9 +52,13 @@ whether the MapLibre chunk was fetched before the card.
 
 ## Numbers so far
 
+**Baseline, method not recorded:** the lab baseline is **6.33 s** (throttled). It is recorded in
+the session notes only. How many runs, whether it is a median, the range, the Clerk handling and
+the API used are all unknown, so it is not "a median of 7" and cannot be compared one-to-one
+with the rows below.
+
 | What | Median of 7 | Range | Source |
 |---|---|---|---|
-| Lab baseline, throttled | **6.33 s** | not recorded | Recorded in the session notes only; the exact setup (which Clerk handling, which API) is not written down. It is the baseline later work is compared with, not comparable one-to-one with the rows below. |
 | Landing page PR (#84): control | 3.83 s | 3.60 to 4.99 s | #84 description |
 | Landing page PR (#84): candidate | **3.64 s** | 3.51 to 3.79 s | #84 description |
 | Quest screen PR (#87): parent | 3.44 s | 3.41 to 3.54 s | #87 description |
@@ -101,7 +105,8 @@ Repeat for the control build, and report the pair.
 
 ## What is missing
 
-- The harness script. It was run by hand and never committed. Adding it (Playwright or
+- The harness script. A reproducible script needs Playwright (or Puppeteer), which is a new
+  dependency for the owner to approve. It was run by hand and never committed. Adding it (Playwright or
   Puppeteer would be a new dev dependency, so that is a decision for the owner) is the
   step that turns this document into something anyone can re-run.
 - The setup behind the 6.33 s baseline (which Clerk handling, API and network profile).

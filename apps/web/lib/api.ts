@@ -156,7 +156,8 @@ export type PlaceHours =
       /** Regular hours for today's New York date; [] is closed all day. */
       today: HoursSpan[];
       /** `day`: the New York day `at` falls on, so "opens 9:00" can't be read as today when it is tomorrow. */
-      nextChange: { at: string; day: "today" | "tomorrow"; weekday: Weekday; to: "open" | "closed" } | null;
+      /** `day` and `weekday` are missing from an older API: the time is then shown bare. */
+      nextChange: { at: string; day?: "today" | "tomorrow"; weekday?: Weekday; to: "open" | "closed" } | null;
       source: HoursSource;
       sourceUrl: string | null;
       fetchedAt: string;

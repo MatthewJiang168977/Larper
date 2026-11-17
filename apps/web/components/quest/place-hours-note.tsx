@@ -64,7 +64,7 @@ export function PlaceHoursNote({
       {safe.status === "known" ? <Known hours={safe} now={now} /> : <Unverified website={website} phone={phone} />}
       {confirmations && (
         <p>
-          confirmed open by {confirmations.count} {confirmations.count === 1 ? "person" : "people"}, most
+          confirmed open by {confirmations.count} people, most
           recently {RECENCY[confirmations.last]}
         </p>
       )}

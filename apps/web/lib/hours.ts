@@ -28,14 +28,14 @@ export function readHours(raw: unknown): PlaceHours {
   const nextChange =
     change &&
     formatClock(change.at) &&
-    (change.day === "today" || change.day === "tomorrow") &&
-    DAYS.includes(change.weekday as string) &&
     (change.to === "open" || change.to === "closed")
       ? {
           at: change.at as string,
-          day: change.day as "today" | "tomorrow",
-          weekday: change.weekday as Weekday,
           to: change.to as "open" | "closed",
+          // Without a valid day AND weekday (an older API), the time is shown bare, as before.
+          ...((change.day === "today" || change.day === "tomorrow") && DAYS.includes(change.weekday as string)
+            ? { day: change.day as "today" | "tomorrow", weekday: change.weekday as Weekday }
+            : {}),
         }
       : null;
   const services = Array.isArray(raw.services)
