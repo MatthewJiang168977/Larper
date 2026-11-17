@@ -735,7 +735,7 @@ describe("QuestHome: checking in", () => {
 describe("QuestHome: was it open?", () => {
   const done = (over: Record<string, unknown> = {}): Today => ({
     ...withQuest,
-    quest: { ...withQuest.quest!, status: "completed", ...over },
+    quest: { ...withQuest.quest!, status: "completed", wasOpen: null, ...over },
     deck: [],
   });
   const asked = (text: string) => screen.getByText(text);
@@ -747,8 +747,23 @@ describe("QuestHome: was it open?", () => {
     asked("was open: asked (unanswered)");
   });
 
-  it("is asked after a real check-in", async () => {
+  it("is never asked by an API that doesn't send wasOpen, loaded done or checked in", async () => {
+    routes["/quests/today"] = ok(done({ wasOpen: undefined }));
+    render(<QuestHome />);
+    await settle();
+    asked("was open: not asked");
+    cleanup();
     routes["/quests/today"] = ok(withQuest);
+    routes["/quests/q1/complete"] = ok({ id: "q1", status: "completed" });
+    render(<QuestHome />);
+    await settle();
+    fireEvent.click(screen.getByText("I went"));
+    await settle();
+    asked("was open: not asked");
+  });
+
+  it("is asked after a real check-in", async () => {
+    routes["/quests/today"] = ok({ ...withQuest, quest: { ...withQuest.quest!, wasOpen: null } });
     routes["/quests/q1/complete"] = ok({ id: "q1", status: "completed" });
     render(<QuestHome />);
     await settle();

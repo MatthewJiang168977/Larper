@@ -12,8 +12,8 @@ const CHOICES: { answer: WasOpenAnswer; label: string }[] = [
 
 /**
  * The optional question under "done for today": was the place open? One tap answers it
- * (or ignore it: nothing waits on it). The answer is thanked at once and sent behind
- * that; if it fails the question comes back with the reason and a way to try again.
+ * (or ignore it: nothing waits on it). The buttons are disabled while it's sent; the
+ * thanks comes only once it's saved, and a failure shows a short error and lets them retry.
  *
  * `answer` is what's known to be saved; `onAnswer` sends one and rejects on failure.
  */
@@ -33,14 +33,15 @@ export function WasOpenQuestion({
   // (or the retry). Otherwise the question appears and goes without touching focus.
   const hadFocus = useRef(false);
   const [saved, setSaved] = useState(false);
-  const thanks = answer !== null || pending !== null || saved;
+  const thanks = answer !== null || saved;
 
   useEffect(() => {
     if (!hadFocus.current) return;
     if (thanks) thanksRef.current?.focus();
-    else if (failed) groupRef.current?.querySelector<HTMLElement>(`[data-answer="${failed}"]`)?.focus();
+    else if (failed && pending === null) groupRef.current?.querySelector<HTMLElement>(`[data-answer="${failed}"]`)?.focus();
+    else return;
     hadFocus.current = false;
-  }, [thanks, failed]);
+  }, [thanks, failed, pending]);
 
   const choose = (choice: WasOpenAnswer) => {
     if (pending) return;
@@ -48,10 +49,11 @@ export function WasOpenQuestion({
     setFailed(null);
     setPending(choice);
     onAnswer(choice).then(
-      () => setSaved(true),
       () => {
-        // The thanks had focus (it went there): the retry takes it back.
-        hadFocus.current = document.activeElement === thanksRef.current;
+        setPending(null);
+        setSaved(true);
+      },
+      () => {
         setPending(null);
         setFailed(choice);
       },
@@ -66,11 +68,11 @@ export function WasOpenQuestion({
     );
   }
   return (
-    <div ref={groupRef} role="group" aria-labelledby={labelId} className="mt-3">
+    <div ref={groupRef} role="group" aria-labelledby={labelId} aria-busy={pending !== null} className="mt-3">
       <p id={labelId} className="text-sm text-ink-soft">was it open?</p>
       <div className="mt-1 flex flex-wrap gap-2">
         {CHOICES.map(({ answer: choice, label }) => (
-          <OSButton key={choice} data-answer={choice} onClick={() => choose(choice)}>
+          <OSButton key={choice} data-answer={choice} onClick={() => choose(choice)} disabled={pending !== null}>
             {label}
           </OSButton>
         ))}

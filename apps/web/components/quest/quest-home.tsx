@@ -418,12 +418,14 @@ export function QuestScreen({ api, location, accountControl, previewControls }: 
 
   // What the map and the sheet show: the finished quest alone, or today's quest and leads.
   const quest = finished ?? today?.quest ?? null;
-  // Asked of a completed quest nobody has answered for, unless its check-in was simulated.
-  // A quest that loads already done doesn't say whether it was (the shared demo account's
-  // mostly are, and the API refuses those), so that account isn't asked at all.
+  // Asked of a completed quest this account hasn't answered for. The API that has the
+  // question always sends `wasOpen` (null until answered); an older one omits it, and only
+  // `null` counts (a quest completed this visit keeps the field it was loaded with).
+  // Never the shared demo account: its check-ins are mostly simulated, which the API
+  // refuses, and a quest that loads already done doesn't say whether it was.
   const local = quest ? wasOpenLocal[quest.id] : undefined;
   const wasOpen =
-    quest?.status === "completed" && !me?.demo && local !== "off" && (local || quest.wasOpen == null)
+    quest?.status === "completed" && !me?.demo && local !== "off" && (local || quest.wasOpen === null)
       ? { answer: local ?? null, onAnswer: (a: WasOpenAnswer) => answerWasOpen(quest.id, a) }
       : null;
   const deck: DeckItem[] = finished ? [] : (today?.deck ?? []);

@@ -18,17 +18,18 @@ describe("WasOpenQuestion", () => {
     ["yes", "yes"],
     ["no", "no"],
     ["didn't check", "didnt_check"],
-  ])("sends %s and thanks at once", async (label, answer) => {
+  ])("sends %s, disables the buttons meanwhile, and thanks only once it's saved", async (label, answer) => {
     let finish!: () => void;
     const onAnswer = vi.fn(() => new Promise<void>((r) => (finish = r)));
     render(<WasOpenQuestion answer={null} onAnswer={onAnswer} />);
     fireEvent.click(screen.getByRole("button", { name: label }));
     expect(onAnswer).toHaveBeenCalledWith(answer);
-    // Before the API has answered.
-    expect(screen.getByRole("status").textContent).toBe("thanks, noted");
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("group").getAttribute("aria-busy")).toBe("true");
+    for (const b of screen.getAllByRole("button")) expect(b).toHaveProperty("disabled", true);
     await act(async () => finish());
     expect(screen.getByRole("status").textContent).toBe("thanks, noted");
+    expect(screen.queryByRole("button")).toBeNull();
   });
 
   it("can't be answered twice while sending", () => {
