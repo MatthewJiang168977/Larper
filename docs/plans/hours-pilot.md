@@ -32,9 +32,11 @@ DATABASE_URL=postgres://USER:PASS@HOST:PORT/larper scripts/hours-pilot-candidate
   `source` as the website URL or `seen on the door`, `date_checked` as `YYYY-MM-DD`.
   Leave a row's three columns empty to skip it.
 - Editing in Excel: save as "CSV UTF-8 (comma delimited)". The importer strips Excel's BOM
-  and also accepts `M/D/YYYY`, which US-locale Excel turns typed dates into. Day-first dates,
-  semicolon-separated files and `24/7` turned into a date by Excel are rejected (nothing is
-  written), so fix them and run again. A field starting with `'` in the CSV is the exporter
+  and accepts `M/D/YYYY`, which US-locale Excel uses. Slash dates are always read month-first.
+  For example, `3/4/2026` means March 4. Use `YYYY-MM-DD` to avoid ambiguity and check the
+  interpreted dates in the dry-run output before applying. Correct any semicolon-separated
+  files or `24/7` values that Excel converted to dates before importing.
+  A field starting with `'` in the CSV is the exporter
   keeping Overture text from running as a formula; the importer only reads `place_id` and
   the three columns you fill in.
 
