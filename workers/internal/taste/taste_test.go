@@ -90,3 +90,52 @@ func TestNotTodayIsNeutral(t *testing.T) {
 		t.Fatalf("NOT_TODAY changed taste")
 	}
 }
+
+// "Not today" never counts as a dislike: an action with no step leaves the taste vector
+// bit for bit as it was (the same values, not merely close ones), whatever the profile
+// and the place. SKIPPED, the dislike, is the contrast: it does move it.
+func TestActionsWithoutAStepLeaveTasteBitForBitUnchanged(t *testing.T) {
+	old := []float32{0.6, 0.48, 0.64, 0, 0.1}
+	place := []float32{0, 0.8, 0.6, 0.3, 0}
+	before := append([]float32(nil), old...)
+
+	for name, a := range map[string]eventsv1.QuestAction{
+		"NOT_TODAY":   eventsv1.QuestAction_QUEST_ACTION_NOT_TODAY,
+		"UNSPECIFIED": eventsv1.QuestAction_QUEST_ACTION_UNSPECIFIED,
+		"unknown":     eventsv1.QuestAction(99),
+	} {
+		if _, moves := Step(a); moves {
+			t.Fatalf("%s has a step", name)
+		}
+		got := Update(old, place, a)
+		if len(got) != len(before) {
+			t.Fatalf("%s: length changed: %v", name, got)
+		}
+		for i := range before {
+			if math.Float32bits(got[i]) != math.Float32bits(before[i]) {
+				t.Fatalf("%s moved taste at slot %d: %v -> %v", name, i, before[i], got[i])
+			}
+			if math.Float32bits(old[i]) != math.Float32bits(before[i]) {
+				t.Fatalf("%s changed the caller's vector at slot %d", name, i)
+			}
+		}
+		if got := Update(nil, place, a); got != nil {
+			t.Fatalf("%s created a profile from nothing: %v", name, got)
+		}
+	}
+
+	// The contrast: a SKIPPED event moves it.
+	if _, moves := Step(skipped); !moves {
+		t.Fatal("SKIPPED has no step")
+	}
+	moved := Update(old, place, skipped)
+	same := true
+	for i := range before {
+		if math.Float32bits(moved[i]) != math.Float32bits(before[i]) {
+			same = false
+		}
+	}
+	if same {
+		t.Fatal("SKIPPED left taste unchanged")
+	}
+}
