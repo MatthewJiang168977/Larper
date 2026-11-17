@@ -110,6 +110,23 @@ describe('MeDataController', () => {
     }
   });
 
+  it('refuses to export the shared demo account (other visitors\' data) before reaching the service', async () => {
+    const before = process.env.DEMO_CLERK_USER_ID;
+    process.env.DEMO_CLERK_USER_ID = 'user_demo1';
+    try {
+      exportFn.mockResolvedValue({ version: 1, journal: [] });
+      const res = await call('GET', '/me/export', 'demo-1'); // clerkId user_demo1
+      expect(res.status).toBe(403);
+      expect(res.headers.get('content-disposition')).toBeNull();
+      expect(await res.json()).toMatchObject({ statusCode: 403, code: 'demo_account' });
+      expect(exportFn).not.toHaveBeenCalled();
+      expect((await call('GET', '/me/export', 'exp-2')).status).toBe(200); // anyone else still can
+    } finally {
+      if (before === undefined) delete process.env.DEMO_CLERK_USER_ID;
+      else process.env.DEMO_CLERK_USER_ID = before;
+    }
+  });
+
   it('answers 401 without a signed-in user, and never reaches a service', async () => {
     for (const [method, path] of [['GET', '/me/export'], ['DELETE', '/me/history'], ['DELETE', '/me']]) {
       expect((await call(method, path, undefined)).status).toBe(401);

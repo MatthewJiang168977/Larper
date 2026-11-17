@@ -24,7 +24,9 @@ kept the exact position of every offer forever.
 
 Both deletes answer 200 with the counts, and **403 `{"code":"demo_account"}` for the shared
 demo account** (it is reset nightly by `ops/demo-reset.ts`; a visitor must not be able to
-empty or remove it for the next one). `DELETE /me` also says what happened to the Clerk
+empty or remove it for the next one). `GET /me/export` refuses it the same way: the demo's
+journal is every visitor's, with each offer's position, which can be a visitor's real
+location. `DELETE /me` also says what happened to the Clerk
 user: `"clerkUser": "manual" | "deleted" | "failed"`.
 
 ### How the API deletes without a DELETE grant
