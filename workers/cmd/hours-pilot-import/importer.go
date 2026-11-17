@@ -59,6 +59,20 @@ var nyc = func() *time.Location {
 	return l
 }()
 
+// parseCheckedDate reads the date the hours were checked: YYYY-MM-DD as the template asks,
+// or M/D/YYYY, which US-locale Excel turns a typed date into when it saves the CSV. Day-first
+// dates (18/11/2026) fail here rather than being read the wrong way round.
+func parseCheckedDate(s string) (time.Time, error) {
+	d, err := time.ParseInLocation("2006-01-02", s, nyc)
+	if err == nil {
+		return d, nil
+	}
+	if d, uerr := time.ParseInLocation("1/2/2006", s, nyc); uerr == nil {
+		return d, nil
+	}
+	return time.Time{}, err
+}
+
 // ParseCSV reads the owner's filled-in file. A row whose opening_hours, source and date_checked
 // are all empty is skipped (a candidate the owner did not get to). Every other row is checked;
 // the caller must write nothing if any Problem comes back.
@@ -71,8 +85,10 @@ func ParseCSV(r io.Reader) ([]Row, []Problem) {
 	}
 	col := map[string]int{}
 	for i, h := range head {
-		h = strings.TrimSpace(strings.TrimPrefix(h, "ï»¿")) // Excel adds a BOM
-		col[strings.ToLower(h)] = i
+		if i == 0 {
+			h = strings.TrimPrefix(h, "\uFEFF") // Excel's "CSV UTF-8" starts the file with a BOM
+		}
+		col[strings.ToLower(strings.TrimSpace(h))] = i
 	}
 	var probs []Problem
 	for _, need := range []string{"place_id", "opening_hours", "source", "date_checked"} {
@@ -142,8 +158,8 @@ func ParseCSV(r io.Reader) ([]Row, []Problem) {
 		var checked time.Time
 		if dc == "" {
 			add("date_checked is empty (YYYY-MM-DD)")
-		} else if d, derr := time.ParseInLocation("2006-01-02", dc, nyc); derr != nil {
-			add(fmt.Sprintf("date_checked %q is not YYYY-MM-DD", dc))
+		} else if d, derr := parseCheckedDate(dc); derr != nil {
+			add(fmt.Sprintf("date_checked %q is not YYYY-MM-DD (or M/D/YYYY, as US Excel saves it)", dc))
 		} else {
 			// Noon New York time on that day: the date stays right in any zone it is shown in.
 			checked = time.Date(d.Year(), d.Month(), d.Day(), 12, 0, 0, 0, nyc)

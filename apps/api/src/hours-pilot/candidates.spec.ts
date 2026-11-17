@@ -39,6 +39,16 @@ describe('rankPilotCandidates', () => {
     expect(ids).not.toContain('4');
   });
 
+  it('leaves out places already verified, after they have deduped their weaker twins', () => {
+    const rows = [
+      place('1'),
+      place('4', { name: 'Twin', confidence: 0.8, lat: 40.7301 }),
+      place('5', { name: 'The Twin', confidence: 0.95, lat: 40.7301, verified: true }),
+    ];
+    const ids = rankPilotCandidates(rows, 10).map((p) => p.id);
+    expect(ids).toEqual(['1']); // 5 is verified already; 4 is its duplicate, as in the API
+  });
+
   it('keeps a place exactly at the confidence threshold (float32 comparison, like the API)', () => {
     expect(rankPilotCandidates([place('1', { confidence: MIN_CONFIDENCE })], 5)).toHaveLength(1);
   });

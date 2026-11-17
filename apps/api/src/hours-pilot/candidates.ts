@@ -33,6 +33,8 @@ export interface PilotPlace extends GateItem {
   website: string | null;
   phone: string | null;
   address: string | null; // the places table has no address column today; always null
+  /** Already has hand-verified ('manual') hours: dedupes others, never listed itself. */
+  verified?: boolean;
 }
 
 export interface RankedPlace extends PilotPlace {
@@ -64,7 +66,9 @@ const compareIds = (a: string, b: string) => (a.length !== b.length ? a.length -
  * cannot take all the slots), best first overall. Ties break on id, so the output is stable.
  */
 export function rankPilotCandidates(rows: readonly PilotPlace[], perArea: number): RankedPlace[] {
-  const gated = applyStaticGate(rows, MIN_CONFIDENCE);
+  // Dedupe over every place, verified ones included (the API would offer a verified place
+  // over its weaker same-name twin), and only then drop those already verified.
+  const gated = applyStaticGate(rows, MIN_CONFIDENCE).filter((p) => !p.verified);
   const tagCounts: Record<string, number> = {};
   for (const p of gated) for (const t of new Set(p.tags)) tagCounts[t] = (tagCounts[t] ?? 0) + 1;
   const area: AreaStats = { total: gated.length, tagCounts };

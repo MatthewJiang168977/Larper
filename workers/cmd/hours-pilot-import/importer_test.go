@@ -62,17 +62,17 @@ func TestParseCSVBlankRowsSkipped(t *testing.T) {
 
 func TestParseCSVRejectsEverythingWithLineNumbers(t *testing.T) {
 	_, probs := parse(t, strings.Join([]string{
-		`10,EV,A,,,,Mo-Fr 09:00-17:00,seen on the door,2026-11-18`,      // line 2: fine
-		`11,EV,B,,,,Mo-Fr 9am-5pm,seen on the door,2026-11-18`,          // line 3: 12-hour times
-		`12,EV,C,,,,Mo-Fr banana,seen on the door,2026-11-18`,           // line 4: nothing usable
-		`13,EV,D,,,,Mo-Fr 09:00-17:00,the internet,2026-11-18`,          // line 5: bad source
-		`14,EV,E,,,,Mo-Fr 09:00-17:00,seen on the door,18/11/2026`,      // line 6: bad date
-		`15,EV,F,,,,Mo-Fr 09:00-17:00,seen on the door,`,                // line 7: no date
-		`x,EV,G,,,,Mo-Fr 09:00-17:00,seen on the door,2026-11-18`,       // line 8: bad id
-		`10,EV,H,,,,Mo-Fr 10:00-18:00,seen on the door,2026-11-18`,      // line 9: duplicate of line 2
-		`16,EV,I,,,,Mo-Fr 09:00-17:00,,2026-11-18`,                      // line 10: no source
-		`17,EV,J,,,,,seen on the door,2026-11-18`,                       // line 11: no hours
-		`18,EV,K,,,,Mo-Fr 09:00-17:00,seen on the door,2999-01-01`,      // line 12: future
+		`10,EV,A,,,,Mo-Fr 09:00-17:00,seen on the door,2026-11-18`,            // line 2: fine
+		`11,EV,B,,,,Mo-Fr 9am-5pm,seen on the door,2026-11-18`,                // line 3: 12-hour times
+		`12,EV,C,,,,Mo-Fr banana,seen on the door,2026-11-18`,                 // line 4: nothing usable
+		`13,EV,D,,,,Mo-Fr 09:00-17:00,the internet,2026-11-18`,                // line 5: bad source
+		`14,EV,E,,,,Mo-Fr 09:00-17:00,seen on the door,18/11/2026`,            // line 6: bad date
+		`15,EV,F,,,,Mo-Fr 09:00-17:00,seen on the door,`,                      // line 7: no date
+		`x,EV,G,,,,Mo-Fr 09:00-17:00,seen on the door,2026-11-18`,             // line 8: bad id
+		`10,EV,H,,,,Mo-Fr 10:00-18:00,seen on the door,2026-11-18`,            // line 9: duplicate of line 2
+		`16,EV,I,,,,Mo-Fr 09:00-17:00,,2026-11-18`,                            // line 10: no source
+		`17,EV,J,,,,,seen on the door,2026-11-18`,                             // line 11: no hours
+		`18,EV,K,,,,Mo-Fr 09:00-17:00,seen on the door,2999-01-01`,            // line 12: future
 		`19,EV,L,,,,Mo-Fr 09:00-17:00; Sa 17:00+,seen on the door,2026-11-18`, // line 13: partly understood
 		"",
 	}, "\r\n"))
@@ -99,9 +99,23 @@ func TestParseCSVHeaderProblems(t *testing.T) {
 }
 
 func TestParseCSVExcelBOM(t *testing.T) {
-	rows, probs := ParseCSV(strings.NewReader("ï»¿" + header + "10,EV,A,,,,Mo-Fr 09:00-17:00,seen on the door,2026-11-18\r\n"))
+	bom := string(rune(0xFEFF)) // a real U+FEFF, bytes ef bb bf
+	if !strings.HasPrefix(bom, "\xef\xbb\xbf") {
+		t.Fatal("the test's BOM isn't U+FEFF")
+	}
+	rows, probs := ParseCSV(strings.NewReader(bom + header + "10,EV,A,,,,Mo-Fr 09:00-17:00,seen on the door,2026-11-18\r\n"))
 	if len(probs) > 0 || len(rows) != 1 {
 		t.Fatalf("rows %v probs %v", rows, probs)
+	}
+}
+
+func TestParseCSVUSExcelDate(t *testing.T) {
+	rows, probs := parse(t, "10,EV,A,,,,Mo-Fr 09:00-17:00,seen on the door,11/18/2026\r\n")
+	if len(probs) > 0 || len(rows) != 1 {
+		t.Fatalf("rows %v probs %v", rows, probs)
+	}
+	if got := rows[0].CheckedAt.Format("2006-01-02 15:04 MST"); got != "2026-11-18 12:00 EST" {
+		t.Fatalf("checked at %s", got)
 	}
 }
 

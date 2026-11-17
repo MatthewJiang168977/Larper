@@ -16,21 +16,23 @@ type Row = Omit<PilotPlace, 'address'>;
 
 // Same pre-filter as quests.service candidates(): confidence as a float4, blocked names, not
 // location_suspect. applyStaticGate then re-applies the rules (and the dedupe) in TypeScript.
-// Also skipped: places that already carry a 'manual' regular schedule (nothing left to look up).
-// A place on the border of two polygons is listed once, under the first area in the file.
+// Places that already carry a 'manual' regular schedule come back marked `verified`: they
+// still take part in the same-name dedupe (as they do in the API), and are left out of the
+// CSV only after it (rankPilotCandidates). A place on the border of two polygons is listed
+// once, under the first area in the file.
 export const CANDIDATES_SQL = `
   SELECT DISTINCT ON (p.id)
          p.id::text AS id, p.name, ST_Y(p.geom::geometry) AS lat, ST_X(p.geom::geometry) AS lng,
          p.categories, p.categories[array_length(p.categories, 1)] AS category, p.tags,
          p.confidence::float8 AS confidence, p.chain_locations AS "chainLocations",
-         p.website, p.phone, a.name AS neighborhood
+         p.website, p.phone, a.name AS neighborhood,
+         EXISTS (SELECT FROM place_hours_facts f
+                 WHERE f.place_id = p.id AND f.kind = 'schedule' AND f.service = 'regular' AND f.source = 'manual') AS verified
   FROM unnest($1::text[], $2::text[]) WITH ORDINALITY AS a(name, gj, ord)
   JOIN places p ON ST_Intersects(p.geom::geometry, ST_SetSRID(ST_GeomFromGeoJSON(a.gj), 4326))
   WHERE p.location_suspect IS NULL
     AND p.confidence >= $3::real
     AND NOT EXISTS (SELECT FROM unnest(p.categories) c WHERE lower(c) = ANY($4::text[]))
-    AND NOT EXISTS (SELECT FROM place_hours_facts f
-                    WHERE f.place_id = p.id AND f.kind = 'schedule' AND f.service = 'regular' AND f.source = 'manual')
   ORDER BY p.id, a.ord`;
 
 function arg(name: string): string | undefined {

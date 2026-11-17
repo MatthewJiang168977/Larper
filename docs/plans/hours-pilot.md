@@ -31,6 +31,12 @@ DATABASE_URL=postgres://USER:PASS@HOST:PORT/larper scripts/hours-pilot-candidate
   last three: `opening_hours` in OSM syntax (24-hour times; `Mo-Su 17:00-02:00`; `PH off`),
   `source` as the website URL or `seen on the door`, `date_checked` as `YYYY-MM-DD`.
   Leave a row's three columns empty to skip it.
+- Editing in Excel: save as "CSV UTF-8 (comma delimited)". The importer strips Excel's BOM
+  and also accepts `M/D/YYYY`, which US-locale Excel turns typed dates into. Day-first dates,
+  semicolon-separated files and `24/7` turned into a date by Excel are rejected (nothing is
+  written), so fix them and run again. A field starting with `'` in the CSV is the exporter
+  keeping Overture text from running as a formula; the importer only reads `place_id` and
+  the three columns you fill in.
 
 ## 2. Import the filled-in CSV
 
