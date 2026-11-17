@@ -1,0 +1,26 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "slug": "east-village", "name": "East Village", "note": "approximate: Houston St to 14th St, Bowery/3rd Ave to Ave D" },
+      "geometry": { "type": "Polygon", "coordinates": [[
+        [-73.9925, 40.7228], [-73.9878, 40.7334], [-73.9745, 40.7290], [-73.9780, 40.7195], [-73.9925, 40.7228]
+      ]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "slug": "union-square", "name": "Union Square", "note": "approximate: 13th St to 18th St, 5th Ave to 3rd Ave" },
+      "geometry": { "type": "Polygon", "coordinates": [[
+        [-73.9945, 40.7350], [-73.9925, 40.7385], [-73.9850, 40.7360], [-73.9885, 40.7320], [-73.9945, 40.7350]
+      ]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "slug": "greenwich-village", "name": "Greenwich Village", "note": "approximate: Houston St to 14th St, 7th Ave S to Broadway" },
+      "geometry": { "type": "Polygon", "coordinates": [[
+        [-74.0045, 40.7280], [-73.9980, 40.7255], [-73.9910, 40.7350], [-74.0010, 40.7385], [-74.0045, 40.7280]
+      ]] }
+    }
+  ]
+}
