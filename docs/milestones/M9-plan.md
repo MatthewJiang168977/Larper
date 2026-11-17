@@ -1,5 +1,11 @@
 # M9 plan: Profile & Taste Identity
 
+> **Migrations renumbered again, 2026-11-16.** M9 phases 2-5 are parked by
+> `docs/plans/industry-ready-plan.md`. Meanwhile `0017` was taken by `saved_places` (#90) and
+> `0018` by place opening hours, so M9's remaining migrations below start at **0019**
+> (`profile_stats`), 0020 (tag families), 0021 (share cards) and the optional 0022 (star sign). Treat these numbers as
+> placeholders: re-check them against `db/migrations` when M9 resumes.
+
 > **Renumbered 2026-10-25.** Migrations 0010-0015 are taken (service roles, skip reasons,
 > the demo reset, check-in attempts, `places.location_suspect`), so M9's start at **0016**;
 > decision records 0002-0004 are taken too, so M9's are **0005** and **0006**. The
@@ -17,12 +23,12 @@ Each phase is its own PR, and each deploy is approved separately.
 | Phase | What | Migration |
 |---|---|---|
 | 1 | Quest facts: `accepted_at`, `completed_at`, `rarity` on `quests` | `0016_quest_facts` |
-| 2 | `profile_stats`, the profile-stats consumer, rebuild, lag metric, demo-reset change | `0017_profile_stats` |
-| 3 | Tag families, palette, archetypes | `0018_tag_families` |
+| 2 | `profile_stats`, the profile-stats consumer, rebuild, lag metric, demo-reset change | `0019_profile_stats` |
+| 3 | Tag families, palette, archetypes | `0020_tag_families` |
 | 4 | `GET /me/profile`, web profile page | none |
-| 5 | Share cards | `0019_share_cards` |
+| 5 | Share cards | `0021_share_cards` |
 
-The star sign (build step 16, migration 0020, open question 11) is **dropped**.
+The star sign (build step 16, migration 0022, open question 11) is **dropped**.
 
 Decisions, which close the matching open questions below:
 
@@ -160,10 +166,10 @@ them. No contract step is needed in M9. Each migration gets a `.down.sql`.
 | Migration (**new**) | Change | Why / rollout note |
 |---|---|---|
 | `0016_quest_facts` | `quests` add `accepted_at timestamptz`, `completed_at timestamptz`, `rarity real` (all nullable) | Makes the projection a function of stored facts. The new API sets them in `act()` and `offer()`. Rows written by old pods during the rollout, and all earlier rows, have NULLs; the projection reads `coalesce(completed_at, updated_at)` for completed rows (exact, since completed is terminal) and treats `status = 'completed'` as accepted (complete is only allowed from accepted). Legacy `rarity` stays NULL (see open question 6). |
-| `0017_profile_stats` | `profile_stats (user_id PK → users ON DELETE CASCADE, checkins, neighborhoods, accepts, skips, streak_longest, streak_run, streak_last_day date, niche_score real, rarest_tag text, projection_version int, updated_at)`; index on `niche_score` | The consumer's projection. `streak_run`/`streak_last_day` let the API compute the *current* streak at read time (it decays without events). |
-| `0018_tag_families` | `tags` add `family text` (nullable) | Hue per family for the palette. Old ingest-workers keep upserting `(slot, tag)` without it. |
-| `0019_share_cards` | `share_cards (token_hash bytea PK, user_id → users ON DELETE CASCADE, payload jsonb, created_at, revoked_at)`; partial unique index on `user_id WHERE revoked_at IS NULL` | Only a SHA-256 of the token is stored, so a database leak doesn't expose live links. One active card per user (open question 4). |
-| `0020_star_sign` (optional, last) | `users` add `birth_month smallint`, `birth_day smallint`, both nullable, with range checks | Opt-in only; month and day, never a year. |
+| `0019_profile_stats` | `profile_stats (user_id PK → users ON DELETE CASCADE, checkins, neighborhoods, accepts, skips, streak_longest, streak_run, streak_last_day date, niche_score real, rarest_tag text, projection_version int, updated_at)`; index on `niche_score` | The consumer's projection. `streak_run`/`streak_last_day` let the API compute the *current* streak at read time (it decays without events). |
+| `0020_tag_families` | `tags` add `family text` (nullable) | Hue per family for the palette. Old ingest-workers keep upserting `(slot, tag)` without it. |
+| `0021_share_cards` | `share_cards (token_hash bytea PK, user_id → users ON DELETE CASCADE, payload jsonb, created_at, revoked_at)`; partial unique index on `user_id WHERE revoked_at IS NULL` | Only a SHA-256 of the token is stored, so a database leak doesn't expose live links. One active card per user (open question 4). |
+| `0022_star_sign` (optional, last) | `users` add `birth_month smallint`, `birth_day smallint`, both nullable, with range checks | Opt-in only; month and day, never a year. |
 
 The per-service database roles (`docs/audit-2026-10.md` item 3, migration 0010) are live,
 so each of these migrations also grants its tables to the roles that need them, and
@@ -354,7 +360,7 @@ item 10 is added).
    stores `rarity`; Jest for both.
 3. **Extract the consumer loop** into `workers/internal/consumer`; taste-worker uses it,
    behaviour unchanged.
-4. **Projection.** Migration 0017; `workers/internal/profile` with `Recompute` and the
+4. **Projection.** Migration 0019; `workers/internal/profile` with `Recompute` and the
    advisory lock; DB-backed tests with hand-computed values.
 5. **profile-stats consumer.** `cmd/profile-stats` (consume, dedupe, DLQ), Deployment in
    `templates/workers.yaml`; duplicate-event test.
@@ -362,20 +368,20 @@ item 10 is added).
    test.
 7. **Worker metrics and lag.** `platform/metrics.go`, ServiceMonitor(s), `workers.json`
    dashboard.
-8. **Tag families.** `taxonomy.yaml` families, parser, migration 0018, `syncTags` at
+8. **Tag families.** `taxonomy.yaml` families, parser, migration 0020, `syncTags` at
    ingest-worker startup; taxonomy tests.
 9. **Palette.** `palette.ts` and its tests.
 10. **Archetypes.** `cmd/archetypes`, committed `archetypes.json`, name map, nearest
     centroid and cold-start gating; tests.
 11. **`GET /me/profile`** with read-time streak and percentile; tests.
-12. **Share cards.** Migration 0019, `POST`/`DELETE /me/share-card`, `GET /share/:token`,
+12. **Share cards.** Migration 0021, `POST`/`DELETE /me/share-card`, `GET /share/:token`,
     rate-limit guard; payload whitelist and 404/429 tests.
 13. **Web profile page** and header link.
 14. **Web share page and OG image.**
 15. **Chaos and docs.** k6 event scenario, `chaos.sh` changes, run it and commit the
     report under `loadtest/results/`; README M9 section, privacy trade-offs, Status line;
     finalize the ADRs.
-16. **Optional: star sign.** Migration 0020, endpoint, UI toggle.
+16. **Optional: star sign.** Migration 0022, endpoint, UI toggle.
 
 Steps 2-7 can ship before any UI, since nothing reads the new data yet. Every migration is
 additive, so they can go out together or release by release.

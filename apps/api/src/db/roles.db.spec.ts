@@ -1,6 +1,6 @@
 import { Client, Pool } from 'pg';
 import { ARCHIVER_SQL, HEARTBEAT_SQL } from '../ops/backup-check';
-import { DELETE_QUESTS_SQL, RESTORE_TASTE_SQL, TAGS_SQL } from '../ops/demo-reset';
+import { DELETE_QUESTS_SQL, DELETE_SAVED_PLACES_SQL, RESTORE_TASTE_SQL, TAGS_SQL } from '../ops/demo-reset';
 
 // The per-service roles from migration 0010 (docs/decisions/0003-service-db-roles.md).
 // The grants must equal the matrix below exactly: a new table or a new query that
@@ -9,7 +9,7 @@ import { DELETE_QUESTS_SQL, RESTORE_TASTE_SQL, TAGS_SQL } from '../ops/demo-rese
 // the matrix relies on are checked: identity columns need no sequence grant, and
 // foreign-key checks run as the table's owner. The backup check's role is in the
 // matrix with no grants at all: it runs its two queries and nothing else. The demo
-// reset's (migration 0012) reads users and deletes quests, and nothing else.
+// reset's (migration 0012) reads users and deletes quests and saved places, and nothing else.
 //
 // Needs the owner and every role's URL (CI's db job sets them; db/test has the setup).
 const OWNER_URL = process.env.TEST_OWNER_DATABASE_URL;
@@ -42,6 +42,7 @@ const EXPECTED: Record<Role, Record<string, string[]>> = {
     area_totals: [S],
     areas_ingested: [S],
     checkin_attempts: [I],
+    saved_places: [S, I], // migration 0017: the want-to-go list; never updated or deleted by the API
   },
   larper_relay: {
     outbox: [S, U, D],
@@ -61,11 +62,12 @@ const EXPECTED: Record<Role, Record<string, string[]>> = {
   },
   // templates/backup-check.yaml: no grant. CNPG creates it; no migration does.
   larper_backup_check: {},
-  // ops/demo-reset.ts: the demo account's quests, found by its Clerk id, and its
-  // taste back to the baseline (an upsert, built from the tag slots).
+  // ops/demo-reset.ts: the demo account's quests and saved places, found by its Clerk
+  // id, and its taste back to the baseline (an upsert, built from the tag slots).
   larper_demo_reset: {
     users: [S],
     quests: [S, D],
+    saved_places: [S, D],
     tags: [S],
     taste_profiles: [S, I, U],
   },
@@ -212,6 +214,8 @@ describeDb('per-service database roles (real database)', () => {
       await denied('larper_api', 'DELETE FROM users');
       await denied('larper_api', 'DELETE FROM quests');
       await denied('larper_api', 'DELETE FROM checkin_attempts');
+      await denied('larper_api', 'DELETE FROM saved_places');
+      await denied('larper_api', 'UPDATE saved_places SET quest_id = quest_id');
       await denied('larper_api', 'SELECT * FROM checkin_attempts'); // it writes attempts, never reads them
       await denied('larper_api', 'UPDATE places SET name = name');
       await denied('larper_api', 'UPDATE users SET clerk_id = clerk_id');
@@ -273,6 +277,8 @@ describeDb('per-service database roles (real database)', () => {
       await denied('larper_demo_reset', 'DELETE FROM users');
       await denied('larper_demo_reset', `INSERT INTO users (clerk_id) VALUES ('test_x')`);
       await denied('larper_demo_reset', 'UPDATE quests SET status = status');
+      await denied('larper_demo_reset', 'UPDATE saved_places SET quest_id = quest_id');
+      await denied('larper_demo_reset', 'INSERT INTO saved_places (user_id, place_id) VALUES (1, 1)');
       await denied('larper_demo_reset', 'DELETE FROM taste_profiles');
       await denied('larper_demo_reset', 'UPDATE tags SET tag = tag');
       await denied('larper_demo_reset', 'INSERT INTO quests (user_id) VALUES (1)');
@@ -355,7 +361,9 @@ describeDb('per-service database roles (real database)', () => {
            VALUES ($1, $2, 0, '{}', ST_SetSRID(ST_MakePoint(0, -60), 4326)::geography)`,
           [uid, place.rows[0].id],
         );
+        await owner.query('INSERT INTO saved_places (user_id, place_id, quest_id) SELECT user_id, place_id, id FROM quests WHERE user_id = $1', [uid]);
         await inTx('larper_demo_reset', async (c) => {
+          expect((await c.query(DELETE_SAVED_PLACES_SQL, [cid])).rowCount).toBe(1);
           expect((await c.query(DELETE_QUESTS_SQL, [cid])).rowCount).toBe(1);
           await c.query(TAGS_SQL);
           // Twice: the insert, then the upsert's update.

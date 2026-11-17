@@ -5,6 +5,7 @@ import type { CacheService } from '../cache/cache.service';
 import { createPool } from '../db/db.module';
 import { TagsService } from '../profile/tags.service';
 import type { AreasService } from './areas.service';
+import { BLOCKED_CATEGORIES, MIN_CONFIDENCE } from './eligibility';
 import { cellOf } from './geo';
 import { QuestsService } from './quests.service';
 import { Candidate, mmr, Scored } from './scoring';
@@ -47,7 +48,18 @@ const OLD_SQL = readFileSync(join(BENCH, 'archive/current.sql'), 'utf8')
   .replace(/:r\b/g, '$4')
   .replace(CHAIN_STATS_JOIN, LIVE_CHAIN_JOIN);
 if (OLD_SQL.includes('chain_stats')) throw new Error('archive/current.sql: chain_stats join not replaced');
-const OLD_SQL_TIEBREAK = OLD_SQL.replace('ORDER BY taste DESC', 'ORDER BY taste DESC, p.id');
+// The query has since gained filters in its WHERE (the location check of migration 0015,
+// the trust gate's confidence and categories: eligibility.ts); the replaced query gets
+// them too, as $5 and $6 (GATE_PARAMS), so the two still select from the same places.
+const OLD_WHERE = 'WHERE ST_DWithin(p.geom, o.g, $4)';
+if (!OLD_SQL.includes(OLD_WHERE)) throw new Error('archive/current.sql: WHERE clause not found');
+const GATED_SQL = OLD_SQL.replace(
+  OLD_WHERE,
+  `${OLD_WHERE} AND p.location_suspect IS NULL AND p.confidence >= $5::real
+     AND NOT EXISTS (SELECT FROM unnest(p.categories) c WHERE lower(c) = ANY($6::text[]))`,
+);
+const GATE_PARAMS = [MIN_CONFIDENCE, BLOCKED_CATEGORIES];
+const OLD_SQL_TIEBREAK = GATED_SQL.replace('ORDER BY taste DESC', 'ORDER BY taste DESC, p.id');
 const DECK_SIZE = 10;
 
 type Ranker = {
@@ -68,6 +80,14 @@ function sameCandidates(a: Candidate[], b: Candidate[]) {
   return tastes(a) === tastes(b) ? null : 'tied rows';
 }
 
+// candidates() also returns each place's categories, for the gate in rank(); the replaced query has no such column.
+const withoutCategories = (cs: Candidate[]) =>
+  cs.map((row) => {
+    const c: Candidate & { categories?: string[] } = { ...row };
+    delete c.categories;
+    return c;
+  });
+
 const ranked = (xs: Scored[]) => xs.map((x) => `${x.id}:${x.score}`).join();
 
 describeDb('two-phase candidate query (real database)', () => {
@@ -87,7 +107,7 @@ describeDb('two-phase candidate query (real database)', () => {
     next = make();
     prev = make();
     prev.candidates = async (userId, lat, lng, radiusM) =>
-      (await pool.query<Candidate>(OLD_SQL_TIEBREAK, [userId, lng, lat, radiusM])).rows;
+      (await pool.query<Candidate>(OLD_SQL_TIEBREAK, [userId, lng, lat, radiusM, ...GATE_PARAMS])).rows;
   });
 
   afterAll(async () => {
@@ -120,7 +140,7 @@ describeDb('two-phase candidate query (real database)', () => {
       if (!vec) throw new Error(`pair ${i}: user ${uid} has no taste profile in this database`);
       const [a, b] = await Promise.all([
         prev.candidates(uid, p.lat, p.lng, p.r),
-        next.candidates(uid, p.lat, p.lng, p.r),
+        next.candidates(uid, p.lat, p.lng, p.r).then(withoutCategories),
       ]);
       if (JSON.stringify(a) !== JSON.stringify(b)) diffs.push(`pair ${i}: candidates differ`);
 
@@ -143,8 +163,8 @@ describeDb('two-phase candidate query (real database)', () => {
     for (const [i, p] of PAIRS.entries()) {
       const uid = String(p.uid);
       const [a, b] = await Promise.all([
-        pool.query<Candidate>(OLD_SQL, [uid, p.lng, p.lat, p.r]).then((r) => r.rows),
-        next.candidates(uid, p.lat, p.lng, p.r),
+        pool.query<Candidate>(GATED_SQL, [uid, p.lng, p.lat, p.r, ...GATE_PARAMS]).then((r) => r.rows),
+        next.candidates(uid, p.lat, p.lng, p.r).then(withoutCategories),
       ]);
       const cand = sameCandidates(a, b);
       if (cand) diffs.push(`pair ${i}: candidates differ (${cand})`);
