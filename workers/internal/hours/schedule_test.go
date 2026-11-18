@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMarshalIsStableAndComplete(t *testing.T) {
@@ -117,4 +118,25 @@ func mustJSON(v any) string {
 		panic(err)
 	}
 	return string(b)
+}
+
+func TestValidateCapsDates(t *testing.T) {
+	dates := func(n int) []DateRule {
+		out := make([]DateRule, n)
+		start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		for i := range out {
+			out[i] = DateRule{On: start.AddDate(0, 0, i).Format("2006-01-02"), Closed: true}
+		}
+		return out
+	}
+	at := Schedule{Dates: dates(MaxDates)}
+	at.Normalize()
+	if err := at.Validate(); err != nil {
+		t.Errorf("%d dates should be valid: %v", MaxDates, err)
+	}
+	over := Schedule{Dates: dates(MaxDates + 1)}
+	over.Normalize()
+	if err := over.Validate(); err == nil {
+		t.Errorf("%d dates should be invalid", MaxDates+1)
+	}
 }

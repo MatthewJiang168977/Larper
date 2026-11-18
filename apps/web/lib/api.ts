@@ -155,17 +155,21 @@ export type PlaceHours =
       state: HoursState;
       /** Regular hours for today's New York date; [] is closed all day. */
       today: HoursSpan[];
-      nextChange: { at: string; to: "open" | "closed" } | null;
+      /** `day`: the New York day `at` falls on, so "opens 9:00" can't be read as today when it is tomorrow. */
+      /** Older APIs omit `day` and `weekday`, so the UI omits the transition. */
+      nextChange: { at: string; day?: "today" | "tomorrow"; weekday?: Weekday; to: "open" | "closed" } | null;
       source: HoursSource;
       sourceUrl: string | null;
       fetchedAt: string;
       services: { kind: "kitchen" | "bar"; state: HoursState; today: HoursSpan[] }[];
     };
 export type Weekday = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
-export type DayPart = "morning" | "afternoon" | "evening" | "night";
+/** How long ago the newest "open" answer was; the API never sends a day or a time. */
+export type ConfirmationRecency = "this_week" | "this_month" | "a_while_ago";
+/** Only ever sent for 3 or more people. */
 export interface OpenConfirmations {
   count: number;
-  last: { day: Weekday; part: DayPart };
+  last: ConfirmationRecency;
 }
 /** One person's answer to "was it open?" after a check-in. */
 export type WasOpenAnswer = "yes" | "no" | "didnt_check";

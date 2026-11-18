@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { nextChange, spansOn, stateAt, validateSchedule, type OpenState, type Schedule } from './schedule';
+import { MAX_DATES, nextChange, spansOn, stateAt, validateSchedule, type OpenState, type Schedule } from './schedule';
 
 const MIN_STATE_VECTORS = 145;
 
@@ -258,31 +258,31 @@ describe('spansOn', () => {
 describe('nextChange', () => {
   const s = base({ weekly: days([1, 2, 3, 4, 5], 540, 1020), holidays: 'open' });
   it('open now: the closing time', () => {
-    expect(nextChange(s, at('2026-07-08T16:00:00Z'))).toEqual({ at: '17:00', to: 'closed' }); // Wed 12:00 EDT
+    expect(nextChange(s, at('2026-07-08T16:00:00Z'))).toEqual({ at: '17:00', day: 'today', weekday: 'wed', to: 'closed' }); // Wed 12:00 EDT
   });
   it('closed now: the next opening, within 24 hours (tomorrow morning)', () => {
-    expect(nextChange(s, at('2026-07-08T22:00:00Z'))).toEqual({ at: '09:00', to: 'open' }); // Wed 18:00
+    expect(nextChange(s, at('2026-07-08T22:00:00Z'))).toEqual({ at: '09:00', day: 'tomorrow', weekday: 'thu', to: 'open' }); // Wed 18:00
   });
   it('closed now with no opening within 24 hours: null', () => {
     expect(nextChange(s, at('2026-07-10T22:00:00Z'))).toBeNull(); // Fri 18:00; Mon is two days away, Saturday has no span
   });
   it('overnight: open at 23:00, closes at 02:00', () => {
     const bar = base({ weekly: days([5], 1080, 1560) });
-    expect(nextChange(bar, at('2026-07-11T03:00:00Z'))).toEqual({ at: '02:00', to: 'closed' }); // Fri 23:00
-    expect(nextChange(bar, at('2026-07-11T05:00:00Z'))).toEqual({ at: '02:00', to: 'closed' }); // Sat 01:00
+    expect(nextChange(bar, at('2026-07-11T03:00:00Z'))).toEqual({ at: '02:00', day: 'tomorrow', weekday: 'sat', to: 'closed' }); // Fri 23:00
+    expect(nextChange(bar, at('2026-07-11T05:00:00Z'))).toEqual({ at: '02:00', day: 'today', weekday: 'sat', to: 'closed' }); // Sat 01:00
   });
   it('adjoining spans through midnight are one stretch of open time', () => {
     const t = base({ weekly: [...days([1], 1080, 1440), ...days([2], 0, 120)] });
-    expect(nextChange(t, at('2026-07-14T02:00:00Z'))).toEqual({ at: '02:00', to: 'closed' }); // Mon 22:00
+    expect(nextChange(t, at('2026-07-14T02:00:00Z'))).toEqual({ at: '02:00', day: 'tomorrow', weekday: 'tue', to: 'closed' }); // Mon 22:00
   });
   it('split shift: the break', () => {
     const split = base({ weekly: [{ d: 1, from: 540, to: 720 }, { d: 1, from: 840, to: 1200 }] });
-    expect(nextChange(split, at('2026-07-13T15:00:00Z'))).toEqual({ at: '12:00', to: 'closed' });
-    expect(nextChange(split, at('2026-07-13T16:30:00Z'))).toEqual({ at: '14:00', to: 'open' });
+    expect(nextChange(split, at('2026-07-13T15:00:00Z'))).toEqual({ at: '12:00', day: 'today', weekday: 'mon', to: 'closed' });
+    expect(nextChange(split, at('2026-07-13T16:30:00Z'))).toEqual({ at: '14:00', day: 'today', weekday: 'mon', to: 'open' });
   });
   it('a closed day tomorrow: the change is at midnight-bounded spans only', () => {
     const t = base({ weekly: days([1], 540, 1020), dates: [{ on: '2026-07-20', closed: true }] });
-    expect(nextChange(t, at('2026-07-13T16:00:00Z'))).toEqual({ at: '17:00', to: 'closed' });
+    expect(nextChange(t, at('2026-07-13T16:00:00Z'))).toEqual({ at: '17:00', day: 'today', weekday: 'mon', to: 'closed' });
   });
   it('null when always open, or when the state is unknown', () => {
     expect(nextChange(base({ always: true }), at('2026-07-08T16:00:00Z'))).toBeNull();
@@ -293,9 +293,29 @@ describe('nextChange', () => {
     const t = base({ weekly: days([3], 540, 1440), holidays: null });
     expect(nextChange(t, at('2026-12-24T22:00:00Z'))).toBeNull(); // Thursday Dec 24 isn't it; Wed->Thu Dec 25 is
   });
-  it('is by wall clock across DST', () => {
+  it('opens at 03:00 when spring forward skips the scheduled 02:30 opening', () => {
+    const t = base({ weekly: days([7], 150, 240) });
+    expect(nextChange(t, at('2026-03-08T03:00:00Z'))).toEqual({ at: '03:00', day: 'tomorrow', weekday: 'sun', to: 'open' }); // Saturday 22:00 EST
+  });
+  it('skips a span entirely inside the missing spring-forward hour', () => {
+    const t = base({ weekly: days([7], 135, 165) });
+    expect(nextChange(t, at('2026-03-08T06:59:59Z'))).toBeNull();
+  });
+  it('fall back can close at the rewind and reopen at the repeated opening minute', () => {
     const t = base({ weekly: days([7], 90, 120) });
-    expect(nextChange(t, at('2026-11-01T05:45:00Z'))).toEqual({ at: '02:00', to: 'closed' });
+    expect(nextChange(t, at('2026-11-01T05:45:00Z'))).toEqual({ at: '01:00', day: 'today', weekday: 'sun', to: 'closed' });
+    expect(nextChange(t, at('2026-11-01T06:00:00Z'))).toEqual({ at: '01:30', day: 'today', weekday: 'sun', to: 'open' });
+    expect(nextChange(t, at('2026-11-01T06:45:00Z'))).toEqual({ at: '02:00', day: 'today', weekday: 'sun', to: 'closed' });
+  });
+  it('finds an opening in the second pass after the first pass has closed', () => {
+    const t = base({ weekly: days([7], 75, 90) });
+    expect(nextChange(t, at('2026-11-01T05:45:00Z'))).toEqual({ at: '01:15', day: 'today', weekday: 'sun', to: 'open' });
+  });
+  it('keeps the civil cutoff at the same local time tomorrow across DST', () => {
+    const spring = base({ weekly: days([7], 180, 240) });
+    expect(nextChange(spring, at('2026-03-07T07:30:00Z'))).toBeNull(); // Saturday 02:30 EST
+    const fall = base({ weekly: days([7], 240, 300) });
+    expect(nextChange(fall, at('2026-10-31T08:00:00Z'))).toEqual({ at: '04:00', day: 'tomorrow', weekday: 'sun', to: 'open' }); // 25 elapsed hours
   });
 });
 
@@ -392,5 +412,50 @@ describe('the schedules in the shared parse vectors', () => {
   const withSchedule = file.parse.filter((p) => p.schedule && !p.error);
   it.each(withSchedule.map((p) => [p.name, p.schedule] as const))('Go emits a schedule this reader accepts: %s', (_n, schedule) => {
     expect(validateSchedule(schedule)).not.toBeNull();
+  });
+});
+
+describe('nextChange across days', () => {
+  it('names the day: a closed place that opens tomorrow says tomorrow, with the weekday', () => {
+    const t = base({ weekly: days([1, 2, 3, 4, 5], 540, 1020) });
+    const c = nextChange(t, at('2026-07-08T22:00:00Z')); // Wed 18:00
+    expect(c).toEqual({ at: '09:00', day: 'tomorrow', weekday: 'thu', to: 'open' });
+  });
+  it('the same clock time today and tomorrow are told apart', () => {
+    const t = base({ weekly: days([1, 2, 3, 4, 5], 540, 1020) });
+    expect(nextChange(t, at('2026-07-08T11:00:00Z'))).toMatchObject({ at: '09:00', day: 'today' }); // Wed 07:00
+    expect(nextChange(t, at('2026-07-08T22:00:00Z'))).toMatchObject({ at: '09:00', day: 'tomorrow' }); // Wed 18:00
+  });
+  it('is by New York days, not UTC days: Sat 22:00 EDT is Sunday in UTC', () => {
+    const t = base({ weekly: days([7], 540, 1020) });
+    expect(nextChange(t, at('2026-07-12T02:00:00Z'))).toEqual({ at: '09:00', day: 'tomorrow', weekday: 'sun', to: 'open' });
+  });
+});
+
+describe('nextChange across a DST change', () => {
+  const sunday = base({ weekly: days([7], 540, 1020) }); // Sundays 09:00-17:00
+  it('fall back: Sat 22:00 EDT, opens Sunday 09:00 EST, the instant being 14:00Z', () => {
+    expect(nextChange(sunday, at('2026-11-01T02:00:00Z'))).toEqual({ at: '09:00', day: 'tomorrow', weekday: 'sun', to: 'open' }); // Sat Oct 31 22:00 EDT
+    expect(stateAt(sunday, at('2026-11-01T13:59:00Z'))).toBe('closed'); // 08:59 EST
+    expect(stateAt(sunday, at('2026-11-01T14:00:00Z'))).toBe('open'); // 09:00 EST
+  });
+  it('spring forward: Sat 22:00 EST, opens Sunday 09:00 EDT, the instant being 13:00Z', () => {
+    expect(nextChange(sunday, at('2026-03-08T03:00:00Z'))).toEqual({ at: '09:00', day: 'tomorrow', weekday: 'sun', to: 'open' }); // Sat Mar 7 22:00 EST
+    expect(stateAt(sunday, at('2026-03-08T12:59:00Z'))).toBe('closed'); // 08:59 EDT
+    expect(stateAt(sunday, at('2026-03-08T13:00:00Z'))).toBe('open'); // 09:00 EDT
+  });
+});
+
+describe('the dated exceptions cap', () => {
+  const dateRules = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ on: new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10), closed: true }));
+  const sched = (n: number) => ({ ...base(), dates: dateRules(n) });
+  it('accepts exactly MAX_DATES entries', () => {
+    expect(MAX_DATES).toBe(366);
+    expect(validateSchedule(sched(MAX_DATES))?.dates).toHaveLength(MAX_DATES);
+  });
+  it('rejects one more, as it rejects any other invalid schedule (no schedule at all)', () => {
+    expect(validateSchedule(sched(MAX_DATES + 1))).toBeNull();
+    expect(validateSchedule(sched(5000))).toBeNull();
   });
 });
