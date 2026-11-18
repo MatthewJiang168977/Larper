@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError } from "@/lib/api";
-import { YourData, type AccountKind } from "./your-data";
+import { ApiError, type Privacy } from "@/lib/api";
+import { SignInRemovalFailed, YourData, type AccountKind } from "./your-data";
 
 vi.mock("@/app/larper-os", () => ({ larperOsClassName: "larper-os" }));
 
@@ -14,9 +14,11 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 const settle = () => act(async () => {});
 const onHistoryDeleted = vi.fn();
 const onAccountDeleted = vi.fn();
-const mount = (account: AccountKind = "user") => render(
+const ALL: Privacy = { export: true, deleteHistory: true, deleteAccount: true };
+const mount = (account: AccountKind = "user", privacy: Privacy = ALL) => render(
   <YourData
     account={account}
+    privacy={privacy}
     onHistoryDeleted={onHistoryDeleted}
     onAccountDeleted={onAccountDeleted}
     onAccountDeletePendingChange={() => {}}
@@ -117,6 +119,78 @@ describe("demo and unknown accounts", () => {
   });
 });
 
+describe("which controls show (the privacy flags from /me)", () => {
+  const buttons = () => screen.queryAllByRole("button").map((b) => b.textContent);
+  const off: Privacy = { export: false, deleteHistory: false, deleteAccount: false };
+
+  it("all: download, delete my history and delete my account", () => {
+    mount("user", ALL);
+    expect(buttons()).toEqual(["download my data", "delete my history", "delete my account"]);
+  });
+
+  it("history only: no delete my account", () => {
+    mount("user", { export: true, deleteHistory: true, deleteAccount: false });
+    expect(buttons()).toEqual(["download my data", "delete my history"]);
+  });
+
+  it("off: only download, with one calm line", () => {
+    mount("user", { export: true, deleteHistory: false, deleteAccount: false });
+    expect(buttons()).toEqual(["download my data"]);
+    expect(screen.getByText("deleting your data isn't available yet. you can still download it.")).toBeTruthy();
+  });
+
+  it("nothing on: no controls, one calm line", () => {
+    mount("user", off);
+    expect(buttons()).toEqual([]);
+    expect(screen.getByText("downloading or deleting your data isn't available yet.")).toBeTruthy();
+  });
+
+  it("a delete flag without the export flag hides the download", () => {
+    mount("user", { export: false, deleteHistory: true, deleteAccount: false });
+    expect(buttons()).toEqual(["delete my history"]);
+  });
+
+  it("demo keeps its own line, whatever the flags say", () => {
+    mount("demo", ALL);
+    expect(buttons()).toEqual([]);
+    expect(screen.getByText("the shared demo account has no data of its own to download or delete.")).toBeTruthy();
+  });
+});
+
+describe("deletes_unavailable (503)", () => {
+  const submit = () => fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
+
+  it.each(["history", "account"])("delete my %s says so calmly, and changes nothing", async (kind) => {
+    api.mockRejectedValue(new ApiError("deleting isn't available yet", 503, "http", "deletes_unavailable"));
+    mount();
+    fireEvent.click(button(`delete my ${kind}`));
+    typeDelete();
+    submit();
+    await settle();
+    expect(screen.getByRole("alert").textContent).toBe("deleting your data isn't available yet.");
+    expect(onHistoryDeleted).not.toHaveBeenCalled();
+    expect(onAccountDeleted).not.toHaveBeenCalled();
+  });
+
+  it("any other 503 stays the generic message", async () => {
+    api.mockRejectedValue(new ApiError("boom", 503));
+    mount();
+    fireEvent.click(button("delete my history"));
+    typeDelete();
+    submit();
+    await settle();
+    expect(screen.getByRole("alert").textContent).toBe("something went wrong on our end.");
+  });
+});
+
+describe("no user-facing mention of days or hand removal", () => {
+  it.each(["history", "account"])("the %s confirmation", (kind) => {
+    mount();
+    fireEvent.click(button(`delete my ${kind}`));
+    expect(screen.getByRole("dialog").textContent).not.toMatch(/7 days|within \d+ days|by hand|manual|removed by/i);
+  });
+});
+
 describe("delete my history", () => {
   it("opens a confirmation that says what goes and what stays, with focus moved into it", () => {
     mount();
@@ -130,7 +204,7 @@ describe("delete my history", () => {
     expect(dialog.textContent).toContain("about 3 weeks under the usual backup schedule");
     expect(dialog.textContent).toContain("60-day cleanup rule");
     expect(dialog.textContent).toContain("restoring a backup could bring deleted data back");
-    expect(dialog.textContent).toContain("eligible for cleanup after about 7 days");
+    expect(dialog.textContent).toContain("until its scheduled cleanup");
     expect(dialog.textContent).toContain("with no fixed deadline");
   });
 
@@ -278,8 +352,12 @@ describe("delete my account", () => {
     expect(document.activeElement).toBe(dialog);
     expect(dialog.textContent).toContain("your taste profile.");
     expect(dialog.textContent).toContain("your larper account.");
-    expect(dialog.textContent).toContain("larper tries to remove your sign-in with clerk when it can, then tries to sign you out");
-    expect(dialog.textContent).not.toMatch(/within 7 days|you'll be signed out|by hand/);
+    expect(dialog.textContent).toContain("your sign-in.");
+    expect(dialog.textContent).toContain("this deletes your larper data and your sign-in, then signs you out.");
+    expect(dialog.textContent).toContain("you can sign up again later, but it will be a new account with none of this in it.");
+    expect(dialog.textContent).toContain("about 3 weeks under the usual backup schedule");
+    expect(dialog.textContent).toContain("restoring a backup could bring deleted data back");
+    expect(dialog.textContent).not.toMatch(/7 days|within \d+ days|by hand|manual|clerk/i);
   });
 
   it("cancel closes it and returns focus to the opener", () => {
@@ -292,7 +370,7 @@ describe("delete my account", () => {
     expect(api).not.toHaveBeenCalled();
   });
 
-  it.each(["deleted", "manual", "failed"])("hands off completion for clerkUser %s", async (clerkUser) => {
+  it.each(["deleted", "failed"])("hands off completion for clerkUser %s", async (clerkUser) => {
     api.mockResolvedValue({ deleted: accountCounts, clerkUser });
     mount();
     await confirmAccount();
@@ -307,5 +385,42 @@ describe("delete my account", () => {
     await confirmAccount();
     expect(screen.getByRole("alert").textContent).toBe("something went wrong on our end.");
     expect(onAccountDeleted).not.toHaveBeenCalled();
+  });
+});
+
+describe("sign-in removal failed", () => {
+  it("says what happened, and try again repeats DELETE /me until it works", async () => {
+    const onRemoved = vi.fn();
+    api.mockResolvedValueOnce({ deleted: {}, clerkUser: "failed" }).mockResolvedValueOnce({ deleted: {}, clerkUser: "deleted" });
+    render(<SignInRemovalFailed onRemoved={onRemoved} />);
+    expect(screen.getByRole("heading", { name: "your larper data is deleted." })).toBeTruthy();
+    expect(screen.getByText("removing your sign-in didn't go through, so you're still signed in.")).toBeTruthy();
+
+    fireEvent.click(button("try again"));
+    await settle();
+    expect(api).toHaveBeenCalledWith("/me", { method: "DELETE" });
+    expect(onRemoved).not.toHaveBeenCalled();
+    expect(screen.getByRole("status").textContent).toBe("your sign-in is still there. try again in a bit.");
+
+    fireEvent.click(button("try again"));
+    await settle();
+    expect(api).toHaveBeenCalledTimes(2);
+    expect(onRemoved).toHaveBeenCalledOnce();
+  });
+
+  it("explains a failed retry, and a 503 unavailable, calmly", async () => {
+    api.mockRejectedValueOnce(new ApiError("boom", 500)).mockRejectedValueOnce(new ApiError("x", 503, "http", "deletes_unavailable"));
+    render(<SignInRemovalFailed onRemoved={() => {}} />);
+    fireEvent.click(button("try again"));
+    await settle();
+    expect(screen.getByRole("status").textContent).toBe("something went wrong on our end.");
+    fireEvent.click(button("try again"));
+    await settle();
+    expect(screen.getByRole("status").textContent).toBe("deleting your data isn't available yet.");
+  });
+
+  it("says nothing about days or removal by hand", () => {
+    render(<SignInRemovalFailed onRemoved={() => {}} />);
+    expect(document.body.textContent).not.toMatch(/7 days|within \d+ days|by hand|manual/i);
   });
 });

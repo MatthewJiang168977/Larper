@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { ApiError, describeError, useApi } from "@/lib/api";
+import { ApiError, describeError, useApi, type Privacy } from "@/lib/api";
 import { larperOsClassName } from "@/app/larper-os";
 import { OSButton, OSMenuBar, OSQuestPanel, OSWindow, osPrimaryButtonClass } from "./primitives";
 import "./your-data.css";
@@ -10,7 +10,17 @@ import "./your-data.css";
 /** "checking": /me hasn't answered. "unknown": it failed, so we can't tell if this is the demo. */
 export type AccountKind = "checking" | "user" | "demo" | "unknown";
 
-export type ClerkRemoval = "manual" | "deleted" | "failed";
+/** What DELETE /me says about the sign-in: removed, or the data is gone but the sign-in isn't. */
+export type ClerkRemoval = "deleted" | "failed";
+
+export const NO_PRIVACY: Privacy = { export: false, deleteHistory: false, deleteAccount: false };
+
+/** A /me reply's privacy flags, with anything missing or not exactly true counted as off. */
+export function privacyFrom(p: Partial<Privacy> | undefined | null): Privacy {
+  return { export: p?.export === true, deleteHistory: p?.deleteHistory === true, deleteAccount: p?.deleteAccount === true };
+}
+
+const UNAVAILABLE = "deleting your data isn't available yet.";
 
 const CONFIRM_WORD = "delete";
 
@@ -47,6 +57,7 @@ const COPY: Record<Kind, { open: string; title: string; deletes: string[]; keeps
       "everything in “delete my history”: your journal, check-ins, “was it open?” answers and saved places.",
       "your taste profile.",
       "your larper account.",
+      "your sign-in.",
     ],
     confirm: "delete my account",
   },
@@ -55,7 +66,8 @@ const COPY: Record<Kind, { open: string; title: string; deletes: string[]; keeps
 const BACKUPS =
   "deleting can't be undone from the app. copies can stay for about 3 weeks under the usual backup schedule. backup storage has a 60-day cleanup rule for old objects. restoring a backup could bring deleted data back.";
 const BROKER_RETENTION =
-  "events already sent to our event broker can stay after deletion. closed segments are eligible for cleanup after about 7 days, with no fixed deadline.";
+  "events already sent to our event broker can stay after deletion until its scheduled cleanup, with no fixed deadline.";
+const NEW_ACCOUNT = "you can sign up again later, but it will be a new account with none of this in it.";
 
 function countLine(d: HistoryDeleted["deleted"]): string {
   const n = (c: number, one: string, many: string) => `${c} ${c === 1 ? one : many}`;
@@ -73,6 +85,7 @@ function failure(e: unknown): string {
   if (e instanceof ApiError && e.status === 403 && e.code === "demo_account") {
     return "the shared demo account has no data of its own to download or delete.";
   }
+  if (e instanceof ApiError && e.status === 503 && e.code === "deletes_unavailable") return UNAVAILABLE;
   if (e instanceof ApiError && e.status === 429) {
     const s = e.retryAfterS;
     const wait = s ? ` wait about ${s < 90 ? `${Math.ceil(s)} seconds` : `${Math.ceil(s / 60)} minutes`} and try again.` : " wait a bit and try again.";
@@ -81,8 +94,19 @@ function failure(e: unknown): string {
   return describeError(e, "that didn't work. try again.").toLowerCase();
 }
 
-export function YourData({ account, onHistoryDeleted, onAccountDeleted, onAccountDeletePendingChange }: {
+/** The sentence above the buttons: only names what is actually offered. */
+function intro(p: Privacy): string {
+  if (!p.deleteHistory && !p.deleteAccount) return `${UNAVAILABLE} you can still download it.`;
+  const parts = [p.export && "download a copy of your larper records", p.deleteHistory && "delete your history", p.deleteAccount && "delete your account"].filter(
+    (x): x is string => !!x,
+  );
+  return `${parts.length > 1 ? `${parts.slice(0, -1).join(", ")} or ${parts[parts.length - 1]}` : parts[0]}.`;
+}
+
+export function YourData({ account, privacy = NO_PRIVACY, onHistoryDeleted, onAccountDeleted, onAccountDeletePendingChange }: {
   account: AccountKind;
+  /** What /me says is switched on. Only read for a signed-in, non-demo account. */
+  privacy?: Privacy;
   onHistoryDeleted: () => void;
   onAccountDeleted: (clerkUser: ClerkRemoval) => void;
   onAccountDeletePendingChange: (pending: boolean) => void;
@@ -178,20 +202,28 @@ export function YourData({ account, onHistoryDeleted, onAccountDeleted, onAccoun
     body = <p>couldn&apos;t check your account. reload the page to see your data options.</p>;
   } else if (account === "demo") {
     body = <p>the shared demo account has no data of its own to download or delete.</p>;
+  } else if (!privacy.export && !privacy.deleteHistory && !privacy.deleteAccount) {
+    body = <p>downloading or deleting your data isn&apos;t available yet.</p>;
   } else {
     body = (
       <>
-        <p>download a copy of your larper records, or delete your history or account.</p>
+        <p>{intro(privacy)}</p>
         <div className="larper-data-actions">
-          <OSButton onClick={download} disabled={actionsLocked} aria-busy={downloading}>
-            {downloading ? "preparing…" : "download my data"}
-          </OSButton>
-          <OSButton ref={historyButton} onClick={() => ask("history")} disabled={actionsLocked} aria-expanded={asking === "history"}>
-            {COPY.history.open}
-          </OSButton>
-          <OSButton ref={accountButton} onClick={() => ask("account")} disabled={actionsLocked} aria-expanded={asking === "account"}>
-            {COPY.account.open}
-          </OSButton>
+          {privacy.export && (
+            <OSButton onClick={download} disabled={actionsLocked} aria-busy={downloading}>
+              {downloading ? "preparing…" : "download my data"}
+            </OSButton>
+          )}
+          {privacy.deleteHistory && (
+            <OSButton ref={historyButton} onClick={() => ask("history")} disabled={actionsLocked} aria-expanded={asking === "history"}>
+              {COPY.history.open}
+            </OSButton>
+          )}
+          {privacy.deleteAccount && (
+            <OSButton ref={accountButton} onClick={() => ask("account")} disabled={actionsLocked} aria-expanded={asking === "account"}>
+              {COPY.account.open}
+            </OSButton>
+          )}
         </div>
         <p className="larper-data-status" role="status">
           {downloadMsg && <span data-ok={downloadMsg.ok}>{downloadMsg.text}</span>}
@@ -222,8 +254,7 @@ export function YourData({ account, onHistoryDeleted, onAccountDeleted, onAccoun
   );
 }
 
-export function AccountDeletionComplete({ clerkUser, status, onRetry }: {
-  clerkUser: ClerkRemoval;
+export function AccountDeletionComplete({ status, onRetry }: {
   status: "pending" | "failed" | "done";
   onRetry: () => void;
 }) {
@@ -239,8 +270,7 @@ export function AccountDeletionComplete({ clerkUser, status, onRetry }: {
             <div className="larper-data">
               <div role="status">
                 <h1 ref={ref} tabIndex={-1} className="larper-journal-name">your larper data is deleted.</h1>
-                {clerkUser === "manual" && <p>larper didn&apos;t remove your clerk sign-in.</p>}
-                {clerkUser === "failed" && <p>larper couldn&apos;t remove your clerk sign-in.</p>}
+                <p>your sign-in is deleted too.</p>
                 {status === "pending" && <p>signing out…</p>}
                 {status === "done" && <p>you&apos;re signed out.</p>}
               </div>
@@ -257,6 +287,64 @@ export function AccountDeletionComplete({ clerkUser, status, onRetry }: {
                   <Link href="/" replace className={osPrimaryButtonClass}>back to larper</Link>
                 </div>
               )}
+            </div>
+          </OSQuestPanel>
+        </OSWindow>
+      </div>
+    </main>
+  );
+}
+
+/**
+ * The data is deleted but Clerk didn't remove the sign-in. They stay signed in; "try again"
+ * repeats DELETE /me (the API recreates an empty row for the session, purges it and retries Clerk).
+ */
+export function SignInRemovalFailed({ onRemoved }: { onRemoved: () => void }) {
+  const api = useApi();
+  const ref = useRef<HTMLHeadingElement>(null);
+  const active = useRef(false);
+  const busy = useRef(false);
+  const [trying, setTrying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => ref.current?.focus(), []);
+  useLayoutEffect(() => {
+    active.current = true;
+    return () => { active.current = false; };
+  }, []);
+
+  async function retry() {
+    if (busy.current) return;
+    busy.current = true;
+    setTrying(true);
+    setError(null);
+    try {
+      const r = await api<AccountDeleted>("/me", { method: "DELETE" });
+      if (!active.current) return;
+      if (r.clerkUser === "deleted") onRemoved();
+      else setError("your sign-in is still there. try again in a bit.");
+    } catch (e) {
+      if (active.current) setError(failure(e));
+    } finally {
+      busy.current = false;
+      if (active.current) setTrying(false);
+    }
+  }
+
+  return (
+    <main className={`${larperOsClassName} larper-journal`}>
+      <OSMenuBar />
+      <div className="larper-journal-stage">
+        <OSWindow title="your data">
+          <OSQuestPanel>
+            <div className="larper-data">
+              <h1 ref={ref} tabIndex={-1} className="larper-journal-name">your larper data is deleted.</h1>
+              <p>removing your sign-in didn&apos;t go through, so you&apos;re still signed in.</p>
+              <div className="larper-data-actions">
+                <OSButton primary onClick={() => void retry()} disabled={trying} aria-busy={trying}>
+                  {trying ? "trying…" : "try again"}
+                </OSButton>
+              </div>
+              <p role="status">{error}</p>
             </div>
           </OSQuestPanel>
         </OSWindow>
@@ -318,7 +406,9 @@ function Confirm({ kind, busy, onCancel, run }: {
           <ul>{copy.keeps.map((d) => <li key={d}>{d}</li>)}</ul>
         </>
       )}
-      {kind === "account" && <p>larper tries to remove your sign-in with clerk when it can, then tries to sign you out.</p>}
+      {kind === "account" && (
+        <p>this deletes your larper data and your sign-in, then signs you out. {NEW_ACCOUNT}</p>
+      )}
       <p>{BACKUPS}</p>
       <p>{BROKER_RETENTION}</p>
       <form

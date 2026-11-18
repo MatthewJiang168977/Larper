@@ -61,9 +61,11 @@ describe("Privacy: your data", () => {
     expect(h).toMatch(/Keeps your account, your sign-in and your taste profile/);
     const a = section("Delete my account");
     expect(a).toMatch(/your taste profile and your Larper account/);
-    expect(a).toMatch(/Clerk/);
-    expect(a).toMatch(/when automatic removal is available, then tries to sign you out/);
-    expect(a).not.toMatch(/by hand|within 7 days|you're signed out/);
+    expect(a).toMatch(/Also deletes your sign-in, then signs you out/);
+    expect(a).toMatch(/you stay signed in to try again/);
+    expect(a).toMatch(/sign up again later, with the same email if you like\. That makes a new, empty account/);
+    expect(a).toMatch(/Nothing is kept to recognise you/);
+    expect(a).not.toMatch(/automatic|manual|by hand|you're signed out/i);
   });
 
   it("describes the backup schedule, object cleanup rule and restore caveat", () => {
@@ -80,7 +82,13 @@ describe("Privacy: your data", () => {
     render(<PrivacyPage />);
     const events = section("Events already sent");
     expect(events).toMatch(/can remain after deletion/);
-    expect(events).toMatch(/Closed event segments are eligible for cleanup after about 7 days/);
+    expect(events).toMatch(/until its scheduled cleanup/);
     expect(events).toMatch(/no fixed deletion deadline/);
+  });
+
+  it("never says 7 days, by hand, manual or removal within a number of days, anywhere on the page", () => {
+    render(<PrivacyPage />);
+    const all = screen.getByRole("main").textContent ?? "";
+    expect(all).not.toMatch(/7 days|seven days|by hand|manual|within \d+ days/i);
   });
 });

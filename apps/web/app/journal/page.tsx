@@ -3,11 +3,11 @@
 import { useAuth, useClerk } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { AccountDeletionComplete, YourData, type AccountKind, type ClerkRemoval } from "@/components/larper-os/your-data";
+import { AccountDeletionComplete, SignInRemovalFailed, YourData, NO_PRIVACY, privacyFrom, type AccountKind, type ClerkRemoval } from "@/components/larper-os/your-data";
 import { RequireSignIn } from "@/components/require-sign-in";
 import { JournalView } from "@/components/larper-os/journal";
 import { clearDemo, setDemo, track } from "@/lib/analytics";
-import { describeError, useApi, type JournalEntry, type Me } from "@/lib/api";
+import { describeError, useApi, type JournalEntry, type Me, type Privacy } from "@/lib/api";
 
 const LOAD_FAILED = "try again to reopen your quest history.";
 
@@ -18,33 +18,47 @@ export default function JournalPage() {
   const { isLoaded, userId, sessionId } = useAuth();
   const { signOut } = useClerk();
   const router = useRouter();
+  // removalFailed: the data is gone but Clerk kept the sign-in; the session stays signed in.
+  const [removalFailed, setRemovalFailed] = useState<string | null>(null);
   const [completion, setCompletion] = useState<{
-    clerkUser: ClerkRemoval;
     sessionId: string;
     status: SignOutStatus;
   } | null>(null);
 
-  async function finishSignOut(clerkUser: ClerkRemoval, deletedSession: string) {
-    setCompletion({ clerkUser, sessionId: deletedSession, status: "pending" });
+  async function finishSignOut(deletedSession: string) {
+    setCompletion({ sessionId: deletedSession, status: "pending" });
     try {
       // Keep the completion visible through Clerk's auth change. Only leave once signed out.
       await signOut(() => {}, { sessionId: deletedSession });
     } catch {
-      setCompletion({ clerkUser, sessionId: deletedSession, status: "failed" });
+      setCompletion({ sessionId: deletedSession, status: "failed" });
       return;
     }
-    setCompletion({ clerkUser, sessionId: deletedSession, status: "done" });
-    if (clerkUser === "deleted") router.replace("/");
+    setCompletion({ sessionId: deletedSession, status: "done" });
+    router.replace("/");
   }
 
   // The signed-in journal must stay unmounted once the purge succeeds, even if sign-out fails.
   if (completion) {
     return (
       <AccountDeletionComplete
-        clerkUser={completion.clerkUser}
         status={completion.status}
-        onRetry={() => void finishSignOut(completion.clerkUser, completion.sessionId)}
+        onRetry={() => void finishSignOut(completion.sessionId)}
       />
+    );
+  }
+
+  if (removalFailed && removalFailed === sessionId) {
+    return (
+      <RequireSignIn>
+        <SignInRemovalFailed
+          key={removalFailed}
+          onRemoved={() => {
+            setRemovalFailed(null);
+            void finishSignOut(removalFailed);
+          }}
+        />
+      </RequireSignIn>
     );
   }
 
@@ -53,7 +67,10 @@ export default function JournalPage() {
       {isLoaded && userId && sessionId && (
         <Journal
           key={JSON.stringify([userId, sessionId])}
-          onAccountDeleted={(clerkUser) => void finishSignOut(clerkUser, sessionId)}
+          onAccountDeleted={(clerkUser) => {
+            if (clerkUser === "deleted") void finishSignOut(sessionId);
+            else setRemovalFailed(sessionId);
+          }}
         />
       )}
     </RequireSignIn>
@@ -66,6 +83,7 @@ function Journal({ onAccountDeleted }: { onAccountDeleted: (clerkUser: ClerkRemo
   const [error, setError] = useState<string | null>(null);
   const [tries, setTries] = useState(0);
   const [account, setAccount] = useState<AccountKind>("checking");
+  const [privacy, setPrivacy] = useState<Privacy>(NO_PRIVACY);
   const [accountDeletePending, setAccountDeletePending] = useState(false);
   const invalidateQuestRequest = useRef<(() => void) | null>(null);
   const opened = useRef(false);
@@ -97,6 +115,7 @@ function Journal({ onAccountDeleted }: { onAccountDeleted: (clerkUser: ClerkRemo
         if (!current) return;
         if (typeof m?.demo === "boolean") {
           setDemo(m.demo);
+          setPrivacy(m.demo ? NO_PRIVACY : privacyFrom(m.privacy));
           setAccount(m.demo ? "demo" : "user");
         } else {
           setAccount("unknown");
@@ -128,6 +147,7 @@ function Journal({ onAccountDeleted }: { onAccountDeleted: (clerkUser: ClerkRemo
       dataPanel={
         <YourData
           account={account}
+          privacy={privacy}
           onAccountDeleted={onAccountDeleted}
           onAccountDeletePendingChange={setAccountDeletePending}
           onHistoryDeleted={() => {

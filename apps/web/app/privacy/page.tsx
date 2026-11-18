@@ -60,7 +60,8 @@ const YOUR_DATA: { title: string; points: string[] }[] = [
     title: "Delete my account",
     points: [
       "Removes all of the above, plus your taste profile and your Larper account.",
-      "Your sign-in lives with Clerk. Larper tries to remove it when automatic removal is available, then tries to sign you out.",
+      "Also deletes your sign-in, then signs you out. If removing the sign-in doesn't go through, your data is still deleted and you stay signed in to try again.",
+      "You can sign up again later, with the same email if you like. That makes a new, empty account. Nothing is kept to recognise you.",
     ],
   },
   {
@@ -74,7 +75,7 @@ const YOUR_DATA: { title: string; points: string[] }[] = [
   {
     title: "Events already sent",
     points: [
-      "Events already sent to our event broker can remain after deletion. Closed event segments are eligible for cleanup after about 7 days, with no fixed deletion deadline.",
+      "Events already sent to our event broker can remain after deletion until its scheduled cleanup, with no fixed deletion deadline.",
     ],
   },
 ];
@@ -112,7 +113,7 @@ export default function PrivacyPage() {
       </div>
 
       <h2 className="mt-8 text-2xl font-medium">Your data</h2>
-      <p className="mt-2 text-ink-soft">You can take your data with you, or delete it, from the journal.</p>
+      <p className="mt-2 text-ink-soft">You can take your data with you, or delete it, from the journal. Some options are switched on step by step, and the journal shows only the ones that are available.</p>
       <div className="mt-4 divide-y divide-rule border-y border-rule">
         {YOUR_DATA.map((s) => (
           <section key={s.title} aria-labelledby={`data-${slug(s.title)}`} className="py-5">

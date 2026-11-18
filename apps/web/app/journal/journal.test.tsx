@@ -47,6 +47,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   useApi: () => api,
 }));
 
+const ALL = { export: true, deleteHistory: true, deleteAccount: true };
 const settle = () => act(async () => {});
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
@@ -80,7 +81,7 @@ beforeEach(() => {
   replace.mockClear();
   tracked.events.length = 0;
   clearDemo();
-  answerMe = () => Promise.resolve({ demo: false });
+  answerMe = () => Promise.resolve({ demo: false, privacy: ALL });
 });
 
 describe("Journal", () => {
@@ -296,16 +297,66 @@ describe("Journal", () => {
     });
   });
 
+  describe("which controls /me switches on", () => {
+    const names = ["download my data", "delete my history", "delete my account"];
+    const shown = () => names.filter((name) => screen.queryByRole("button", { name }));
+    const load = async (me: unknown) => {
+      answer = () => Promise.resolve([]);
+      answerMe = () => Promise.resolve(me);
+      render(<JournalPage />);
+      await settle();
+    };
+
+    it("all: all three", async () => {
+      await load({ demo: false, privacy: ALL });
+      expect(shown()).toEqual(names);
+    });
+
+    it("history: no delete my account", async () => {
+      await load({ demo: false, privacy: { export: true, deleteHistory: true, deleteAccount: false } });
+      expect(shown()).toEqual(["download my data", "delete my history"]);
+    });
+
+    it("off: download only, with the calm line", async () => {
+      await load({ demo: false, privacy: { export: true, deleteHistory: false, deleteAccount: false } });
+      expect(shown()).toEqual(["download my data"]);
+      expect(screen.getByText("deleting your data isn't available yet. you can still download it.")).toBeTruthy();
+    });
+
+    it("missing privacy (an older API pod): treated as all false", async () => {
+      await load({ demo: false });
+      expect(shown()).toEqual([]);
+      expect(screen.getByText("downloading or deleting your data isn't available yet.")).toBeTruthy();
+    });
+
+    it("demo: none, and the demo line, even if privacy says otherwise", async () => {
+      await load({ demo: true, privacy: ALL });
+      expect(shown()).toEqual([]);
+      expect(screen.getByText("the shared demo account has no data of its own to download or delete.")).toBeTruthy();
+    });
+
+    it("a 503 deletes_unavailable on either delete route gets the calm message", async () => {
+      answerDelete = () => Promise.reject(new ApiError("x", 503, "http", "deletes_unavailable"));
+      await load({ demo: false, privacy: ALL });
+      deleteData("history");
+      await settle();
+      expect(screen.getByRole("alert").textContent).toBe("deleting your data isn't available yet.");
+      fireEvent.click(screen.getByRole("button", { name: "cancel" }));
+      deleteData("account");
+      await settle();
+      expect(screen.getByRole("alert").textContent).toBe("deleting your data isn't available yet.");
+      expect(signOut).not.toHaveBeenCalled();
+    });
+  });
+
   describe("account purge completion", () => {
     beforeEach(() => {
       answer = () => Promise.resolve([entry({})]);
     });
 
-    it.each([
-      ["deleted", "your larper data is deleted."],
-      ["manual", "larper didn't remove your clerk sign-in."],
-      ["failed", "larper couldn't remove your clerk sign-in."],
-    ])("immediately tries to sign out after the %s outcome and hides the signed-in UI", async (clerkUser, message) => {
+    it("immediately tries to sign out after the sign-in is deleted and hides the signed-in UI", async () => {
+      const clerkUser = "deleted";
+      const message = "your larper data is deleted.";
       const purge = deferred<{ clerkUser: string }>();
       const signOutPending = deferred<void>();
       signOut.mockReturnValue(signOutPending.promise);
@@ -338,13 +389,48 @@ describe("Journal", () => {
       await settle();
       expect(api).toHaveBeenCalledTimes(callsAtPurge);
       expect(screen.queryByText("redirecting to sign-in")).toBeNull();
-      if (clerkUser === "deleted") {
-        expect(replace).toHaveBeenCalledWith("/");
-      } else {
-        expect(replace).not.toHaveBeenCalled();
-        expect(screen.getByRole("status").textContent).toContain(message);
-        expect(screen.getByRole("link", { name: "back to larper" }).getAttribute("href")).toBe("/");
-      }
+      expect(replace).toHaveBeenCalledWith("/");
+      expect(screen.getByRole("status").textContent).toContain("your sign-in is deleted too.");
+    });
+
+    it("on failed: stays signed in, says so, and try again repeats DELETE /me", async () => {
+      const responses = [{ clerkUser: "failed" }, { clerkUser: "failed" }, { clerkUser: "deleted" }];
+      answerDelete = () => Promise.resolve(responses.shift());
+      render(<JournalPage />);
+      await settle();
+      deleteData("account");
+      await settle();
+      expect(signOut).not.toHaveBeenCalled();
+      expect(replace).not.toHaveBeenCalled();
+      expect(screen.getByRole("heading", { name: "your larper data is deleted." })).toBeTruthy();
+      expect(screen.getByText("removing your sign-in didn't go through, so you're still signed in.")).toBeTruthy();
+      expect(screen.queryByText("Tasty Noodles")).toBeNull();
+      expect(screen.queryByText("you're signed out.")).toBeNull();
+      const deletes = () => api.mock.calls.filter(([path, init]) => path === "/me" && init?.method === "DELETE").length;
+      expect(deletes()).toBe(1);
+
+      fireEvent.click(screen.getByRole("button", { name: "try again" }));
+      await settle();
+      expect(deletes()).toBe(2);
+      expect(signOut).not.toHaveBeenCalled();
+      expect(screen.getByRole("status").textContent).toBe("your sign-in is still there. try again in a bit.");
+
+      fireEvent.click(screen.getByRole("button", { name: "try again" }));
+      await settle();
+      expect(deletes()).toBe(3);
+      expect(signOut).toHaveBeenCalledOnce();
+      expect(signOut).toHaveBeenCalledWith(expect.any(Function), { sessionId: "session-a" });
+      expect(replace).toHaveBeenCalledWith("/");
+      expect(screen.queryByRole("button", { name: "try again" })).toBeNull();
+    });
+
+    it("no screen after a purge mentions days or removal by hand", async () => {
+      answerDelete = () => Promise.resolve({ clerkUser: "deleted" });
+      render(<JournalPage />);
+      await settle();
+      deleteData("account");
+      await settle();
+      expect(document.body.textContent).not.toMatch(/7 days|within \d+ days|by hand|manual/i);
     });
 
     it("restores the map link when a pending account deletion fails", async () => {
@@ -374,7 +460,7 @@ describe("Journal", () => {
       auth = { ...auth, userId: "user-b", sessionId: "session-b" };
       rerender(<JournalPage />);
       await settle();
-      purge.resolve({ clerkUser: "manual" });
+      purge.resolve({ clerkUser: "deleted" });
       await settle();
       expect(signOut).not.toHaveBeenCalled();
       expect(screen.getByRole("button", { name: "delete my account" })).toBeTruthy();
@@ -382,13 +468,13 @@ describe("Journal", () => {
 
     it("retries only sign-out after it fails, preserving the completion and Clerk status", async () => {
       signOut.mockRejectedValueOnce(new Error("sign-out failed"));
-      answerDelete = () => Promise.resolve({ clerkUser: "failed" });
+      answerDelete = () => Promise.resolve({ clerkUser: "deleted" });
       render(<JournalPage />);
       await settle();
       deleteData("account");
       await settle();
       expect(screen.getByRole("status").textContent).toContain("your larper data is deleted.");
-      expect(screen.getByRole("status").textContent).toContain("larper couldn't remove your clerk sign-in.");
+      expect(screen.getByRole("status").textContent).toContain("your sign-in is deleted too.");
       expect(screen.getByRole("alert").textContent).toContain("couldn't sign you out");
       expect(screen.queryByRole("link")).toBeNull();
       const callsAtPurge = api.mock.calls.length;
