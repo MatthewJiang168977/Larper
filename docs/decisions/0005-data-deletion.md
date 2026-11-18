@@ -162,10 +162,13 @@ the deleted user is kept.**
   trigger the call, so only a brand-new user's first request pays it; concurrent first
   requests share one call. With `off` or `history` nothing changes (no call), and the
   demo user never triggers it. The window therefore ends in a 401, not a new row.
-  One gap remains: a request that lands between the local purge committing and the Clerk
-  deletion (milliseconds) still sees a live Clerk user and can insert a row that Clerk then
-  removes. It is empty and holds only the Clerk id; it has no history, and a repeated
-  `DELETE /me` removes it.
+  A request that lands between the local purge committing and the Clerk deletion
+  (milliseconds) still sees a live Clerk user and can insert an empty row holding only the
+  Clerk id. So once Clerk confirms the deletion, `DELETE /me` looks up any row for that
+  Clerk id and purges it too. From then on Clerk answers 404 and the check above refuses
+  every request, so no row can come back. If that second purge fails, the API logs it
+  without any id. The account is still reported deleted, because the user's own data and
+  sign-in are gone.
 - **Signing up again.** The same email can sign up again. That is a fresh Clerk user with
   a new id, so it gets a new row and a new, empty account.
 - **Nothing is kept to recognise them.** Nothing new that identifies the user is written
