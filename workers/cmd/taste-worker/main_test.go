@@ -217,3 +217,29 @@ func TestEventRechecksQuestAfterWaitingForHistoryDelete(t *testing.T) {
 		t.Fatal("event changed the retained onboarding profile")
 	}
 }
+
+// An ignored event is still recorded as processed, so a redelivery is a duplicate rather
+// than another lock round trip: the same as the place-gone path.
+func TestIgnoredEventsAreRecordedAsProcessed(t *testing.T) {
+	taste, owner := testPools(t)
+	ctx := context.Background()
+	userID, placeID := fixtures(t, owner)
+	questID := questFixture(t, owner, userID, placeID)
+	if _, err := owner.Exec(ctx, `DELETE FROM quests WHERE id = $1::bigint`, questID); err != nil {
+		t.Fatal(err)
+	}
+
+	for name, quest := range map[string]string{"quest gone": questID, "unparsable quest id": "not-a-number"} {
+		r, eventID := record(t, userID, quest, placeID, eventsv1.QuestAction_QUEST_ACTION_COMPLETED)
+		t.Cleanup(func() { owner.Exec(ctx, `DELETE FROM processed_events WHERE event_id = $1::uuid`, eventID) })
+		if out, err := handle(ctx, taste, r); err != nil || out != ignored {
+			t.Fatalf("%s: handle = %q, %v; want ignored, nil", name, out, err)
+		}
+		if n := count(t, owner, `SELECT count(*) FROM processed_events WHERE consumer = $1 AND event_id = $2::uuid`, consumer, eventID); n != 1 {
+			t.Fatalf("%s: processed_events rows = %d, want 1", name, n)
+		}
+		if out, err := handle(ctx, taste, r); err != nil || out != duplicate {
+			t.Fatalf("%s: redelivery = %q, %v; want duplicate, nil", name, out, err)
+		}
+	}
+}

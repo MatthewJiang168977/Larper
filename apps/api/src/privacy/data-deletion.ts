@@ -1,10 +1,10 @@
-import { ForbiddenException, Inject, Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { Pool } from 'pg';
 import { CacheService } from '../cache/cache.service';
 import { PG } from '../db/db.module';
 import { ClerkApiError } from '../demo/clerk-api';
 import { isDemoUser } from '../demo/demo-account';
-import { CLERK_USER_DELETER, type ClerkUserDeleter } from './clerk-user-deleter';
+import { CLERK_USER_DELETER, InvalidClerkUserIdError, type ClerkUserDeleter } from './clerk-user-deleter';
 
 /** What went, per kind (the counts the delete_my_* functions return, migration 0020). */
 export interface DeletedCounts {
@@ -75,6 +75,11 @@ export class DataDeletionService {
       await clerkDelete(user.clerkId);
       return { deleted: rows[0].r, clerkUser: 'deleted' };
     } catch (err) {
+      // Not an outage, so not "failed, retry": an id that can never be deleted is a bug.
+      if (err instanceof InvalidClerkUserIdError) {
+        this.log.error('Clerk user deletion refused an invalid id');
+        throw new InternalServerErrorException();
+      }
       // Clerk errors can include the request path and the subject it names.
       const status = err instanceof ClerkApiError ? ` (HTTP ${err.status})` : '';
       this.log.error(`Clerk user deletion failed${status}`);

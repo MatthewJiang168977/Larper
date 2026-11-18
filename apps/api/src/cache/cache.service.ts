@@ -53,7 +53,8 @@ export class CacheService implements OnApplicationShutdown {
       }
       if (keys.length) await this.redis.del(...keys);
     } catch (err) {
-      this.log.warn(`cache clear for user ${userId} failed: ${(err as Error).message}`);
+      // The error class only: no user id, and no message that could carry a key.
+      this.log.warn(`cache clear after a delete failed (${(err as Error).name})`);
     }
   }
 

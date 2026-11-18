@@ -10,11 +10,21 @@ export const CLERK_USER_DELETER = Symbol('CLERK_USER_DELETER');
 /** Deletes one Clerk user. Resolves when it is gone, including when it already was (404). */
 export type ClerkUserDeleter = (clerkId: string) => Promise<void>;
 
+/** A permanent error, not a Clerk outage: retrying cannot help. Carries no id. */
+export class InvalidClerkUserIdError extends Error {
+  constructor() {
+    super('not a Clerk user id');
+    this.name = 'InvalidClerkUserIdError';
+  }
+}
+
+export const isClerkUserId = (id: string) => /^user_[A-Za-z0-9]+$/.test(id);
+
 export function clerkUserDeleter(clerk: ClerkApi): ClerkUserDeleter {
   return async (clerkId) => {
     // The id is a Clerk user id from our own session check; refuse anything else before it
     // goes into a URL.
-    if (!/^user_[A-Za-z0-9]+$/.test(clerkId)) throw new Error('not a Clerk user id');
+    if (!isClerkUserId(clerkId)) throw new InvalidClerkUserIdError();
     try {
       await clerk('DELETE', `/users/${clerkId}`);
     } catch (err) {

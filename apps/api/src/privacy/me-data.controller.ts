@@ -59,7 +59,7 @@ export class MeDataController {
 
   // DELETE /me/history: journal, check-ins, hours answers and saved places. Keeps the
   // account and the taste profile. 403 for the shared demo account; otherwise 503 until
-  // PRIVACY_DELETES is history or all, before any query.
+  // PRIVACY_DELETES is history or all, before any delete query.
   @Delete('history')
   @HttpCode(200)
   @SkipThrottle({ [USER_WINDOWS.hour]: false })

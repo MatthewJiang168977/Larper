@@ -1,6 +1,8 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Pool } from 'pg';
 import type { CacheService } from '../cache/cache.service';
+import { UnauthorizedException } from '@nestjs/common';
+import { UsersService } from '../auth/users.service';
 import { createPool } from '../db/db.module';
 import { assertDisposableDatabase } from '../db/test-guard';
 import type { TagsService } from '../profile/tags.service';
@@ -227,6 +229,18 @@ describeDb('export and delete my data (real database)', () => {
       relay.release();
       await clearing?.catch(() => undefined);
     }
+  });
+
+  it('after DELETE /me, a late request with the same Clerk id (the token window) creates no users row', async () => {
+    const a = await user();
+    await deletion.deleteAccount(a);
+    // PRIVACY_DELETES=all: Clerk (a mock) no longer has the user, so the late request gets 401.
+    const check = jest.fn(async () => false);
+    const users = new UsersService(pool, check);
+    await expect(users.ensure(a.clerkId)).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(check).toHaveBeenCalledWith(a.clerkId);
+    const { rows } = await owner.query('SELECT 1 FROM users WHERE clerk_id = $1', [a.clerkId]);
+    expect(rows).toHaveLength(0);
   });
 
   it('the API role still cannot delete anything itself, only through the functions', async () => {

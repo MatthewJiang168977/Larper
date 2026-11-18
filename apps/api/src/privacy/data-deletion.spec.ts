@@ -1,8 +1,9 @@
-import { ForbiddenException, Logger } from '@nestjs/common';
+import { ForbiddenException, InternalServerErrorException, Logger } from '@nestjs/common';
 import type { Pool } from 'pg';
 import type { CacheService } from '../cache/cache.service';
 import { ClerkApiError } from '../demo/clerk-api';
 import {
+  InvalidClerkUserIdError,
   clerkUserDeleter,
   clerkUserDeleterFromEnv,
   type ClerkUserDeleter,
@@ -62,6 +63,7 @@ describe('the Clerk deleter', () => {
 
   it('refuses an id that is not a Clerk user id before it reaches a URL', async () => {
     const clerk = jest.fn();
+    await expect(clerkUserDeleter(clerk as never)('../sessions')).rejects.toBeInstanceOf(InvalidClerkUserIdError);
     await expect(clerkUserDeleter(clerk as never)('../sessions')).rejects.toThrow(/not a Clerk user id/);
     expect(clerk).not.toHaveBeenCalled();
   });
@@ -138,6 +140,15 @@ describe('DataDeletionService', () => {
     const text = JSON.stringify(logs.flatMap((l) => l.mock.calls));
     expect(text).not.toContain('user_abc123');
     expect(text).not.toMatch(/\b7\b/);
+  });
+
+  it('an id Clerk can never delete is a 500, not "failed, retry", and the log names no id', async () => {
+    const log = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const { svc } = service(clerkUserDeleter(jest.fn() as never));
+    const bad = { id: '7', clerkId: 'not-a-clerk-id/../x' };
+    await expect(svc.deleteAccount(bad)).rejects.toBeInstanceOf(InternalServerErrorException);
+    expect(JSON.stringify(log.mock.calls)).not.toContain('not-a-clerk-id');
+    expect(log.mock.calls).toHaveLength(1);
   });
 
   it('a database failure stops before Clerk: the user can still sign in to repeat it', async () => {
