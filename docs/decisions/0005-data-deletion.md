@@ -157,8 +157,8 @@ the deleted user is kept.**
   by default; that is Clerk's setting, not ours. A request in that window would make
   `ensure()` insert a `users` row for the deleted Clerk id, which is a tombstone. So with
   `PRIVACY_DELETES=all`, `ensure()` confirms with the Clerk Backend API
-  (`GET /v1/users/<id>`) before it inserts a new row: a 404 answers 401 and creates no
-  row, and any other Clerk error answers 503 and creates no row. Existing rows never
+  (`GET /v1/users/<id>`) before it inserts a new row: a 404 answers 401 with
+  `code: "account_gone"` and creates no row, and any other Clerk error answers 503 and creates no row. Existing rows never
   trigger the call, so only a brand-new user's first request pays it; concurrent first
   requests share one call. With `off` or `history` nothing changes (no call), and the
   demo user never triggers it. The window therefore ends in a 401, not a new row.
@@ -174,6 +174,11 @@ the deleted user is kept.**
     user, the request purges the row it made and answers 401. If that recheck itself
     fails, the row stays: this is far more likely a brand-new sign-up during a Clerk
     hiccup than a deletion race, and the log names no one.
+
+  Every "Clerk has no such user" 401 carries `code: "account_gone"`. Every other 401
+  (no token, a token that fails verification) is bare. The web reads only `account_gone`
+  as "your account is already deleted", so a session problem is never reported as a
+  deletion.
 
   If a cleanup purge fails, the API logs it without any id. The account is still reported
   deleted, because the user's own data and sign-in are gone.

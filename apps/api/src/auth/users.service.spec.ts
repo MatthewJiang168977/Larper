@@ -2,7 +2,7 @@ import { Logger, ServiceUnavailableException, UnauthorizedException } from '@nes
 import type { Pool } from 'pg';
 import { ClerkApiError } from '../demo/clerk-api';
 import { clerkUserCheck, clerkUserCheckFromEnv } from './clerk-user-check';
-import { GONE_TTL_MS, UsersService } from './users.service';
+import { ACCOUNT_GONE, GONE_TTL_MS, UsersService } from './users.service';
 
 // UsersService.ensure with PRIVACY_DELETES=all: a new row only for a Clerk user that
 // still exists. Clerk is always a mock here; the pool is a fake with a users table.
@@ -82,6 +82,41 @@ describe('UsersService.ensure with the Clerk check', () => {
     const { pool, users } = fakePool();
     await expect(new UsersService(pool, async () => false).ensure(ID)).rejects.toBeInstanceOf(UnauthorizedException);
     expect(users).toEqual({});
+  });
+
+  // The web reads "your account is already deleted" from this code and nothing else: a bare
+  // 401 (no token, a token that fails verification) must never look like it.
+  const goneBody = async (p: Promise<unknown>) => {
+    const err = await p.then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(UnauthorizedException);
+    return (err as UnauthorizedException).getResponse();
+  };
+
+  it('says account_gone, in the body, on every "Clerk has no such user" 401', async () => {
+    const want = { statusCode: 401, code: ACCOUNT_GONE };
+    // Before the insert.
+    expect(await goneBody(new UsersService(fakePool().pool, async () => false).ensure(ID))).toMatchObject(want);
+    // After the recheck purged a row this request made.
+    const recheck = jest.fn<Promise<boolean>, [string]>().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    expect(await goneBody(new UsersService(fakePool().pool, recheck).ensure(ID))).toMatchObject(want);
+    // From the in-memory 404 cache.
+    const svc = new UsersService(fakePool().pool, async () => false);
+    await svc.ensure(ID).catch(() => undefined);
+    expect(await goneBody(svc.ensure(ID))).toMatchObject(want);
+  });
+
+  it('a lost insert race whose winner was purged by its recheck is account_gone, not a 500', async () => {
+    // Our insert does nothing (another pod won), and by our re-read the winner's recheck has
+    // already purged that row: nothing is there.
+    const query = jest.fn(async (sql: string) => {
+      if (sql.startsWith('SELECT id FROM users')) return { rows: [] };
+      return { rows: [] }; // the insert CTE: found nothing, inserted nothing
+    });
+    const err = goneBody(new UsersService({ query } as unknown as Pool, async () => true).ensure(ID));
+    expect(await err).toMatchObject({ statusCode: 401, code: ACCOUNT_GONE });
   });
 
   it('503 and no row when Clerk fails (5xx, timeout), logging no id', async () => {
