@@ -22,8 +22,13 @@ export function privacyFrom(p: Partial<Privacy> | undefined | null): Privacy {
 
 const REVOKE_DELAY_MS = 1000;
 
-/** DELETE /me answers 401 when Clerk no longer has the user: the account is already gone. */
-const accountAlreadyGone = (e: unknown) => e instanceof ApiError && e.status === 401;
+/**
+ * DELETE /me answers 401 when Clerk no longer has the user: the account is already gone.
+ * But a 401 also comes back when no sign-in token went with the request (the session ended
+ * in another tab, or expired): then nothing was deleted, and saying it was would be false.
+ * So only a 401 to a request that carried a token counts as "already gone".
+ */
+const accountAlreadyGone = (e: unknown) => e instanceof ApiError && e.status === 401 && e.authSent;
 
 const UNAVAILABLE = "deleting your data isn't available yet.";
 

@@ -1,6 +1,6 @@
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, describeError, useApi } from "./api";
+import { ApiError, apiRequest, describeError, useApi } from "./api";
 
 vi.mock("@clerk/nextjs", () => ({ useAuth: () => ({ getToken: async () => "tok" }) }));
 
@@ -24,6 +24,15 @@ describe("useApi", () => {
   it("throws an ApiError with the API's message and status", async () => {
     fetchMock.mockResolvedValue(json(422, { message: "You're 110 m away" }));
     await expect(call()).rejects.toMatchObject({ name: "ApiError", status: 422, message: "You're 110 m away" });
+  });
+
+  it("says whether a failed request carried a sign-in token", async () => {
+    fetchMock.mockResolvedValue(json(401, { message: "Unauthorized" }));
+    await expect(call()).rejects.toMatchObject({ status: 401, authSent: true });
+    // No session: getToken() has nothing, so no Authorization header and authSent false.
+    fetchMock.mockResolvedValue(json(401, { message: "Unauthorized" }));
+    await expect(apiRequest("/me", { method: "DELETE" }, null)).rejects.toMatchObject({ status: 401, authSent: false });
+    expect(fetchMock.mock.calls[1][1]?.headers).not.toHaveProperty("Authorization");
   });
 
   it("joins Nest's validation messages", async () => {

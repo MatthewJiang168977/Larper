@@ -47,6 +47,12 @@ export class ApiError extends Error {
     readonly code?: string,
     /** On a 429: how long until the limit lets this through again, in seconds. */
     readonly retryAfterS?: number,
+    /**
+     * Whether the request carried a sign-in token. A 401 without one only means there was
+     * no session; with one, the API refused a token it could verify or an account it no
+     * longer has (DELETE /me reads that as "already gone").
+     */
+    readonly authSent: boolean = false,
   ) {
     super(message);
     this.name = "ApiError";
@@ -110,6 +116,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}, token?
       "http",
       body.code,
       res.status === 429 ? retryAfter(body, res) : undefined,
+      !!token,
     );
   }
   return res.json() as Promise<T>;
