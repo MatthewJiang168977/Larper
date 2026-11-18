@@ -32,7 +32,7 @@ import { ThrottleModule } from './throttle/throttle.module';
     AreasService,
     DataExportService,
     DataDeletionService,
-    // Null unless CLERK_DELETE_USERS is on: then DELETE /me also deletes the Clerk user.
+    // Null unless PRIVACY_DELETES=all: then DELETE /me also deletes the Clerk user.
     { provide: CLERK_USER_DELETER, useFactory: () => clerkUserDeleterFromEnv(process.env) },
     // 'off' unless PRIVACY_DELETES=history; a bad value fails the API at startup.
     { provide: PRIVACY_DELETES, useFactory: () => privacyDeletesFromEnv(process.env) },

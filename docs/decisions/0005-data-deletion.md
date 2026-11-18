@@ -31,7 +31,7 @@ demo account** (it is reset nightly by `ops/demo-reset.ts`; a visitor must not b
 empty or remove it for the next one). `GET /me/export` refuses it the same way: the demo's
 journal is every visitor's, with each offer's position, which can be a visitor's real
 location. `DELETE /me` also says what happened to the Clerk
-user: `"clerkUser": "manual" | "deleted" | "failed"`.
+user: `"clerkUser": "deleted" | "failed"`.
 
 ### How the API deletes without a DELETE grant
 
@@ -91,8 +91,9 @@ with `FOR UPDATE SKIP LOCKED`. The ingest jobs are keyed by area.
 ### Rollout and rollback
 
 The delete routes are gated by one API setting, `PRIVACY_DELETES`, read at startup. It is
-`off` when unset or empty, and `history` is the only other value for now (any other
-value stops the API from starting). Off, both `DELETE /me/history` and `DELETE /me`
+`off` when unset or empty; `history` opens `DELETE /me/history`; `all` opens that and
+`DELETE /me`. `all` also needs `CLERK_SECRET_KEY` (see D7). Any other value, or `all`
+without the key, stops the API from starting. Off, both `DELETE /me/history` and `DELETE /me`
 answer 503 `{"statusCode":503,"code":"deletes_unavailable","message":"deleting isn't available yet"}`
 before any query, with no Retry-After header. The demo account still gets its 403. `GET /me`
 reports what is on in `privacy: { export, deleteHistory, deleteAccount }`, and
@@ -108,13 +109,18 @@ Owner steps:
    flight. Old API pods take their locks in the reverse order, and the old worker stalls
    on a missing user.
 3. Turn on `history` through a Helm value. That is a live change and needs the owner's
-   approval. This PR does not add the Helm value. It would be an `api.env`-style entry
-   such as `PRIVACY_DELETES: history` in the API's environment in
+   approval. This PR does not add the Helm value. It would be an environment entry such
+   as `PRIVACY_DELETES: history` in the API's environment in
    `infra/helm/larper/values.yaml`, applied with the usual deploy.
-4. Rollback: set it back to off first. Then roll the workers back to a build that skips
-   missing users and quests. Only then consider reverting 0020.
+4. Turn on `all` the same way, after `history` has been checked. `all` needs
+   `CLERK_SECRET_KEY` in the API pod, which today only the demo env provides, so this step
+   needs a Helm values change as well, and the owner's approval. The API refuses to start
+   with `all` and no key.
+5. Rollback: set `PRIVACY_DELETES` back to off first (`history` if only `all` should
+   go). Then roll the workers back to a build that skips missing users and quests. Only
+   then consider reverting 0020.
 
-`DELETE /me` stays off until D7 is decided and implemented.
+`DELETE /me` stays off (503) until `all` is set.
 
 The pre-PR taste worker treats a missing user's taste-profile foreign-key violation
 (`23503`) as retryable, which can stall the consumer batch. A worker that handles only
@@ -126,18 +132,38 @@ migration 0020, move both services to compatible builds that work without its fu
 
 ### Account deletion lifecycle (D7)
 
-**Account deletion is blocked pending a policy for reprovisioning.** The API verifies
-Clerk JWTs locally and calls `UsersService.ensure` on authenticated requests. A previously
-issued token that still passes verification can create a fresh Larper row after the
-local purge, even if Clerk user removal succeeded. Signing out in the web app does not
-invalidate a copy of that token at the API.
+**Decided 2026-11-18 by the owner: a deleted user can sign up again as a brand-new
+account. `DELETE /me` deletes our rows and the Clerk user. No tombstone: nothing about
+the deleted user is kept.**
 
-`CLERK_DELETE_USERS` is off by default. With it off, `"clerkUser": "manual"` means the API
-purged the local data and made no Clerk call. It does not create an operator handoff or
-guarantee manual removal. With it on (`1` or `true`), the API requires `CLERK_SECRET_KEY`
-and calls Clerk after the local purge commits. A Clerk 404 counts as deleted. Other
-failures leave the local purge committed and return `"clerkUser": "failed"`. Another
-authenticated `DELETE /me` can retry the Clerk call.
+- **Order: our rows first, then Clerk.** The local purge commits, then the API calls the
+  Clerk Backend API to delete the user. If Clerk fails, the user is still signed in and
+  can repeat the request; the response is `"clerkUser": "failed"`. A Clerk user deleted
+  first and then a failed local purge would leave data nobody could sign in to remove. A
+  Clerk 404 counts as deleted.
+- **Retry.** The repeat `DELETE /me` uses the same session. `ensure()` recreates an
+  empty row for it, the repeat purges that row and retries Clerk.
+- **Responses.** `{ "deleted": { ... }, "clerkUser": "deleted" }` or
+  `{ "deleted": { ... }, "clerkUser": "failed" }`. There is no `"manual"` outcome and no
+  `CLERK_DELETE_USERS` flag.
+- **Sessions.** Deleting the Clerk user revokes its sessions. A session token already
+  issued keeps verifying locally (the API checks the JWT without calling Clerk) until it
+  expires. Clerk session tokens are short-lived, about 60 seconds by default; that is
+  Clerk's setting, not ours. A request in that window can make `ensure()` create a fresh,
+  empty Larper account. Under this policy that is simply a new account.
+- **Signing up again.** The same email can sign up again and gets a new, empty account.
+- **Nothing is kept to recognise them.** No table, column or log line remembers a deleted
+  user's ids. The Clerk failure log has the HTTP status at most, never a user or Clerk id.
+  Rate limits are keyed by a hash that is not stored beyond its counter window, so a
+  limit can carry over to a new account for a short time; that is the only trace.
+- **`CLERK_SECRET_KEY` must reach the API pod for `all`.** Today only the demo env
+  provides it. Enabling `all` therefore needs a Helm values change, which is a live
+  change needing the owner's approval; this PR does not change Helm.
+
+Suggested privacy wording: "Deleting your account removes your data from Larper and
+deletes your sign-in. You can sign up again later with the same email as a new account.
+Copies in backups expire on the schedule below." Do not promise removal by hand or within
+a number of days.
 
 ## What happens to deleted data in backups
 

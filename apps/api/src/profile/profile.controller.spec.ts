@@ -6,7 +6,7 @@ import { ProfileController } from './profile.controller';
 describe('ProfileController GET /me', () => {
   const pg = { query: jest.fn() };
   const tags = { ready: jest.fn(), tagOf: [] as string[] };
-  const make = (mode: 'off' | 'history') => new ProfileController(pg as unknown as Pool, tags as unknown as TagsService, mode);
+  const make = (mode: 'off' | 'history' | 'all') => new ProfileController(pg as unknown as Pool, tags as unknown as TagsService, mode);
   let before: string | undefined;
 
   beforeEach(() => {
@@ -29,14 +29,17 @@ describe('ProfileController GET /me', () => {
     });
   });
 
-  it('reports deleteHistory with PRIVACY_DELETES=history, and never deleteAccount', async () => {
-    const me = await make('history').me({ id: 'u1', clerkId: 'user_a' });
-    expect(me.privacy).toEqual({ export: true, deleteHistory: true, deleteAccount: false });
+  it('reports deleteHistory with PRIVACY_DELETES=history, and deleteAccount only with all', async () => {
+    const user = { id: 'u1', clerkId: 'user_a' };
+    expect((await make('history').me(user)).privacy).toEqual({ export: true, deleteHistory: true, deleteAccount: false });
+    expect((await make('all').me(user)).privacy).toEqual({ export: true, deleteHistory: true, deleteAccount: true });
   });
 
   it('reports all false for the demo account, whatever the flag', async () => {
-    const me = await make('history').me({ id: 'u2', clerkId: 'user_demo9' });
-    expect(me).toMatchObject({ demo: true, privacy: { export: false, deleteHistory: false, deleteAccount: false } });
+    for (const mode of ['off', 'history', 'all'] as const) {
+      const me = await make(mode).me({ id: 'u2', clerkId: 'user_demo9' });
+      expect(me).toMatchObject({ demo: true, privacy: { export: false, deleteHistory: false, deleteAccount: false } });
+    }
   });
 
   it('includes privacy for an onboarded account too', async () => {

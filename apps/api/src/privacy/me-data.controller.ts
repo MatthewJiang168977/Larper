@@ -17,9 +17,6 @@ const dataTracker = (req: { user?: AuthUser }) => {
   return createHash('sha256').update('larper:delete-account\0').update(req.user.clerkId).digest('hex');
 };
 
-// Flip only together with a PRIVACY_DELETES value and the D7 policy.
-const ACCOUNT_DELETE_OPEN: boolean = false;
-
 export const DEMO_EXPORT_REFUSAL = {
   statusCode: 403,
   code: 'demo_account',
@@ -62,7 +59,7 @@ export class MeDataController {
 
   // DELETE /me/history: journal, check-ins, hours answers and saved places. Keeps the
   // account and the taste profile. 403 for the shared demo account; otherwise 503 until
-  // PRIVACY_DELETES=history, before any query.
+  // PRIVACY_DELETES is history or all, before any query.
   @Delete('history')
   @HttpCode(200)
   @SkipThrottle({ [USER_WINDOWS.hour]: false })
@@ -73,12 +70,12 @@ export class MeDataController {
   deleteHistory(@CurrentUser() user: AuthUser) {
     // Demo first: the demo account gets its own refusal whatever the gate says.
     if (isDemoUser(user.clerkId)) throw new ForbiddenException(DEMO_REFUSAL);
-    if (this.deletes !== 'history') throw deletesUnavailable();
+    if (this.deletes === 'off') throw deletesUnavailable();
     return this.deletion.deleteHistory(user);
   }
 
-  // DELETE /me: everything, including the account row (and the Clerk user when
-  // CLERK_DELETE_USERS is on). 403 for the shared demo account. Always 503 for now.
+  // DELETE /me: everything, including the account row, then the Clerk user (0005 D7). 403
+  // for the shared demo account; otherwise 503 unless PRIVACY_DELETES=all.
   @Delete()
   @HttpCode(200)
   @SkipThrottle({ [USER_WINDOWS.hour]: false })
@@ -88,10 +85,7 @@ export class MeDataController {
   })
   deleteAccount(@CurrentUser() user: AuthUser) {
     if (isDemoUser(user.clerkId)) throw new ForbiddenException(DEMO_REFUSAL);
-    // Closed until the account lifecycle exists: a still-valid Clerk token would recreate
-    // the account after the purge (docs/decisions/0005-data-deletion.md, D7). No
-    // PRIVACY_DELETES value opens this route yet; the call below waits for that day.
-    if (!ACCOUNT_DELETE_OPEN) throw deletesUnavailable();
+    if (this.deletes !== 'all') throw deletesUnavailable();
     return this.deletion.deleteAccount(user);
   }
 }

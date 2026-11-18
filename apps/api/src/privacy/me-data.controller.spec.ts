@@ -17,12 +17,14 @@ import { PRIVACY_DELETES, type PrivacyDeletes } from './privacy-deletes';
 // real guards (the services are stubs; Clerk is replaced by X-Test-User, as in
 // saved-places.controller.spec.ts).
 describe('MeDataController', () => {
-  // Two apps over the same stubs: the delete routes switched on (PRIVACY_DELETES=history,
-  // the main one) and left off (the default).
+  // Two apps over the same stubs: the delete routes switched on (PRIVACY_DELETES=all,
+  // the main one, `all`), with only history on, and left off (the default).
   let app: INestApplication;
   let url: string;
   let offApp: INestApplication;
   let offUrl: string;
+  let histApp: INestApplication;
+  let histUrl: string;
   const exportFn = jest.fn();
   const deleteHistory = jest.fn();
   const deleteAccount = jest.fn();
@@ -43,6 +45,7 @@ describe('MeDataController', () => {
     });
   const call = (method: string, path: string, user: string | undefined, accountId?: string) =>
     callAt(() => url, method, path, user, accountId);
+  const callHist = (method: string, path: string, user: string | undefined) => callAt(() => histUrl, method, path, user);
   const callOff = (method: string, path: string, user: string | undefined) => callAt(() => offUrl, method, path, user);
 
   async function boot(mode: PrivacyDeletes) {
@@ -76,11 +79,13 @@ describe('MeDataController', () => {
     return { a, u: await a.getUrl() };
   }
   beforeAll(async () => {
-    ({ a: app, u: url } = await boot('history'));
+    ({ a: app, u: url } = await boot('all'));
+    ({ a: histApp, u: histUrl } = await boot('history'));
     ({ a: offApp, u: offUrl } = await boot('off'));
   });
   afterAll(async () => {
     await app.close();
+    await histApp.close();
     await offApp.close();
   });
   beforeEach(() => {
@@ -112,8 +117,21 @@ describe('MeDataController', () => {
 
   const UNAVAILABLE = { statusCode: 503, code: 'deletes_unavailable', message: "deleting isn't available yet" };
 
-  it('DELETE /me answers 503 even with PRIVACY_DELETES=history, and never reaches the service (0005 D7)', async () => {
-    const res = await call('DELETE', '/me', 'del-2');
+  it('DELETE /me answers 200 with what went and the Clerk outcome, with PRIVACY_DELETES=all', async () => {
+    for (const clerkUser of ['deleted', 'failed']) {
+      const body = { deleted: { account: true }, clerkUser };
+      deleteAccount.mockResolvedValue(body);
+      const res = await call('DELETE', '/me', 'del-2');
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual(body);
+      expect(deleteAccount).toHaveBeenCalledWith(expect.objectContaining({ id: 'del-2' }));
+    }
+  });
+
+  it('with PRIVACY_DELETES=history, deletes history but DELETE /me answers 503 and never reaches the service', async () => {
+    deleteHistory.mockResolvedValue({ deleted: {} });
+    expect((await callHist('DELETE', '/me/history', 'del-4')).status).toBe(200);
+    const res = await callHist('DELETE', '/me', 'del-4');
     expect(res.status).toBe(503);
     expect(res.headers.get('retry-after')).toBeNull();
     expect(await res.json()).toEqual(UNAVAILABLE);
@@ -136,11 +154,11 @@ describe('MeDataController', () => {
     expect((await callOff('GET', '/me/export', 'exp-off')).status).toBe(200);
   });
 
-  it('the demo refusal (403) wins over the 503, on both routes and both settings, before any service call', async () => {
+  it('the demo refusal (403) wins over the 503, on both routes and every setting, before any service call', async () => {
     const before = process.env.DEMO_CLERK_USER_ID;
     process.env.DEMO_CLERK_USER_ID = 'user_demo2';
     try {
-      for (const callFn of [call, (m: string, p: string, u: string | undefined) => callOff(m, p, u)]) {
+      for (const callFn of [call, callHist, callOff]) {
         for (const path of ['/me/history', '/me']) {
           const res = await callFn('DELETE', path, 'demo-2'); // clerkId user_demo2
           expect(res.status).toBe(403);
@@ -208,7 +226,7 @@ describe('MeDataController', () => {
         const limit = limits[window];
         for (let i = 0; i < limit; i++) {
           clock.mockReturnValue(start + i * step);
-          expect((await call(method, path, subject, String(101 + i))).status).toBe(path === '/me' ? 503 : 200);
+          expect((await call(method, path, subject, String(101 + i))).status).toBe(200);
         }
         clock.mockReturnValue(start + limit * step);
         const over = await call(method, path, subject, '999');
@@ -219,7 +237,7 @@ describe('MeDataController', () => {
         expect(keys).toHaveLength(limit + 1);
         expect(new Set(keys).size).toBe(1);
         expect(keys[0]).toMatch(new RegExp(`^rl:${name}:MeDataController\\.${handler}:[0-9a-f]{64}$`));
-        expect((await call(method, path, `${subject}-other`, '999')).status).toBe(path === '/me' ? 503 : 200);
+        expect((await call(method, path, `${subject}-other`, '999')).status).toBe(200);
       }
     } finally {
       clock.mockRestore();
