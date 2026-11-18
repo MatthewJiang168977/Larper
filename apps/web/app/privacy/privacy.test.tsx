@@ -64,7 +64,8 @@ describe("Privacy: your data", () => {
     expect(a).toMatch(/Also deletes your sign-in, then signs you out/);
     expect(a).toMatch(/you stay signed in to try again/);
     expect(a).toMatch(/sign up again later, with the same email if you like\. That makes a new, empty account/);
-    expect(a).toMatch(/Nothing is kept to recognise you/);
+    expect(a).toMatch(/After deletion Larper writes nothing new that identifies you\. Records made before, such as server logs and error reports, keep your account number until they expire on their usual schedule\./);
+    expect(a).not.toMatch(/Nothing is kept/);
     expect(a).not.toMatch(/automatic|manual|by hand|you're signed out/i);
   });
 

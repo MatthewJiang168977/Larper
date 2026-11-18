@@ -20,6 +20,11 @@ export function privacyFrom(p: Partial<Privacy> | undefined | null): Privacy {
   return { export: p?.export === true, deleteHistory: p?.deleteHistory === true, deleteAccount: p?.deleteAccount === true };
 }
 
+const REVOKE_DELAY_MS = 1000;
+
+/** DELETE /me answers 401 when Clerk no longer has the user: the account is already gone. */
+const accountAlreadyGone = (e: unknown) => e instanceof ApiError && e.status === 401;
+
 const UNAVAILABLE = "deleting your data isn't available yet.";
 
 const CONFIRM_WORD = "delete";
@@ -46,7 +51,7 @@ const COPY: Record<Kind, { open: string; title: string; deletes: string[]; keeps
     ],
     keeps: [
       "your account and sign-in.",
-      "your taste profile: what you told larper you like. quests carry on from there.",
+      "your taste profile: what you told larper you like, and what it has learned from your quests. quests carry on from there.",
     ],
     confirm: "delete my history",
   },
@@ -151,7 +156,8 @@ export function YourData({ account, privacy = NO_PRIVACY, onHistoryDeleted, onAc
       document.body.appendChild(a);
       a.click();
       a.remove();
-      URL.revokeObjectURL(url);
+      // Not at once: iOS Safari can still be reading the blob when the click returns.
+      setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS);
       setDownloadMsg({ ok: true, text: `saved ${a.download}.` });
     } catch (e) {
       setDownloadMsg({ ok: false, text: failure(e) });
@@ -181,8 +187,14 @@ export function YourData({ account, privacy = NO_PRIVACY, onHistoryDeleted, onAc
         setNotice(countLine(r.deleted));
         setAsking(null);
       } else {
-        const r = await api<AccountDeleted>("/me", { method: "DELETE" });
-        if (active.current) onAccountDeleted(r.clerkUser);
+        let clerkUser: ClerkRemoval;
+        try {
+          clerkUser = (await api<AccountDeleted>("/me", { method: "DELETE" })).clerkUser;
+        } catch (e) {
+          if (!accountAlreadyGone(e)) throw e;
+          clerkUser = "deleted";
+        }
+        if (active.current) onAccountDeleted(clerkUser);
       }
     } catch (e) {
       // On success the completion screen takes over with the map link still hidden.
@@ -279,6 +291,7 @@ export function AccountDeletionComplete({ status, onRetry }: {
                   <p role="alert">couldn&apos;t sign you out. try signing out again.</p>
                   <div className="larper-data-actions">
                     <OSButton primary onClick={onRetry}>retry sign-out</OSButton>
+                    <Link href="/" replace className="larper-os-button">back to larper</Link>
                   </div>
                 </>
               )}
@@ -323,7 +336,9 @@ export function SignInRemovalFailed({ onRemoved }: { onRemoved: () => void }) {
       if (r.clerkUser === "deleted") onRemoved();
       else setError("your sign-in is still there. try again in a bit.");
     } catch (e) {
-      if (active.current) setError(failure(e));
+      if (!active.current) return;
+      if (accountAlreadyGone(e)) onRemoved();
+      else setError(failure(e));
     } finally {
       busy.current = false;
       if (active.current) setTrying(false);
@@ -362,6 +377,7 @@ function Confirm({ kind, busy, onCancel, run }: {
   const copy = COPY[kind];
   const titleId = useId();
   const inputId = useId();
+  const describeId = useId();
   const ref = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const [typed, setTyped] = useState("");
@@ -392,12 +408,14 @@ function Confirm({ kind, busy, onCancel, run }: {
       tabIndex={-1}
       role="dialog"
       aria-labelledby={titleId}
+      aria-describedby={describeId}
       className="larper-data-confirm"
       onKeyDown={(e) => {
         if (e.key === "Escape" && !busy) onCancel();
       }}
     >
       <h3 id={titleId} className="larper-journal-name">{copy.title}</h3>
+      <div id={describeId}>
       <p>this deletes:</p>
       <ul>{copy.deletes.map((d) => <li key={d}>{d}</li>)}</ul>
       {copy.keeps && (
@@ -409,6 +427,7 @@ function Confirm({ kind, busy, onCancel, run }: {
       {kind === "account" && (
         <p>this deletes your larper data and your sign-in, then signs you out. {NEW_ACCOUNT}</p>
       )}
+      </div>
       <p>{BACKUPS}</p>
       <p>{BROKER_RETENTION}</p>
       <form

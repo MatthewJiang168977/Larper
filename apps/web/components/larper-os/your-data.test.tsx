@@ -61,7 +61,7 @@ describe("download my data", () => {
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
       clicked.push({ href: this.href, download: this.download });
     });
-    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-17T23:30:00Z") });
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], now: new Date("2026-11-17T23:30:00Z") });
   });
   afterEach(() => vi.useRealTimers());
 
@@ -73,6 +73,8 @@ describe("download my data", () => {
     expect(api).toHaveBeenCalledWith("/me/export");
     expect(await readBlob(created[0])).toContain('"version": 1');
     expect(clicked).toEqual([{ href: "blob:export", download: "larper-export-2026-11-17.json" }]);
+    expect(revoked).toEqual([]); // not yet: iOS Safari may still be reading the blob
+    await act(async () => { vi.advanceTimersByTime(1000); });
     expect(revoked).toEqual(["blob:export"]);
     expect(document.querySelector("a[download]")).toBeNull(); // the temporary link is gone
     expect(screen.getByRole("status").textContent).toContain("saved larper-export-2026-11-17.json.");
@@ -200,7 +202,7 @@ describe("delete my history", () => {
     expect(document.activeElement).toBe(dialog);
     expect(dialog.textContent).toContain("your journal: every quest you've been offered.");
     expect(dialog.textContent).toContain("your saved places.");
-    expect(dialog.textContent).toContain("your taste profile: what you told larper you like");
+    expect(dialog.textContent).toContain("your taste profile: what you told larper you like, and what it has learned from your quests. quests carry on from there.");
     expect(dialog.textContent).toContain("about 3 weeks under the usual backup schedule");
     expect(dialog.textContent).toContain("60-day cleanup rule");
     expect(dialog.textContent).toContain("restoring a backup could bring deleted data back");
@@ -385,6 +387,55 @@ describe("delete my account", () => {
     await confirmAccount();
     expect(screen.getByRole("alert").textContent).toBe("something went wrong on our end.");
     expect(onAccountDeleted).not.toHaveBeenCalled();
+  });
+});
+
+describe("DELETE /me answering 401 (Clerk no longer has the user)", () => {
+  const gone = () => new ApiError("signed out", 401);
+
+  it("on the first confirm it counts as deleted", async () => {
+    api.mockRejectedValue(gone());
+    mount();
+    fireEvent.click(button("delete my account"));
+    typeDelete();
+    fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
+    await settle();
+    expect(onAccountDeleted).toHaveBeenCalledExactlyOnceWith("deleted");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("on delete my history it stays an ordinary signed-out error", async () => {
+    api.mockRejectedValue(gone());
+    mount();
+    fireEvent.click(button("delete my history"));
+    typeDelete();
+    fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
+    await settle();
+    expect(screen.getByRole("alert").textContent).toBe("you've been signed out. sign in again to carry on.");
+    expect(onAccountDeleted).not.toHaveBeenCalled();
+    expect(onHistoryDeleted).not.toHaveBeenCalled();
+  });
+
+  it("on try again it counts as deleted", async () => {
+    const onRemoved = vi.fn();
+    api.mockRejectedValue(gone());
+    render(<SignInRemovalFailed onRemoved={onRemoved} />);
+    fireEvent.click(button("try again"));
+    await settle();
+    expect(onRemoved).toHaveBeenCalledOnce();
+  });
+});
+
+describe("confirmation dialogs", () => {
+  it.each(["history", "account"])("the %s dialog is described by its deletes and keeps", (kind) => {
+    mount();
+    fireEvent.click(button(`delete my ${kind}`));
+    const dialog = screen.getByRole("dialog");
+    const desc = document.getElementById(dialog.getAttribute("aria-describedby")!)!;
+    expect(desc.textContent).toContain("this deletes:");
+    expect(desc.textContent).toContain("saved places.");
+    if (kind === "history") expect(desc.textContent).toContain("this keeps:");
+    expect(document.activeElement).toBe(dialog);
   });
 });
 

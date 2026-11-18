@@ -424,6 +424,45 @@ describe("Journal", () => {
       expect(screen.queryByRole("button", { name: "try again" })).toBeNull();
     });
 
+    it("a 401 from DELETE /me means the account is already gone: same path as deleted", async () => {
+      answerDelete = () => Promise.reject(new ApiError("signed out", 401));
+      render(<JournalPage />);
+      await settle();
+      deleteData("account");
+      await settle();
+      expect(screen.getByRole("heading", { name: "your larper data is deleted." })).toBeTruthy();
+      expect(screen.getByText("your sign-in is deleted too.")).toBeTruthy();
+      expect(signOut).toHaveBeenCalledWith(expect.any(Function), { sessionId: "session-a" });
+      expect(replace).toHaveBeenCalledWith("/");
+    });
+
+    it("a 401 on try again also finishes the sign-out and goes to the landing page", async () => {
+      const responses: Array<() => Promise<unknown>> = [
+        () => Promise.resolve({ clerkUser: "failed" }),
+        () => Promise.reject(new ApiError("signed out", 401)),
+      ];
+      answerDelete = () => responses.shift()!();
+      render(<JournalPage />);
+      await settle();
+      deleteData("account");
+      await settle();
+      fireEvent.click(screen.getByRole("button", { name: "try again" }));
+      await settle();
+      expect(signOut).toHaveBeenCalledOnce();
+      expect(replace).toHaveBeenCalledWith("/");
+      expect(screen.getByText("your sign-in is deleted too.")).toBeTruthy();
+    });
+
+    it("a 401 from DELETE /me/history stays the usual error and does not sign out", async () => {
+      answerDelete = () => Promise.reject(new ApiError("signed out", 401));
+      render(<JournalPage />);
+      await settle();
+      deleteData("history");
+      await settle();
+      expect(screen.getByRole("alert").textContent).toBe("you've been signed out. sign in again to carry on.");
+      expect(signOut).not.toHaveBeenCalled();
+    });
+
     it("no screen after a purge mentions days or removal by hand", async () => {
       answerDelete = () => Promise.resolve({ clerkUser: "deleted" });
       render(<JournalPage />);
@@ -476,9 +515,9 @@ describe("Journal", () => {
       expect(screen.getByRole("status").textContent).toContain("your larper data is deleted.");
       expect(screen.getByRole("status").textContent).toContain("your sign-in is deleted too.");
       expect(screen.getByRole("alert").textContent).toContain("couldn't sign you out");
-      expect(screen.queryByRole("link")).toBeNull();
       const callsAtPurge = api.mock.calls.length;
 
+      expect(screen.getByRole("link", { name: "back to larper" }).getAttribute("href")).toBe("/");
       fireEvent.click(screen.getByRole("button", { name: "retry sign-out" }));
       await settle();
       expect(signOut).toHaveBeenCalledTimes(2);

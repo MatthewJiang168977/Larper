@@ -61,7 +61,7 @@ const YOUR_DATA: { title: string; points: string[] }[] = [
     points: [
       "Removes all of the above, plus your taste profile and your Larper account.",
       "Also deletes your sign-in, then signs you out. If removing the sign-in doesn't go through, your data is still deleted and you stay signed in to try again.",
-      "You can sign up again later, with the same email if you like. That makes a new, empty account. Nothing is kept to recognise you.",
+      "You can sign up again later, with the same email if you like. That makes a new, empty account. After deletion Larper writes nothing new that identifies you. Records made before, such as server logs and error reports, keep your account number until they expire on their usual schedule.",
     ],
   },
   {
