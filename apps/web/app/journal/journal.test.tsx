@@ -425,7 +425,7 @@ describe("Journal", () => {
     });
 
     it("a 401 from DELETE /me means the account is already gone: same path as deleted", async () => {
-      answerDelete = () => Promise.reject(new ApiError("signed out", 401, "http", undefined, undefined, true));
+      answerDelete = () => Promise.reject(new ApiError("this account no longer exists", 401, "http", "account_gone"));
       render(<JournalPage />);
       await settle();
       deleteData("account");
@@ -439,7 +439,7 @@ describe("Journal", () => {
     it("a 401 on try again also finishes the sign-out and goes to the landing page", async () => {
       const responses: Array<() => Promise<unknown>> = [
         () => Promise.resolve({ clerkUser: "failed" }),
-        () => Promise.reject(new ApiError("signed out", 401, "http", undefined, undefined, true)),
+        () => Promise.reject(new ApiError("this account no longer exists", 401, "http", "account_gone")),
       ];
       answerDelete = () => responses.shift()!();
       render(<JournalPage />);
@@ -454,7 +454,7 @@ describe("Journal", () => {
     });
 
     it("a 401 from DELETE /me/history stays the usual error and does not sign out", async () => {
-      answerDelete = () => Promise.reject(new ApiError("signed out", 401, "http", undefined, undefined, true));
+      answerDelete = () => Promise.reject(new ApiError("this account no longer exists", 401, "http", "account_gone"));
       render(<JournalPage />);
       await settle();
       deleteData("history");

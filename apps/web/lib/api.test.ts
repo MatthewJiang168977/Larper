@@ -1,6 +1,6 @@
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, apiRequest, describeError, useApi } from "./api";
+import { ApiError, describeError, useApi } from "./api";
 
 vi.mock("@clerk/nextjs", () => ({ useAuth: () => ({ getToken: async () => "tok" }) }));
 
@@ -26,13 +26,11 @@ describe("useApi", () => {
     await expect(call()).rejects.toMatchObject({ name: "ApiError", status: 422, message: "You're 110 m away" });
   });
 
-  it("says whether a failed request carried a sign-in token", async () => {
+  it("passes a 401's code through, so account_gone can be told from a bare 401", async () => {
+    fetchMock.mockResolvedValue(json(401, { statusCode: 401, code: "account_gone", message: "this account no longer exists" }));
+    await expect(call()).rejects.toMatchObject({ status: 401, code: "account_gone" });
     fetchMock.mockResolvedValue(json(401, { message: "Unauthorized" }));
-    await expect(call()).rejects.toMatchObject({ status: 401, authSent: true });
-    // No session: getToken() has nothing, so no Authorization header and authSent false.
-    fetchMock.mockResolvedValue(json(401, { message: "Unauthorized" }));
-    await expect(apiRequest("/me", { method: "DELETE" }, null)).rejects.toMatchObject({ status: 401, authSent: false });
-    expect(fetchMock.mock.calls[1][1]?.headers).not.toHaveProperty("Authorization");
+    await expect(call()).rejects.toMatchObject({ status: 401, code: undefined });
   });
 
   it("joins Nest's validation messages", async () => {

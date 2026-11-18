@@ -391,12 +391,12 @@ describe("delete my account", () => {
 });
 
 describe("DELETE /me answering 401 (Clerk no longer has the user)", () => {
-  // A 401 to a request that carried a sign-in token (the account is gone) ...
-  const gone = () => new ApiError("signed out", 401, "http", undefined, undefined, true);
-  // ... and one to a request with no token at all (the session had already ended).
-  const noSession = () => new ApiError("signed out", 401, "http", undefined, undefined, false);
+  // The API's "Clerk has no such user" 401 ...
+  const gone = () => new ApiError("this account no longer exists", 401, "http", "account_gone");
+  // ... and a bare 401: no token, or a token that failed verification. Nothing was deleted.
+  const noSession = () => new ApiError("Unauthorized", 401, "http");
 
-  it("with no token sent it is an ordinary signed-out error: nothing was deleted, so it never says so", async () => {
+  it("a bare 401 (no token, or a token that failed verification) is a signed-out error: nothing was deleted, so it never says so", async () => {
     api.mockRejectedValue(noSession());
     mount();
     fireEvent.click(button("delete my account"));
@@ -407,7 +407,7 @@ describe("DELETE /me answering 401 (Clerk no longer has the user)", () => {
     expect(screen.getByRole("alert").textContent).toBe("you've been signed out. sign in again to carry on.");
   });
 
-  it("with no token sent on try again it is an error, not removed", async () => {
+  it("a bare 401 on try again is an error, not removed", async () => {
     const onRemoved = vi.fn();
     api.mockRejectedValue(noSession());
     render(<SignInRemovalFailed onRemoved={onRemoved} />);
