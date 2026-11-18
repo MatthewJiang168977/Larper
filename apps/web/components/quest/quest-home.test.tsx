@@ -479,6 +479,9 @@ describe("QuestHome: the first quest, fast", () => {
   });
 
   it("starts the map only once the sheet is on screen, a frame later", async () => {
+    // Fake timers: the "frame later" is an animation frame, then a zero timeout, both driven
+    // by the fake clock (the setup file restores real timers after each test).
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame"] });
     let answer!: (t: Today) => void;
     routes["/quests/today"] = () => new Promise((resolve) => (answer = resolve));
     render(<QuestHome />);
@@ -489,7 +492,7 @@ describe("QuestHome: the first quest, fast", () => {
     await settle();
     expect(screen.getByText("quest: Cafe Uno")).toBeTruthy();
     expect(screen.queryByTestId("map")).toBeNull(); // not in the sheet's own frame
-    await act(() => new Promise((r) => setTimeout(r, 50)));
+    await advance(50); // a frame (16 ms) plus the zero timeout, with room to spare
     expect(screen.getByTestId("map")).toBeTruthy();
   });
 
@@ -506,10 +509,11 @@ describe("QuestHome: the first quest, fast", () => {
   });
 
   it("starts the map behind an error card too", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame"] });
     routes["/quests/today"] = fail(new ApiError("Internal server error", 500));
     render(<QuestHome />);
     await settle();
-    await act(() => new Promise((r) => setTimeout(r, 50)));
+    await advance(50);
     expect(screen.getByText("Couldn't load your quest")).toBeTruthy();
     expect(screen.getByTestId("map")).toBeTruthy();
   });

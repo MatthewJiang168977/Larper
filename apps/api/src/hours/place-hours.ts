@@ -1,5 +1,6 @@
+import { BadRequestException } from '@nestjs/common';
 import type { Pool } from 'pg';
-import { localTime, isoWeekday, nextChange, spansOn, stateAt, validateSchedule, type DisplaySpan, type NextChange, type OpenState, type Schedule } from './schedule';
+import { nextChange, spansOn, stateAt, validateSchedule, type DisplaySpan, type NextChange, type OpenState, type Schedule } from './schedule';
 
 // Reading place_hours_facts (migration 0018) into what the quest responses carry. Missing
 // data is never "closed": a place with no usable schedule is 'unverified', and a schedule
@@ -9,7 +10,12 @@ import { localTime, isoWeekday, nextChange, spansOn, stateAt, validateSchedule, 
 export const MIN_HOURS_CONFIDENCE = 0.5;
 /** "Open" confirmations older than this are not counted. */
 export const CONFIRMATION_WINDOW_DAYS = 180;
-const NYC = 'America/New_York';
+/**
+ * Check-in answers are shown only once this many different people gave one. Fewer, and nothing
+ * derived from them leaves the API (not the count, not when): one or two people's visits could
+ * be recognised by whoever knows they went.
+ */
+export const MIN_CONFIRMATIONS = 3;
 
 export type HoursSource = 'osm' | 'website' | 'nyc_open_data' | 'alltheplaces' | 'manual';
 export type ServiceKind = 'kitchen' | 'bar';
@@ -32,10 +38,11 @@ export type PlaceHours =
       services: HoursService[];
     };
 
-const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
+/** How long ago the newest confirmation was, coarsely: never a day or a time. */
+export type ConfirmationRecency = 'this_week' | 'this_month' | 'a_while_ago';
 export interface OpenConfirmations {
   count: number;
-  last: { day: (typeof DAYS)[number]; part: 'morning' | 'afternoon' | 'evening' | 'night' };
+  last: ConfirmationRecency;
 }
 
 export interface PlaceHoursInfo {
@@ -108,13 +115,29 @@ export async function loadRegularSchedules(pg: Pool, placeIds: readonly string[]
   return out;
 }
 
-/** Day of week and part of day in New York for an 'open' confirmation. No date, no exact time. */
-export function confirmationBucket(at: Date): OpenConfirmations['last'] {
-  const t = localTime(at, NYC);
-  // morning 05:00-11:59, afternoon 12:00-16:59, evening 17:00-21:59, night 22:00-04:59
-  const part =
-    t.min >= 22 * 60 || t.min < 5 * 60 ? 'night' : t.min < 12 * 60 ? 'morning' : t.min < 17 * 60 ? 'afternoon' : 'evening';
-  return { day: DAYS[isoWeekday(t) - 1], part };
+/**
+ * An hours observation (kind 'observation') always belongs to a user: the database says so too
+ * (migration 0019's CHECK). Validate the positive PostgreSQL bigint before the first query.
+ */
+export function requireObserver(userId: unknown): string {
+  if (typeof userId !== 'string' || !/^[1-9]\d{0,18}$/.test(userId) || BigInt(userId) > 9_223_372_036_854_775_807n) {
+    throw new BadRequestException('an hours observation needs a user');
+  }
+  return userId;
+}
+
+const DAY_MS = 86_400_000;
+
+/** Within 7 days of `now`: this week; within 30: this month; older: a while ago. A time slightly ahead of `now` (clock skew) is this week. */
+export function confirmationRecency(at: Date, now: Date): ConfirmationRecency {
+  const days = (now.getTime() - at.getTime()) / DAY_MS;
+  return days <= 7 ? 'this_week' : days <= 30 ? 'this_month' : 'a_while_ago';
+}
+
+/** What a place's open confirmations show: nothing below MIN_CONFIRMATIONS people, else the count and the coarse recency. */
+export function openConfirmations(count: number | null, last: Date | null, now: Date): OpenConfirmations | null {
+  if (!count || !last || count < MIN_CONFIRMATIONS) return null;
+  return { count, last: confirmationRecency(last, now) };
 }
 
 interface Row extends Partial<ScheduleFact> {
@@ -127,7 +150,7 @@ interface Row extends Partial<ScheduleFact> {
 /**
  * What the quest responses say about hours for these places, in ONE query: the schedule facts
  * (above the confidence floor) and, per place, the count of distinct people who answered "open"
- * in the last 180 days with the newest answer's time. `now` is the clock the rest of the
+ * in the last 180 days with the newest answer's time (which only leaves here as a coarse recency, and only for 3 or more people). `now` is the clock the rest of the
  * response uses.
  */
 export async function loadPlaceHours(pg: Pool, placeIds: readonly string[], now: Date): Promise<Map<string, PlaceHoursInfo>> {
@@ -170,9 +193,7 @@ export async function loadPlaceHours(pg: Pool, placeIds: readonly string[], now:
       };
     }
     const conf = rows.find((r) => r.k === 'confirmations' && r.placeId === id);
-    const openConfirmations =
-      conf && conf.n && conf.last ? { count: conf.n, last: confirmationBucket(conf.last) } : null;
-    out.set(id, { hours, openConfirmations });
+    out.set(id, { hours, openConfirmations: openConfirmations(conf?.n ?? null, conf?.last ?? null, now) });
   }
   return out;
 }

@@ -1,4 +1,4 @@
-import type { DayPart, HoursSpan, OpenConfirmations, PlaceHours, Weekday } from "./api";
+import type { ConfirmationRecency, HoursSpan, OpenConfirmations, PlaceHours, Weekday } from "./api";
 import { formatClock } from "./format";
 
 // The API's hours, made safe to render: whatever arrives that doesn't fit the contract is
@@ -11,7 +11,9 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 const STATES = ["open", "closed", "unknown"] as const;
 const KINDS = ["kitchen", "bar"] as const;
 const DAYS: readonly string[] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
-const PARTS: readonly string[] = ["morning", "afternoon", "evening", "night"];
+const RECENCY: readonly string[] = ["this_week", "this_month", "a_while_ago"];
+/** The fewest people a confirmation is shown for; the API holds back fewer too (this is the second lock). */
+export const MIN_CONFIRMATIONS = 3;
 
 const span = (raw: unknown): HoursSpan | null =>
   isObject(raw) && formatClock(raw.from) && formatClock(raw.to)
@@ -23,9 +25,14 @@ export function readHours(raw: unknown): PlaceHours {
   if (!isObject(raw) || raw.status !== "known") return { status: "unverified" };
   const state = STATES.find((s) => s === raw.state) ?? "unknown";
   const change = isObject(raw.nextChange) ? raw.nextChange : null;
-  const nextChange =
-    change && formatClock(change.at) && (change.to === "open" || change.to === "closed")
-      ? { at: change.at as string, to: change.to as "open" | "closed" }
+  // Older APIs omit the day, so their transition time is ambiguous.
+  const nextChange: KnownHours["nextChange"] =
+    change &&
+    formatClock(change.at) &&
+    (change.to === "open" || change.to === "closed") &&
+    (change.day === "today" || change.day === "tomorrow") &&
+    DAYS.includes(change.weekday as string)
+      ? { at: change.at as string, to: change.to, day: change.day, weekday: change.weekday as Weekday }
       : null;
   const services = Array.isArray(raw.services)
     ? raw.services.flatMap((s) => {
@@ -49,8 +56,7 @@ export function readHours(raw: unknown): PlaceHours {
 }
 
 export function readConfirmations(raw: unknown): OpenConfirmations | null {
-  if (!isObject(raw) || !Number.isInteger(raw.count) || (raw.count as number) < 1) return null;
-  const last = raw.last;
-  if (!isObject(last) || !DAYS.includes(last.day as string) || !PARTS.includes(last.part as string)) return null;
-  return { count: raw.count as number, last: { day: last.day as Weekday, part: last.part as DayPart } };
+  if (!isObject(raw) || !Number.isInteger(raw.count) || (raw.count as number) < MIN_CONFIRMATIONS) return null;
+  if (!RECENCY.includes(raw.last as string)) return null; // an older API's day-and-part object is dropped, not shown
+  return { count: raw.count as number, last: raw.last as ConfirmationRecency };
 }

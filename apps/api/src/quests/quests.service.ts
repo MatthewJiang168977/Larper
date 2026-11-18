@@ -17,7 +17,7 @@ import { QuestAction as EventAction, SkipReason as EventSkipReason } from '../ge
 import { TagsService } from '../profile/tags.service';
 import { AreasService } from './areas.service';
 import { attemptParams, CheckInAttempt, checkInLogLine, judgeCheckIn, RECORD_ATTEMPT_SQL, rejection } from './checkin';
-import { loadPlaceHours, loadRegularSchedules, NO_HOURS, type PlaceHours, type OpenConfirmations } from '../hours/place-hours';
+import { loadPlaceHours, requireObserver, loadRegularSchedules, NO_HOURS, type PlaceHours, type OpenConfirmations } from '../hours/place-hours';
 import { type Schedule, stateAt } from '../hours/schedule';
 import {
   applyStaticGate,
@@ -373,16 +373,19 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
   // went on a simulated demo check-in, so it has nothing to say. A "no" is only recorded:
   // nothing reacts to it yet (no event, no taste, no effect on the schedule).
   async wasOpen(userId: string, questId: string, answer: WasOpenAnswer): Promise<{ wasOpen: WasOpenAnswer }> {
+    requireObserver(userId); // an observation always has a user (also a CHECK in migration 0019)
     const tx = await this.pg.connect();
     try {
       await tx.query('BEGIN');
-      await this.lockUserQuest(tx, userId, questId);
-      const { rows: [q] } = await tx.query<{ status: QuestStatus; placeId: string; at: Date; simulated: boolean }>(
+      await this.lockUserQuest(tx, userId, questId); // user first, then quest: 404 if either is gone
+      const { rows } = await tx.query<{ status: QuestStatus; placeId: string; at: Date; simulated: boolean }>(
         `SELECT status, place_id::text AS "placeId", coalesce(completed_at, updated_at) AS at,
                 coalesce((reasons->>'simulated')::boolean, false) AS simulated
          FROM quests WHERE id = $1 AND user_id = $2`,
         [questId, userId],
       );
+      if (!rows.length) throw new NotFoundException('no such quest');
+      const q = rows[0];
       if (q.status !== 'completed') throw new ConflictException('only a quest you checked in at can be asked about');
       if (q.simulated) throw new ConflictException('a simulated check-in has no answer: nobody went');
 

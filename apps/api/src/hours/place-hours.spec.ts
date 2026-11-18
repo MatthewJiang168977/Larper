@@ -1,36 +1,44 @@
-import { chooseSchedules, confirmationBucket, MIN_HOURS_CONFIDENCE, type ScheduleFact } from './place-hours';
+import { BadRequestException } from '@nestjs/common';
+import { QuestsService } from '../quests/quests.service';
+import { chooseSchedules, confirmationRecency, MIN_CONFIRMATIONS, MIN_HOURS_CONFIDENCE, openConfirmations, requireObserver, type ScheduleFact } from './place-hours';
 
 const at = (iso: string) => new Date(iso);
 
-describe('confirmationBucket (New York time)', () => {
-  const rows: [string, string, string, string][] = [
-    // EDT (UTC-4), Wednesday 2026-07-15
-    ['04:59 is still night', '2026-07-15T08:59:59Z', 'wed', 'night'],
-    ['05:00 is morning', '2026-07-15T09:00:00Z', 'wed', 'morning'],
-    ['11:59 is morning', '2026-07-15T15:59:59Z', 'wed', 'morning'],
-    ['12:00 is afternoon', '2026-07-15T16:00:00Z', 'wed', 'afternoon'],
-    ['16:59 is afternoon', '2026-07-15T20:59:59Z', 'wed', 'afternoon'],
-    ['17:00 is evening', '2026-07-15T21:00:00Z', 'wed', 'evening'],
-    ['21:59 is evening', '2026-07-16T01:59:59Z', 'wed', 'evening'],
-    ['22:00 is night', '2026-07-16T02:00:00Z', 'wed', 'night'],
-    ['00:30 belongs to the local day', '2026-07-19T04:30:00Z', 'sun', 'night'],
-    // EST (UTC-5), Tuesday 2026-12-01
-    ['EST 04:59 is night', '2026-12-01T09:59:59Z', 'tue', 'night'],
-    ['EST 05:00 is morning', '2026-12-01T10:00:00Z', 'tue', 'morning'],
-    ['EST 22:00 is night', '2026-12-02T03:00:00Z', 'tue', 'night'],
-    // 2026-11-01, clocks go back at 06:00Z (02:00 EDT -> 01:00 EST)
-    ['the repeated hour is night: first 01:30', '2026-11-01T05:30:00Z', 'sun', 'night'],
-    ['the repeated hour is night: second 01:30', '2026-11-01T06:30:00Z', 'sun', 'night'],
-    ['fall back day: 04:59 EST is night', '2026-11-01T09:59:59Z', 'sun', 'night'],
-    ['fall back day: 05:00 EST is morning', '2026-11-01T10:00:00Z', 'sun', 'morning'],
-    ['the evening before the change is Saturday', '2026-11-01T01:30:00Z', 'sat', 'evening'],
-    // 2026-03-08, clocks go forward at 07:00Z (02:00 EST -> 03:00 EDT)
-    ['spring forward day: 04:59 EDT is night', '2026-03-08T08:59:59Z', 'sun', 'night'],
-    ['spring forward day: 05:00 EDT is morning', '2026-03-08T09:00:00Z', 'sun', 'morning'],
-    ['spring forward day: 12:00 EDT is afternoon', '2026-03-08T16:00:00Z', 'sun', 'afternoon'],
+describe('confirmationRecency', () => {
+  const NOW = at('2026-07-15T16:00:00Z');
+  const ago = (ms: number) => new Date(NOW.getTime() - ms);
+  const D = 86_400_000;
+  const rows: [string, Date, string][] = [
+    ['just now', ago(0), 'this_week'],
+    ['a few hours ago', ago(3 * 3600_000), 'this_week'],
+    ['exactly 7 days is still this week', ago(7 * D), 'this_week'],
+    ['7 days and a second is this month', ago(7 * D + 1000), 'this_month'],
+    ['exactly 30 days is still this month', ago(30 * D), 'this_month'],
+    ['30 days and a second is a while ago', ago(30 * D + 1000), 'a_while_ago'],
+    ['179 days is a while ago', ago(179 * D), 'a_while_ago'],
+    ['a time ahead of now (clock skew) is this week', ago(-5 * 60_000), 'this_week'],
   ];
-  it.each(rows)('%s', (_n, iso, day, part) => {
-    expect(confirmationBucket(at(iso))).toEqual({ day, part });
+  it.each(rows)('%s', (_n, when, want) => expect(confirmationRecency(when, NOW)).toBe(want));
+});
+
+describe('openConfirmations: nothing below 3 people', () => {
+  const NOW = at('2026-07-15T16:00:00Z');
+  const last = at('2026-07-14T12:00:00Z');
+  it.each([0, 1, 2])('%i people: null, so not the count and not the time', (n) => {
+    expect(openConfirmations(n, last, NOW)).toBeNull();
+  });
+  it('3 people: the count and a coarse recency, and nothing else', () => {
+    const c = openConfirmations(3, last, NOW);
+    expect(c).toEqual({ count: 3, last: 'this_week' });
+    expect(JSON.stringify(c)).toBe('{"count":3,"last":"this_week"}');
+  });
+  it('more people, an older newest answer', () => {
+    expect(openConfirmations(12, at('2026-05-01T12:00:00Z'), NOW)).toEqual({ count: 12, last: 'a_while_ago' });
+  });
+  it('null for no row or no time', () => {
+    expect(openConfirmations(null, null, NOW)).toBeNull();
+    expect(openConfirmations(5, null, NOW)).toBeNull();
+    expect(MIN_CONFIRMATIONS).toBe(3);
   });
 });
 
@@ -68,5 +76,20 @@ describe('chooseSchedules', () => {
     const facts = [fact({ id: '1' }), fact({ id: '2', service: 'kitchen' })];
     expect(pick(facts, 'kitchen')).toBe('2');
     expect(pick(facts, 'bar')).toBeUndefined();
+  });
+});
+
+describe('requireObserver: an observation always has a user', () => {
+  it.each([null, undefined, '', '0', 'abc', '1; DROP', 12, ' 7'])('refuses %j', (v) => {
+    expect(() => requireObserver(v)).toThrow(BadRequestException);
+  });
+  it.each(['1', '42', '9223372036854775807'])('passes a positive bigint user id through: %s', (id) => {
+    expect(requireObserver(id)).toBe(id);
+  });
+  it.each(['', '9223372036854775808'])('QuestsService.wasOpen refuses %j before touching the database', async (id) => {
+    const pg = { query: jest.fn() };
+    const svc = new QuestsService(pg as never, {} as never, {} as never, {} as never);
+    await expect(svc.wasOpen(id, '5', 'yes')).rejects.toBeInstanceOf(BadRequestException);
+    expect(pg.query).not.toHaveBeenCalled();
   });
 });

@@ -41,3 +41,8 @@ loadtest/results/cold-*/areas.txt
 # rank-bench.sh: generated SQL, plans and rows (report.md is committed)
 loadtest/results/rank-bench-*/*
 !loadtest/results/rank-bench-*/report.md
+# Codex: local agent config (per machine, not shared)
+.codex/
+
+# Opening-hours pilot: owner-filled CSVs and exports never go in the repo
+pilot/

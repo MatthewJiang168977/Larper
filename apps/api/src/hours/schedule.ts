@@ -41,12 +41,21 @@ export interface DisplaySpan {
   to: string;
   nextDay: boolean;
 }
+export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 export interface NextChange {
+  /** "HH:MM" on the New York wall clock */
   at: string;
+  /** the New York day `at` falls on, relative to the instant asked about */
+  day: 'today' | 'tomorrow';
+  /** that day's name, so a reader never has to work it out from a clock it might not share */
+  weekday: Weekday;
   to: 'open' | 'closed';
 }
 
 const DAY = 1440;
+const MINUTE_MS = 60_000;
+/** The most dated exceptions a schedule may carry (a year's worth, leap day included). More is rejected as invalid. */
+export const MAX_DATES = 366;
 
 // --- validation ---------------------------------------------------------------------
 
@@ -108,6 +117,7 @@ export function validateSchedule(json: unknown): Schedule | null {
   const rawWeekly = json.weekly ?? [];
   const rawDates = json.dates ?? [];
   if (!Array.isArray(rawWeekly) || !Array.isArray(rawDates)) return null;
+  if (rawDates.length > MAX_DATES) return null; // checked before any entry is read, so a huge list costs nothing
   if (always && (rawWeekly.length > 0 || rawDates.length > 0 || holidays !== null)) return null;
 
   const weekly: WeeklySpan[] = [];
@@ -180,6 +190,7 @@ const addDays = ({ y, m, d }: Ymd, n: number): Ymd => {
 };
 /** ISO weekday, 1 = Monday ... 7 = Sunday. */
 export const isoWeekday = ({ y, m, d }: Ymd): number => new Date(Date.UTC(y, m - 1, d)).getUTCDay() || 7;
+export const WEEKDAYS: readonly Weekday[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const pad = (n: number) => String(n).padStart(2, '0');
 
 function isMajorHoliday({ y, m, d }: Ymd): boolean {
@@ -266,23 +277,55 @@ export function spansOn(schedule: Schedule, at: Date): DisplaySpan[] {
   }));
 }
 
+// Number the civil minutes as if the local clock were in UTC, so differences include midnight.
+const civilMinute = ({ y, m, d, min }: LocalTime) => Date.UTC(y, m - 1, d) / MINUTE_MS + min;
+
 /**
- * The next time within the next 24 hours of wall clock (minute by minute, with the same rules as
- * stateAt) that the state changes between open and closed. null when there is none, the schedule
- * is always open, or the state now, or the state it would change to, is unknown.
+ * The first actual change between open and closed, through the same New York wall time
+ * tomorrow. Returns null for always-open schedules, no change, or an unknown current or
+ * next state.
  */
 export function nextChange(schedule: Schedule, at: Date): NextChange | null {
   if (schedule.always) return null;
   const now = localTime(at, schedule.tz);
   const current = stateAtLocal(schedule, now);
   if (current === 'unknown') return null;
-  for (let i = 1; i <= DAY; i++) {
-    const absolute = now.min + i;
-    const day = addDays(now, Math.floor(absolute / DAY));
-    const min = absolute % DAY;
+
+  const start = Math.floor(at.getTime() / MINUTE_MS);
+  const civilStart = civilMinute(now);
+  // In New York, the window can span up to 25 elapsed hours and at most one offset
+  // change. Probe the endpoint and locate the jump only if needed, keeping Intl
+  // formatting out of the minute-by-minute scan.
+  const maxElapsed = DAY + 60;
+  const shiftAt = (elapsed: number) =>
+    civilMinute(localTime(new Date((start + elapsed) * MINUTE_MS), schedule.tz)) - civilStart - elapsed;
+  const shift = shiftAt(maxElapsed);
+  let cutover = maxElapsed + 1;
+  if (shift !== 0) {
+    let lo = 1;
+    let hi = maxElapsed;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (shiftAt(mid) === 0) lo = mid + 1;
+      else hi = mid;
+    }
+    cutover = lo;
+  }
+
+  const tomorrow = addDays(now, 1);
+  const cutoff = now.min + DAY;
+  for (let elapsed = 1; elapsed <= maxElapsed; elapsed++) {
+    const wall = now.min + elapsed + (elapsed >= cutover ? shift : 0);
+    if (wall > cutoff) break;
+    const day = wall < DAY ? now : tomorrow;
+    const min = wall % DAY;
     const state = stateAtLocal(schedule, { ...day, min });
-    if (state === current) continue;
-    return state === 'unknown' ? null : { at: hhmm(min), to: state };
+    if (state !== current) {
+      return state === 'unknown'
+        ? null
+        : { at: hhmm(min), day: wall < DAY ? 'today' : 'tomorrow', weekday: WEEKDAYS[isoWeekday(day) - 1], to: state };
+    }
+    if (wall === cutoff) break;
   }
   return null;
 }

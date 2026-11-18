@@ -29,16 +29,16 @@ const hoursFor: Partial<Record<Scenario, Partial<PlaceView>>> = {
   "hours open": {
     hours: {
       status: "known", state: "open", today: [{ from: "11:00", to: "22:00", nextDay: false }],
-      nextChange: { at: "22:00", to: "closed" }, source: "osm", sourceUrl: "https://www.openstreetmap.org/node/1",
+      nextChange: { at: "22:00", day: "today", weekday: "sat", to: "closed" }, source: "osm", sourceUrl: "https://www.openstreetmap.org/node/1",
       fetchedAt: daysAgo(3), services: [],
     },
-    openConfirmations: { count: 4, last: { day: "sat", part: "afternoon" } },
+    openConfirmations: { count: 4, last: "this_week" },
   },
   "hours closed, split shift": {
     hours: {
       status: "known", state: "closed",
       today: [{ from: "11:30", to: "14:30", nextDay: false }, { from: "17:00", to: "02:00", nextDay: true }],
-      nextChange: { at: "17:00", to: "open" }, source: "website", sourceUrl: "https://example.com/hours",
+      nextChange: { at: "17:00", day: "today", weekday: "sat", to: "open" }, source: "website", sourceUrl: "https://example.com/hours",
       fetchedAt: daysAgo(200),
       services: [{ kind: "kitchen", state: "closed", today: [{ from: "17:00", to: "23:00", nextDay: false }] }],
     },
