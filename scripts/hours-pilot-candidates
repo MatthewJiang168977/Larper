@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Opening-hours pilot: export the places to verify by hand (read-only). Usage and DATABASE_URL:
+# docs/plans/hours-pilot.md. Extra arguments go to the exporter (--out FILE, --per-area N).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+: "${DATABASE_URL:?set DATABASE_URL to a read-capable Postgres URL (see docs/plans/hours-pilot.md)}"
+pnpm --filter @larper/api build
+exec node apps/api/dist/hours-pilot/candidates.cli.js "$@"

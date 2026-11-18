@@ -54,6 +54,10 @@ import (
 // Version is the schedule format version.
 const Version = 1
 
+// MaxDates is the most dated exceptions a schedule may carry: a year's worth, leap day
+// included. More is invalid (the API's validateSchedule has the same cap).
+const MaxDates = 366
+
 // TimeZone is the only time zone schedules are evaluated in.
 const TimeZone = "America/New_York"
 
@@ -218,6 +222,9 @@ func (s *Schedule) Validate() error {
 	}
 	if s.Holidays != nil && *s.Holidays != HolidaysClosed && *s.Holidays != HolidaysOpen {
 		return fmt.Errorf("hours: holidays %q", *s.Holidays)
+	}
+	if len(s.Dates) > MaxDates {
+		return fmt.Errorf("hours: %d dates, at most %d", len(s.Dates), MaxDates)
 	}
 	if s.Always && (len(s.Weekly) > 0 || len(s.Dates) > 0 || s.Holidays != nil) {
 		return fmt.Errorf("hours: always schedule must have no weekly spans, dates or holidays")

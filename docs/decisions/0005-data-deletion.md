@@ -95,7 +95,8 @@ The delete routes are gated by one API setting, `PRIVACY_DELETES`, read at start
 `DELETE /me`. `all` also needs `CLERK_SECRET_KEY` (see D7). Any other value, or `all`
 without the key, stops the API from starting. Off, both `DELETE /me/history` and `DELETE /me`
 answer 503 `{"statusCode":503,"code":"deletes_unavailable","message":"deleting isn't available yet"}`
-before any query, with no Retry-After header. The demo account still gets its 403. `GET /me`
+before any delete query, with no Retry-After header (the auth guard and the rate limits
+still run first). The demo account still gets its 403. `GET /me`
 reports what is on in `privacy: { export, deleteHistory, deleteAccount }`, and
 `GET /me/export` is not affected by the setting. Nothing depends on the order of a
 deploy: until the owner turns the setting on, the routes stay closed.
@@ -112,10 +113,14 @@ Owner steps:
    approval. This PR does not add the Helm value. It would be an environment entry such
    as `PRIVACY_DELETES: history` in the API's environment in
    `infra/helm/larper/values.yaml`, applied with the usual deploy.
-4. Turn on `all` the same way, after `history` has been checked. `all` needs
-   `CLERK_SECRET_KEY` in the API pod, which today only the demo env provides, so this step
-   needs a Helm values change as well, and the owner's approval. The API refuses to start
-   with `all` and no key.
+4. Turn on `all` the same way, after `history` has been checked. **Do not set it before
+   the key is there:** `PRIVACY_DELETES=all` with no `CLERK_SECRET_KEY` makes the new API
+   pods exit at startup and crash-loop. Today the key reaches the API pod only through
+   `larper.demoEnv` when `demo.enabled`, and `scripts/oci-up.sh` turns demo off when
+   `DEMO_USER_ID` is missing. So enabling `all` needs the key from a non-demo source
+   first (a Helm change: a Secret reference in the API's environment independent of
+   `demo.enabled`), then `all`. Both are live changes needing the owner's approval; this
+   PR does not change Helm.
 5. Rollback: set `PRIVACY_DELETES` back to off first (`history` if only `all` should
    go). Then roll the workers back to a build that skips missing users and quests. Only
    then consider reverting 0020.
@@ -146,19 +151,51 @@ the deleted user is kept.**
 - **Responses.** `{ "deleted": { ... }, "clerkUser": "deleted" }` or
   `{ "deleted": { ... }, "clerkUser": "failed" }`. There is no `"manual"` outcome and no
   `CLERK_DELETE_USERS` flag.
-- **Sessions.** Deleting the Clerk user revokes its sessions. A session token already
-  issued keeps verifying locally (the API checks the JWT without calling Clerk) until it
-  expires. Clerk session tokens are short-lived, about 60 seconds by default; that is
-  Clerk's setting, not ours. A request in that window can make `ensure()` create a fresh,
-  empty Larper account. Under this policy that is simply a new account.
-- **Signing up again.** The same email can sign up again and gets a new, empty account.
-- **Nothing is kept to recognise them.** No table, column or log line remembers a deleted
-  user's ids. The Clerk failure log has the HTTP status at most, never a user or Clerk id.
-  Rate limits are keyed by a hash that is not stored beyond its counter window, so a
-  limit can carry over to a new account for a short time; that is the only trace.
+- **Sessions and the token window.** Deleting the Clerk user revokes its sessions. A
+  session token already issued keeps verifying locally (the API checks the JWT without
+  calling Clerk) until it expires. Clerk session tokens are short-lived, about 60 seconds
+  by default; that is Clerk's setting, not ours. A request in that window would make
+  `ensure()` insert a `users` row for the deleted Clerk id, which is a tombstone. So with
+  `PRIVACY_DELETES=all`, `ensure()` confirms with the Clerk Backend API
+  (`GET /v1/users/<id>`) before it inserts a new row: a 404 answers 401 and creates no
+  row, and any other Clerk error answers 503 and creates no row. Existing rows never
+  trigger the call, so only a brand-new user's first request pays it; concurrent first
+  requests share one call. With `off` or `history` nothing changes (no call), and the
+  demo user never triggers it. The window therefore ends in a 401, not a new row.
+
+  Two races remain around the moment Clerk deletes the user. Both are closed:
+  - A request that lands between the local purge committing and the Clerk deletion still
+    sees a live Clerk user, and can insert an empty row holding only the Clerk id. So once
+    Clerk confirms the deletion, `DELETE /me` looks up any row for that Clerk id and
+    purges it too.
+  - A request whose check passed just *before* the Clerk deletion can insert just *after*
+    that second purge. So a request that has just created a row checks Clerk again, with a
+    fresh call rather than one shared with earlier requests. If Clerk now has no such
+    user, the request purges the row it made and answers 401. If that recheck itself
+    fails, the row stays: this is far more likely a brand-new sign-up during a Clerk
+    hiccup than a deletion race, and the log names no one.
+
+  If a cleanup purge fails, the API logs it without any id. The account is still reported
+  deleted, because the user's own data and sign-in are gone.
+
+  A Clerk 404 is remembered in the API process's memory for 10 seconds (at most 1,000
+  entries), so a stale token's burst of requests doesn't call Clerk each time. It lives
+  only in memory and expires in seconds, so it isn't a record of who was deleted.
+  A brand-new user's first request waits for Clerk, for up to the Clerk client's
+  10-second timeout if Clerk hangs. If Clerk is down, a brand-new sign-up gets a 503 until
+  it recovers; existing users are not affected.
+- **Signing up again.** The same email can sign up again. That is a fresh Clerk user with
+  a new id, so it gets a new row and a new, empty account.
+- **Nothing is kept to recognise them.** Nothing new that identifies the user is written
+  at or after deletion: no table, column or log line is added for it. The Clerk and cache
+  failure logs hold the HTTP status or error class at most, never a user or Clerk id. Rate
+  limits are keyed by a hash that is not stored beyond its counter window, so a limit can
+  carry over to a new account for a short time. Existing logs and events keep ids until
+  their own retention runs out (see the end of the next section).
 - **`CLERK_SECRET_KEY` must reach the API pod for `all`.** Today only the demo env
-  provides it. Enabling `all` therefore needs a Helm values change, which is a live
-  change needing the owner's approval; this PR does not change Helm.
+  provides it (`larper.demoEnv`, when `demo.enabled`). Enabling `all` therefore needs a
+  Helm values change, which is a live change needing the owner's approval; this PR does
+  not change Helm. The same key now also serves the new-account check above.
 
 Suggested privacy wording: "Deleting your account removes your data from Larper and
 deletes your sign-in. You can sign up again later with the same email as a new account.
@@ -191,6 +228,17 @@ Copies of deleted rows can persist until the stores' normal cleanup runs.
   Quest records carry user, quest and place IDs. The dead-letter topic keeps a copy of
   records the consumer could not decode.
   [Redpanda v24.2 cluster properties](https://docs.redpanda.com/streaming/24.2/reference/properties/cluster-properties/)
+
+- **API container logs on the VM.** Rotation is the kubelet's under k3s. `bootstrap.sh`
+  installs k3s with no kubelet log flags, so the upstream defaults should apply: a
+  container log rotates at 10Mi (`containerLogMaxSize`) and the last 5 files are kept
+  (`containerLogMaxFiles`). Those are Kubernetes defaults and the running node was not
+  checked, so this is unverified; how long that is in time depends on log volume. The API
+  does not log request bodies or the user id on the delete path.
+- **Sentry.** Events are kept per Sentry's plan retention, not verified. The SDK scrubs ids
+  from events, transactions, spans and breadcrumbs (`apps/api/src/sentry/scrub.ts`).
+- **Redpanda `user.events` and the dead-letter topic.** As above: the broker default of
+  about 7 days.
 
 When deletion is available, the privacy page should describe the local purge and how
 copies may persist in backups and event logs until scheduled cleanup.

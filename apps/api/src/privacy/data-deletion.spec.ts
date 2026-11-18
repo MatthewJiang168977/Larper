@@ -1,8 +1,9 @@
-import { ForbiddenException, Logger } from '@nestjs/common';
+import { ForbiddenException, InternalServerErrorException, Logger } from '@nestjs/common';
 import type { Pool } from 'pg';
 import type { CacheService } from '../cache/cache.service';
 import { ClerkApiError } from '../demo/clerk-api';
 import {
+  InvalidClerkUserIdError,
   clerkUserDeleter,
   clerkUserDeleterFromEnv,
   type ClerkUserDeleter,
@@ -13,9 +14,15 @@ import { DataDeletionService } from './data-deletion';
 const COUNTS = { quests: 0, checkInAttempts: 0, hoursAnswers: 0, savedPlaces: 0, events: 0, tasteProfile: true, account: true };
 const USER = { id: '7', clerkId: 'user_abc123' };
 
-function service(deleter: ClerkUserDeleter | null, opts: { fail?: boolean } = {}) {
-  const query = jest.fn<Promise<{ rows: { r: typeof COUNTS }[] }>, [string, unknown[]?]>(async () => {
+// The lookup deleteAccount runs after Clerk confirms, for a row recreated in the window.
+const RECREATED_LOOKUP = /^SELECT id::text AS id FROM users WHERE clerk_id/;
+const deletes = (query: jest.Mock) => query.mock.calls.filter((c) => !RECREATED_LOOKUP.test(c[0]));
+
+function service(deleter: ClerkUserDeleter | null, opts: { fail?: boolean; recreated?: string[] } = {}) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const query = jest.fn<Promise<{ rows: any[] }>, [string, unknown[]?]>(async (sql: string) => {
     if (opts.fail) throw new Error('db down');
+    if (RECREATED_LOOKUP.test(sql)) return { rows: (opts.recreated ?? []).map((id) => ({ id })) };
     return { rows: [{ r: COUNTS }] };
   });
   const forgetUser = jest.fn(async () => undefined);
@@ -62,6 +69,7 @@ describe('the Clerk deleter', () => {
 
   it('refuses an id that is not a Clerk user id before it reaches a URL', async () => {
     const clerk = jest.fn();
+    await expect(clerkUserDeleter(clerk as never)('../sessions')).rejects.toBeInstanceOf(InvalidClerkUserIdError);
     await expect(clerkUserDeleter(clerk as never)('../sessions')).rejects.toThrow(/not a Clerk user id/);
     expect(clerk).not.toHaveBeenCalled();
   });
@@ -86,12 +94,47 @@ describe('DataDeletionService', () => {
     const order: string[] = [];
     const deleter = jest.fn(async (id: string) => void order.push(`clerk ${id}`));
     const { svc, query } = service(deleter);
-    query.mockImplementation(async () => {
-      order.push('db');
+    query.mockImplementation(async (sql: string) => {
+      order.push(RECREATED_LOOKUP.test(sql) ? 'lookup' : 'db');
+      return RECREATED_LOOKUP.test(sql) ? { rows: [] } : { rows: [{ r: COUNTS }] };
+    });
+    await expect(svc.deleteAccount(USER)).resolves.toEqual({ deleted: COUNTS, clerkUser: 'deleted' });
+    expect(order).toEqual(['db', 'clerk user_abc123', 'lookup']);
+  });
+
+  it('after Clerk confirms, purges a row a request recreated in between, so nothing names the user', async () => {
+    const logs = [
+      jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined),
+      jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined),
+    ];
+    const deleter = jest.fn(async () => undefined);
+    const { svc, query, forgetUser } = service(deleter, { recreated: ['9'] });
+    await expect(svc.deleteAccount(USER)).resolves.toEqual({ deleted: COUNTS, clerkUser: 'deleted' });
+    const lookup = query.mock.calls.find((c) => RECREATED_LOOKUP.test(c[0]));
+    expect(lookup?.[1]).toEqual([USER.clerkId]);
+    expect(deletes(query).map((c) => c[1])).toEqual([['7'], ['9']]);
+    expect(forgetUser.mock.calls).toEqual([['7'], ['9']]);
+    expect(JSON.stringify(logs.flatMap((l) => l.mock.calls))).not.toMatch(/user_abc123|\b9\b/);
+  });
+
+  it('a failed recreated-row purge still reports the account deleted, and logs no id', async () => {
+    const log = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const { svc, query } = service(jest.fn(async () => undefined));
+    query.mockImplementation(async (sql: string) => {
+      if (RECREATED_LOOKUP.test(sql)) throw new Error('lookup failed for user_abc123');
       return { rows: [{ r: COUNTS }] };
     });
     await expect(svc.deleteAccount(USER)).resolves.toEqual({ deleted: COUNTS, clerkUser: 'deleted' });
-    expect(order).toEqual(['db', 'clerk user_abc123']);
+    expect(log.mock.calls).toEqual([['purge of a row recreated during account deletion failed (Error)']]);
+  });
+
+  it('skips the recreated-row purge when Clerk failed (the user repeats DELETE /me instead)', async () => {
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const { svc, query } = service(jest.fn(async () => {
+      throw new ClerkApiError(503, 'x');
+    }));
+    await svc.deleteAccount(USER);
+    expect(query.mock.calls.some((c) => RECREATED_LOOKUP.test(c[0]))).toBe(false);
   });
 
   it.each([
@@ -120,7 +163,7 @@ describe('DataDeletionService', () => {
     const EMPTY = { quests: 0, checkInAttempts: 0, hoursAnswers: 0, savedPlaces: 0, events: 0, tasteProfile: false, account: true };
     query.mockResolvedValueOnce({ rows: [{ r: EMPTY }] });
     await expect(svc.deleteAccount({ id: '8', clerkId: USER.clerkId })).resolves.toEqual({ deleted: EMPTY, clerkUser: 'deleted' });
-    expect(query.mock.calls.map((c) => c[1])).toEqual([['7'], ['8']]);
+    expect(deletes(query).map((c) => c[1])).toEqual([['7'], ['8']]);
     expect(deleter.mock.calls).toEqual([[USER.clerkId], [USER.clerkId]]);
     expect(forgetUser).toHaveBeenCalledTimes(2);
   });
@@ -138,6 +181,15 @@ describe('DataDeletionService', () => {
     const text = JSON.stringify(logs.flatMap((l) => l.mock.calls));
     expect(text).not.toContain('user_abc123');
     expect(text).not.toMatch(/\b7\b/);
+  });
+
+  it('an id Clerk can never delete is a 500, not "failed, retry", and the log names no id', async () => {
+    const log = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const { svc } = service(clerkUserDeleter(jest.fn() as never));
+    const bad = { id: '7', clerkId: 'not-a-clerk-id/../x' };
+    await expect(svc.deleteAccount(bad)).rejects.toBeInstanceOf(InternalServerErrorException);
+    expect(JSON.stringify(log.mock.calls)).not.toContain('not-a-clerk-id');
+    expect(log.mock.calls).toHaveLength(1);
   });
 
   it('a database failure stops before Clerk: the user can still sign in to repeat it', async () => {
