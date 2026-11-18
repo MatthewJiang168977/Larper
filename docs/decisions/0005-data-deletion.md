@@ -162,13 +162,28 @@ the deleted user is kept.**
   trigger the call, so only a brand-new user's first request pays it; concurrent first
   requests share one call. With `off` or `history` nothing changes (no call), and the
   demo user never triggers it. The window therefore ends in a 401, not a new row.
-  A request that lands between the local purge committing and the Clerk deletion
-  (milliseconds) still sees a live Clerk user and can insert an empty row holding only the
-  Clerk id. So once Clerk confirms the deletion, `DELETE /me` looks up any row for that
-  Clerk id and purges it too. From then on Clerk answers 404 and the check above refuses
-  every request, so no row can come back. If that second purge fails, the API logs it
-  without any id. The account is still reported deleted, because the user's own data and
-  sign-in are gone.
+
+  Two races remain around the moment Clerk deletes the user. Both are closed:
+  - A request that lands between the local purge committing and the Clerk deletion still
+    sees a live Clerk user, and can insert an empty row holding only the Clerk id. So once
+    Clerk confirms the deletion, `DELETE /me` looks up any row for that Clerk id and
+    purges it too.
+  - A request whose check passed just *before* the Clerk deletion can insert just *after*
+    that second purge. So a request that has just created a row checks Clerk again, with a
+    fresh call rather than one shared with earlier requests. If Clerk now has no such
+    user, the request purges the row it made and answers 401. If that recheck itself
+    fails, the row stays: this is far more likely a brand-new sign-up during a Clerk
+    hiccup than a deletion race, and the log names no one.
+
+  If a cleanup purge fails, the API logs it without any id. The account is still reported
+  deleted, because the user's own data and sign-in are gone.
+
+  A Clerk 404 is remembered in the API process's memory for 10 seconds (at most 1,000
+  entries), so a stale token's burst of requests doesn't call Clerk each time. It lives
+  only in memory and expires in seconds, so it isn't a record of who was deleted.
+  A brand-new user's first request waits for Clerk, for up to the Clerk client's
+  10-second timeout if Clerk hangs. If Clerk is down, a brand-new sign-up gets a 503 until
+  it recovers; existing users are not affected.
 - **Signing up again.** The same email can sign up again. That is a fresh Clerk user with
   a new id, so it gets a new row and a new, empty account.
 - **Nothing is kept to recognise them.** Nothing new that identifies the user is written

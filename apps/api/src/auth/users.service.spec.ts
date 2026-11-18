@@ -2,7 +2,7 @@ import { Logger, ServiceUnavailableException, UnauthorizedException } from '@nes
 import type { Pool } from 'pg';
 import { ClerkApiError } from '../demo/clerk-api';
 import { clerkUserCheck, clerkUserCheckFromEnv } from './clerk-user-check';
-import { UsersService } from './users.service';
+import { GONE_TTL_MS, UsersService } from './users.service';
 
 // UsersService.ensure with PRIVACY_DELETES=all: a new row only for a Clerk user that
 // still exists. Clerk is always a mock here; the pool is a fake with a users table.
@@ -12,10 +12,15 @@ function fakePool(existing: Record<string, string> = {}) {
   const users = { ...existing };
   let next = 100;
   const query = jest.fn(async (sql: string, params: string[]) => {
-    const [clerkId] = params;
-    if (sql.startsWith('SELECT id FROM users')) return { rows: users[clerkId] ? [{ id: users[clerkId] }] : [] };
-    users[clerkId] ??= String(next++); // the insert
-    return { rows: [{ id: users[clerkId] }] };
+    const [key] = params;
+    if (sql.startsWith('SELECT id FROM users')) return { rows: users[key] ? [{ id: users[key] }] : [] };
+    if (sql.startsWith('SELECT delete_my_account')) {
+      for (const [c, id] of Object.entries(users)) if (id === key) delete users[c];
+      return { rows: [{}] };
+    }
+    const created = users[key] === undefined; // the insert
+    users[key] ??= String(next++);
+    return { rows: [{ id: users[key], created }] };
   });
   return { pool: { query } as unknown as Pool, users, query };
 }
@@ -30,8 +35,47 @@ describe('UsersService.ensure with the Clerk check', () => {
     const { pool, users } = fakePool();
     const check = jest.fn(async () => true);
     await expect(new UsersService(pool, check).ensure(ID)).resolves.toBe('100');
-    expect(check).toHaveBeenCalledWith(ID);
+    // Once before the insert, once (fresh) after it: see the race test below.
+    expect(check.mock.calls).toEqual([[ID], [ID]]);
     expect(users[ID]).toBe('100');
+  });
+
+  it('a row created just as DELETE /me removed the Clerk user is purged again, and the request refused', async () => {
+    // Check passes (Clerk still has the user), DELETE /me then deletes the Clerk user and
+    // runs its last purge, and only then does this insert land.
+    const { pool, users, query } = fakePool();
+    const check = jest.fn<Promise<boolean>, [string]>().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    await expect(new UsersService(pool, check).ensure(ID)).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(users).toEqual({});
+    expect(query.mock.calls.some(([sql, p]) => sql.startsWith('SELECT delete_my_account') && p[0] === '100')).toBe(true);
+  });
+
+  it('keeps a new row when the recheck itself fails (a brand-new sign-up), logging no id', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { pool, users } = fakePool();
+    const check = jest
+      .fn<Promise<boolean>, [string]>()
+      .mockResolvedValueOnce(true)
+      .mockRejectedValueOnce(new ClerkApiError(502, `GET /users/${ID}`));
+    await expect(new UsersService(pool, check).ensure(ID)).resolves.toBe('100');
+    expect(users[ID]).toBe('100');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(ID);
+  });
+
+  it('remembers a 404 for a few seconds, so a stale token does not call Clerk on every request', async () => {
+    jest.useFakeTimers();
+    try {
+      const { pool } = fakePool();
+      const check = jest.fn(async () => false);
+      const svc = new UsersService(pool, check);
+      for (let i = 0; i < 5; i++) await expect(svc.ensure(ID)).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(check).toHaveBeenCalledTimes(1);
+      jest.advanceTimersByTime(GONE_TTL_MS + 1);
+      await expect(svc.ensure(ID)).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(check).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('401 and no row when Clerk says 404', async () => {
@@ -89,7 +133,8 @@ describe('UsersService.ensure with the Clerk check', () => {
     await new Promise((r) => setTimeout(r, 20));
     release();
     await expect(all).resolves.toEqual(['100', '100', '100']);
-    expect(check).toHaveBeenCalledTimes(1);
+    // One shared check before the insert, plus the one fresh recheck by the request that inserted.
+    expect(check).toHaveBeenCalledTimes(2);
   });
 });
 
