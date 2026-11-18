@@ -41,7 +41,7 @@ describeDb('onboarding and an offer made before it (real database)', () => {
     pool = createPool(URL);
     owner = createPool(OWNER_URL);
     await assertDisposableDatabase(owner, 'onboarding.db.spec');
-    profile = new ProfileController(pool, tags as unknown as TagsService);
+    profile = new ProfileController(pool, tags as unknown as TagsService, 'off');
     const clerkId = `test_onboarding_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const id = (await owner.query<{ id: string }>('INSERT INTO users (clerk_id) VALUES ($1) RETURNING id::text', [clerkId]))
       .rows[0].id;

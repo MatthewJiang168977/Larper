@@ -11,13 +11,18 @@ import { ThrottleModule } from '../throttle/throttle.module';
 import { DEMO_REFUSAL, DataDeletionService } from './data-deletion';
 import { DataExportService } from './data-export';
 import { MeDataController } from './me-data.controller';
+import { PRIVACY_DELETES, type PrivacyDeletes } from './privacy-deletes';
 
 // GET /me/export, DELETE /me/history and DELETE /me through the real controller and its
 // real guards (the services are stubs; Clerk is replaced by X-Test-User, as in
 // saved-places.controller.spec.ts).
 describe('MeDataController', () => {
+  // Two apps over the same stubs: the delete routes switched on (PRIVACY_DELETES=history,
+  // the main one) and left off (the default).
   let app: INestApplication;
   let url: string;
+  let offApp: INestApplication;
+  let offUrl: string;
   const exportFn = jest.fn();
   const deleteHistory = jest.fn();
   const deleteAccount = jest.fn();
@@ -25,8 +30,8 @@ describe('MeDataController', () => {
   const increment = jest.spyOn(storage, 'increment');
   let n = 0;
 
-  const call = (method: string, path: string, user: string | undefined, accountId?: string) =>
-    fetch(`${url}${path}`, {
+  const callAt = (base: () => string, method: string, path: string, user: string | undefined, accountId?: string) =>
+    fetch(`${base()}${path}`, {
       method,
       headers: {
         ...(user ? { 'x-test-user': user } : {}),
@@ -36,14 +41,18 @@ describe('MeDataController', () => {
         'x-forwarded-for': `198.51.100.${(++n % 250) + 1}`,
       },
     });
+  const call = (method: string, path: string, user: string | undefined, accountId?: string) =>
+    callAt(() => url, method, path, user, accountId);
+  const callOff = (method: string, path: string, user: string | undefined) => callAt(() => offUrl, method, path, user);
 
-  beforeAll(async () => {
+  async function boot(mode: PrivacyDeletes) {
     const moduleRef = await Test.createTestingModule({
       imports: [ThrottleModule],
       controllers: [MeDataController],
       providers: [
         { provide: DataExportService, useValue: { export: exportFn } },
         { provide: DataDeletionService, useValue: { deleteHistory, deleteAccount } },
+        { provide: PRIVACY_DELETES, useValue: mode },
       ],
     })
       .overrideGuard(ClerkAuthGuard)
@@ -61,12 +70,19 @@ describe('MeDataController', () => {
       .overrideProvider(getStorageToken())
       .useValue(new FailOpenStorage(storage))
       .compile();
-    app = moduleRef.createNestApplication<NestExpressApplication>({ logger: false });
-    (app as NestExpressApplication).set('trust proxy', 1);
-    await app.listen(0, '127.0.0.1');
-    url = await app.getUrl();
+    const a = moduleRef.createNestApplication<NestExpressApplication>({ logger: false });
+    (a as NestExpressApplication).set('trust proxy', 1);
+    await a.listen(0, '127.0.0.1');
+    return { a, u: await a.getUrl() };
+  }
+  beforeAll(async () => {
+    ({ a: app, u: url } = await boot('history'));
+    ({ a: offApp, u: offUrl } = await boot('off'));
   });
-  afterAll(() => app.close());
+  afterAll(async () => {
+    await app.close();
+    await offApp.close();
+  });
   beforeEach(() => {
     exportFn.mockReset();
     deleteHistory.mockReset();
@@ -94,23 +110,56 @@ describe('MeDataController', () => {
     expect(deleteHistory).toHaveBeenCalledWith(expect.objectContaining({ id: 'del-1' }));
   });
 
-  it('DELETE /me answers 200 with what went and the Clerk outcome', async () => {
-    const body = { deleted: { account: true }, clerkUser: 'manual' };
-    deleteAccount.mockResolvedValue(body);
+  const UNAVAILABLE = { statusCode: 503, code: 'deletes_unavailable', message: "deleting isn't available yet" };
+
+  it('DELETE /me answers 503 even with PRIVACY_DELETES=history, and never reaches the service (0005 D7)', async () => {
     const res = await call('DELETE', '/me', 'del-2');
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual(body);
-    expect(deleteAccount).toHaveBeenCalledWith(expect.objectContaining({ id: 'del-2' }));
+    expect(res.status).toBe(503);
+    expect(res.headers.get('retry-after')).toBeNull();
+    expect(await res.json()).toEqual(UNAVAILABLE);
+    expect(deleteAccount).not.toHaveBeenCalled();
+  });
+
+  it('answers 503 deletes_unavailable on both delete routes when PRIVACY_DELETES is off, with no service call and no Retry-After', async () => {
+    for (const path of ['/me/history', '/me']) {
+      const res = await callOff('DELETE', path, 'del-3');
+      expect(res.status).toBe(503);
+      expect(res.headers.get('retry-after')).toBeNull();
+      expect(await res.json()).toEqual(UNAVAILABLE);
+    }
+    expect(deleteHistory).not.toHaveBeenCalled();
+    expect(deleteAccount).not.toHaveBeenCalled();
+  });
+
+  it('GET /me/export is unaffected by PRIVACY_DELETES', async () => {
+    exportFn.mockResolvedValue({ version: 1 });
+    expect((await callOff('GET', '/me/export', 'exp-off')).status).toBe(200);
+  });
+
+  it('the demo refusal (403) wins over the 503, on both routes and both settings, before any service call', async () => {
+    const before = process.env.DEMO_CLERK_USER_ID;
+    process.env.DEMO_CLERK_USER_ID = 'user_demo2';
+    try {
+      for (const callFn of [call, (m: string, p: string, u: string | undefined) => callOff(m, p, u)]) {
+        for (const path of ['/me/history', '/me']) {
+          const res = await callFn('DELETE', path, 'demo-2'); // clerkId user_demo2
+          expect(res.status).toBe(403);
+          expect(await res.json()).toMatchObject({ statusCode: 403, code: 'demo_account' });
+        }
+      }
+      expect(deleteHistory).not.toHaveBeenCalled();
+      expect(deleteAccount).not.toHaveBeenCalled();
+    } finally {
+      if (before === undefined) delete process.env.DEMO_CLERK_USER_ID;
+      else process.env.DEMO_CLERK_USER_ID = before;
+    }
   });
 
   it('answers 403 with code demo_account when the service refuses the demo account', async () => {
     deleteHistory.mockRejectedValue(new ForbiddenException(DEMO_REFUSAL));
-    deleteAccount.mockRejectedValue(new ForbiddenException(DEMO_REFUSAL));
-    for (const path of ['/me/history', '/me']) {
-      const res = await call('DELETE', path, 'demo-1');
-      expect(res.status).toBe(403);
-      expect(await res.json()).toMatchObject({ statusCode: 403, code: 'demo_account' });
-    }
+    const res = await call('DELETE', '/me/history', 'demo-1');
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ statusCode: 403, code: 'demo_account' });
   });
 
   it('refuses to export the shared demo account (other visitors\' data) before reaching the service', async () => {
@@ -159,7 +208,7 @@ describe('MeDataController', () => {
         const limit = limits[window];
         for (let i = 0; i < limit; i++) {
           clock.mockReturnValue(start + i * step);
-          expect((await call(method, path, subject, String(101 + i))).status).toBe(200);
+          expect((await call(method, path, subject, String(101 + i))).status).toBe(path === '/me' ? 503 : 200);
         }
         clock.mockReturnValue(start + limit * step);
         const over = await call(method, path, subject, '999');
@@ -170,7 +219,7 @@ describe('MeDataController', () => {
         expect(keys).toHaveLength(limit + 1);
         expect(new Set(keys).size).toBe(1);
         expect(keys[0]).toMatch(new RegExp(`^rl:${name}:MeDataController\\.${handler}:[0-9a-f]{64}$`));
-        expect((await call(method, path, `${subject}-other`, '999')).status).toBe(200);
+        expect((await call(method, path, `${subject}-other`, '999')).status).toBe(path === '/me' ? 503 : 200);
       }
     } finally {
       clock.mockRestore();

@@ -90,11 +90,31 @@ with `FOR UPDATE SKIP LOCKED`. The ingest jobs are keyed by area.
 
 ### Rollout and rollback
 
-Use a phased rollout before enabling either delete route. Apply migration 0020 first,
-then roll out the updated taste worker and API. Keep the delete routes unavailable until
-all consumers are compatible and old API pods and their in-flight quest writes are
-drained. Account deletion also depends on the lifecycle decision below. The mechanism
-for staging enablement is a separate decision.
+The delete routes are gated by one API setting, `PRIVACY_DELETES`, read at startup. It is
+`off` when unset or empty, and `history` is the only other value for now (any other
+value stops the API from starting). Off, both `DELETE /me/history` and `DELETE /me`
+answer 503 `{"statusCode":503,"code":"deletes_unavailable","message":"deleting isn't available yet"}`
+before any query, with no Retry-After header. The demo account still gets its 403. `GET /me`
+reports what is on in `privacy: { export, deleteHistory, deleteAccount }`, and
+`GET /me/export` is not affected by the setting. Nothing depends on the order of a
+deploy: until the owner turns the setting on, the routes stay closed.
+
+Owner steps:
+
+1. Deploy with `PRIVACY_DELETES` unset. That applies migration 0020 and rolls out the new
+   API and taste-worker.
+2. Check that no old API or taste-worker pods remain
+   (`kubectl -n larper get pods -o wide`, and the image tags), and that nothing is in
+   flight. Old API pods take their locks in the reverse order, and the old worker stalls
+   on a missing user.
+3. Turn on `history` through a Helm value. That is a live change and needs the owner's
+   approval. This PR does not add the Helm value. It would be an `api.env`-style entry
+   such as `PRIVACY_DELETES: history` in the API's environment in
+   `infra/helm/larper/values.yaml`, applied with the usual deploy.
+4. Rollback: set it back to off first. Then roll the workers back to a build that skips
+   missing users and quests. Only then consider reverting 0020.
+
+`DELETE /me` stays off until D7 is decided and implemented.
 
 The pre-PR taste worker treats a missing user's taste-profile foreign-key violation
 (`23503`) as retryable, which can stall the consumer batch. A worker that handles only
