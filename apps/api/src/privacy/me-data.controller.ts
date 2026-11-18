@@ -1,13 +1,14 @@
 import { createHash } from 'node:crypto';
-import { Controller, Delete, ForbiddenException, Get, Header, HttpCode, Res, UseGuards } from '@nestjs/common';
+import { Controller, Delete, ForbiddenException, Get, Header, HttpCode, Inject, Res, UseGuards } from '@nestjs/common';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { AuthUser, ClerkAuthGuard, CurrentUser } from '../auth/auth.guard';
 import { UserLimitGuard } from '../throttle/guards';
 import { LIMITS, OPT_IN_WINDOWS, USER_WINDOWS } from '../throttle/limits';
 import { isDemoUser } from '../demo/demo-account';
-import { DataDeletionService } from './data-deletion';
+import { DEMO_REFUSAL, DataDeletionService } from './data-deletion';
 import { DataExportService } from './data-export';
+import { PRIVACY_DELETES, deletesUnavailable, type PrivacyDeletes } from './privacy-deletes';
 
 // Keep the existing hash namespace so DELETE /me keeps its counters. UserLimitGuard
 // adds the route and window to the key for all three data routes.
@@ -36,6 +37,7 @@ export class MeDataController {
   constructor(
     private readonly exporter: DataExportService,
     private readonly deletion: DataDeletionService,
+    @Inject(PRIVACY_DELETES) private readonly deletes: PrivacyDeletes,
   ) {}
 
   // GET /me/export: everything Larper holds about the caller, as a JSON download.
@@ -56,7 +58,8 @@ export class MeDataController {
   }
 
   // DELETE /me/history: journal, check-ins, hours answers and saved places. Keeps the
-  // account and the taste profile. 403 for the shared demo account.
+  // account and the taste profile. 403 for the shared demo account; otherwise 503 until
+  // PRIVACY_DELETES is history or all, before any query.
   @Delete('history')
   @HttpCode(200)
   @SkipThrottle({ [USER_WINDOWS.hour]: false })
@@ -65,11 +68,14 @@ export class MeDataController {
     [USER_WINDOWS.hour]: { limit: LIMITS.dataDelete.hour },
   })
   deleteHistory(@CurrentUser() user: AuthUser) {
+    // Demo first: the demo account gets its own refusal whatever the gate says.
+    if (isDemoUser(user.clerkId)) throw new ForbiddenException(DEMO_REFUSAL);
+    if (this.deletes === 'off') throw deletesUnavailable();
     return this.deletion.deleteHistory(user);
   }
 
-  // DELETE /me: everything, including the account row (and the Clerk user when
-  // CLERK_DELETE_USERS is on). 403 for the shared demo account.
+  // DELETE /me: everything, including the account row, then the Clerk user (0005 D7). 403
+  // for the shared demo account; otherwise 503 unless PRIVACY_DELETES=all.
   @Delete()
   @HttpCode(200)
   @SkipThrottle({ [USER_WINDOWS.hour]: false })
@@ -78,6 +84,8 @@ export class MeDataController {
     [USER_WINDOWS.hour]: { limit: LIMITS.dataDelete.hour },
   })
   deleteAccount(@CurrentUser() user: AuthUser) {
+    if (isDemoUser(user.clerkId)) throw new ForbiddenException(DEMO_REFUSAL);
+    if (this.deletes !== 'all') throw deletesUnavailable();
     return this.deletion.deleteAccount(user);
   }
 }

@@ -4,6 +4,7 @@ import { Pool } from 'pg';
 import { AuthUser, ClerkAuthGuard, CurrentUser } from '../auth/auth.guard';
 import { PG } from '../db/db.module';
 import { isDemoUser } from '../demo/demo-account';
+import { PRIVACY_DELETES, privacyCapability, type PrivacyDeletes } from '../privacy/privacy-deletes';
 import { UserLimitGuard } from '../throttle/guards';
 import { LIMITS, OPT_IN_WINDOWS, USER_WINDOWS } from '../throttle/limits';
 import { VIBE_CARDS } from './cards';
@@ -24,6 +25,7 @@ export class ProfileController {
   constructor(
     @Inject(PG) private readonly pg: Pool,
     private readonly tags: TagsService,
+    @Inject(PRIVACY_DELETES) private readonly deletes: PrivacyDeletes,
   ) {}
 
   @Get('me')
@@ -35,9 +37,11 @@ export class ProfileController {
     // demo: the shared demo account (demo/demo-account.ts). The web app then shows
     // Midtown instead of an empty map when the visitor is outside the demo region.
     const demo = isDemoUser(user.clerkId);
-    if (!rows.length) return { id: user.id, onboarded: false, topTags: [], demo };
+    // privacy: which export and delete controls the web app may offer (privacy-deletes.ts).
+    const privacy = privacyCapability(this.deletes, demo);
+    if (!rows.length) return { id: user.id, onboarded: false, topTags: [], demo, privacy };
     await this.tags.ready();
-    return { id: user.id, onboarded: true, topTags: topTags(JSON.parse(rows[0].vec), this.tags.tagOf), demo };
+    return { id: user.id, onboarded: true, topTags: topTags(JSON.parse(rows[0].vec), this.tags.tagOf), demo, privacy };
   }
 
   @Get('onboarding/cards')

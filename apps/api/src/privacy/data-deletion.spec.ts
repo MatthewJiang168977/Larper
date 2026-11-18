@@ -3,7 +3,6 @@ import type { Pool } from 'pg';
 import type { CacheService } from '../cache/cache.service';
 import { ClerkApiError } from '../demo/clerk-api';
 import {
-  clerkDeleteEnabled,
   clerkUserDeleter,
   clerkUserDeleterFromEnv,
   type ClerkUserDeleter,
@@ -24,25 +23,22 @@ function service(deleter: ClerkUserDeleter | null, opts: { fail?: boolean } = {}
   return { svc, query, forgetUser };
 }
 
-describe('CLERK_DELETE_USERS', () => {
-  it('is off unless 1 or true', () => {
-    for (const v of [undefined, '', '0', 'false', 'yes', 'off']) expect(clerkDeleteEnabled({ CLERK_DELETE_USERS: v })).toBe(false);
-    for (const v of ['1', 'true', 'TRUE', ' true ']) expect(clerkDeleteEnabled({ CLERK_DELETE_USERS: v })).toBe(true);
-  });
-
-  it('builds no deleter (and needs no secret key) when off', () => {
+describe('the Clerk deleter', () => {
+  it('is built only for PRIVACY_DELETES=all (and needs no secret key otherwise)', () => {
     expect(clerkUserDeleterFromEnv({})).toBeNull();
+    expect(clerkUserDeleterFromEnv({ PRIVACY_DELETES: 'history' })).toBeNull();
     expect(clerkUserDeleterFromEnv({ CLERK_SECRET_KEY: 'sk_test_x' })).toBeNull();
   });
 
-  it('fails at startup when on without CLERK_SECRET_KEY', () => {
-    expect(() => clerkUserDeleterFromEnv({ CLERK_DELETE_USERS: 'true' })).toThrow(/CLERK_SECRET_KEY/);
+  it('fails at startup for all without CLERK_SECRET_KEY', () => {
+    expect(() => clerkUserDeleterFromEnv({ PRIVACY_DELETES: 'all' })).toThrow(/CLERK_SECRET_KEY/);
+    expect(() => clerkUserDeleterFromEnv({ PRIVACY_DELETES: 'all', CLERK_SECRET_KEY: ' ' })).toThrow(/CLERK_SECRET_KEY/);
   });
 
-  it('when on, sends DELETE /v1/users/<id> with the secret key as a bearer token, to the mock fetch only', async () => {
+  it('sends DELETE /v1/users/<id> with the secret key as a bearer token, to the mock fetch only', async () => {
     const fetchMock = jest.fn<Promise<Response>, [string, RequestInit]>(async () => new Response('{}', { status: 200 }));
     const del = clerkUserDeleterFromEnv(
-      { CLERK_DELETE_USERS: '1', CLERK_SECRET_KEY: 'sk_test_mock' },
+      { PRIVACY_DELETES: 'all', CLERK_SECRET_KEY: 'sk_test_mock' },
       fetchMock as unknown as typeof fetch,
     )!;
     await del('user_abc123');
@@ -79,14 +75,14 @@ describe('DataDeletionService', () => {
   afterEach(() => jest.restoreAllMocks());
   afterAll(noDemo);
 
-  it('flag off: deletes the data, never calls Clerk, and says the owner removes the Clerk user', async () => {
+  it('with no deleter configured, purges nothing and calls nothing', async () => {
     const { svc, query, forgetUser } = service(null);
-    await expect(svc.deleteAccount(USER)).resolves.toEqual({ deleted: COUNTS, clerkUser: 'manual' });
-    expect(query).toHaveBeenCalledWith('SELECT delete_my_account($1) AS r', ['7']);
-    expect(forgetUser).toHaveBeenCalledWith('7');
+    await expect(svc.deleteAccount(USER)).rejects.toThrow('not configured');
+    expect(query).not.toHaveBeenCalled();
+    expect(forgetUser).not.toHaveBeenCalled();
   });
 
-  it('flag on: deletes the data first, then the Clerk user', async () => {
+  it('deletes the data first, then the Clerk user', async () => {
     const order: string[] = [];
     const deleter = jest.fn(async (id: string) => void order.push(`clerk ${id}`));
     const { svc, query } = service(deleter);
@@ -110,6 +106,38 @@ describe('DataDeletionService', () => {
     await expect(svc.deleteAccount(USER)).resolves.toEqual({ deleted: COUNTS, clerkUser: 'failed' });
     expect(deleter).toHaveBeenCalledTimes(1);
     expect(log.mock.calls).toEqual([[message]]);
+  });
+
+  it('after a Clerk failure the user repeats DELETE /me: the empty row is recreated, purged again, and Clerk retried', async () => {
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const deleter = jest
+      .fn<Promise<void>, [string]>()
+      .mockRejectedValueOnce(new ClerkApiError(503, 'DELETE /users/user_abc123'))
+      .mockResolvedValueOnce(undefined);
+    const { svc, query, forgetUser } = service(deleter);
+    await expect(svc.deleteAccount(USER)).resolves.toEqual({ deleted: COUNTS, clerkUser: 'failed' });
+    // The still-valid session makes ensure() create an empty row; the repeat purges it.
+    const EMPTY = { quests: 0, checkInAttempts: 0, hoursAnswers: 0, savedPlaces: 0, events: 0, tasteProfile: false, account: true };
+    query.mockResolvedValueOnce({ rows: [{ r: EMPTY }] });
+    await expect(svc.deleteAccount({ id: '8', clerkId: USER.clerkId })).resolves.toEqual({ deleted: EMPTY, clerkUser: 'deleted' });
+    expect(query.mock.calls.map((c) => c[1])).toEqual([['7'], ['8']]);
+    expect(deleter.mock.calls).toEqual([[USER.clerkId], [USER.clerkId]]);
+    expect(forgetUser).toHaveBeenCalledTimes(2);
+  });
+
+  it('logs nothing that names the user, on success or failure', async () => {
+    const logs = [
+      jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined),
+      jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined),
+      jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined),
+    ];
+    await service(async () => undefined).svc.deleteAccount(USER);
+    await service(async () => {
+      throw new Error('boom user_abc123 7');
+    }).svc.deleteAccount(USER);
+    const text = JSON.stringify(logs.flatMap((l) => l.mock.calls));
+    expect(text).not.toContain('user_abc123');
+    expect(text).not.toMatch(/\b7\b/);
   });
 
   it('a database failure stops before Clerk: the user can still sign in to repeat it', async () => {

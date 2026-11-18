@@ -34,7 +34,8 @@ describeDb('export and delete my data (real database)', () => {
     await assertDisposableDatabase(owner, 'data-deletion.db.spec');
     const cache = { forgetUser: async (id: string) => void forgot.push(id) } as unknown as CacheService;
     const tags = { ready: async () => undefined, tagOf: (slot: number) => (slot === 0 ? 'cafe' : undefined) } as unknown as TagsService;
-    deletion = new DataDeletionService(pool, cache, null);
+    // A stub Clerk deleter: no test here may reach the real Clerk API.
+    deletion = new DataDeletionService(pool, cache, async () => undefined);
     exporter = new DataExportService(pool, tags);
     quests = new QuestsService(pool, cache, tags, {} as AreasService);
   });
@@ -137,7 +138,7 @@ describeDb('export and delete my data (real database)', () => {
     const out = await deletion.deleteAccount(a);
     expect(out).toEqual({
       deleted: { quests: 1, checkInAttempts: 1, hoursAnswers: 1, savedPlaces: 1, events: 2, tasteProfile: true, account: true },
-      clerkUser: 'manual',
+      clerkUser: 'deleted',
     });
     expect(await footprint(a.id)).toEqual({ quests: 0, attempts: 0, answers: 0, saved: 0, taste: 0, events: 0, account: 0 });
     expect(await footprint(b.id)).toEqual(FULL);

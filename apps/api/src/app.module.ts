@@ -9,6 +9,7 @@ import { HealthController } from './health/health.controller';
 import { clerkUserDeleterFromEnv, CLERK_USER_DELETER } from './privacy/clerk-user-deleter';
 import { DataDeletionService } from './privacy/data-deletion';
 import { DataExportService } from './privacy/data-export';
+import { PRIVACY_DELETES, privacyDeletesFromEnv } from './privacy/privacy-deletes';
 import { MeDataController } from './privacy/me-data.controller';
 import { ProfileController } from './profile/profile.controller';
 import { TagsService } from './profile/tags.service';
@@ -31,8 +32,10 @@ import { ThrottleModule } from './throttle/throttle.module';
     AreasService,
     DataExportService,
     DataDeletionService,
-    // Null unless CLERK_DELETE_USERS is on: then DELETE /me also deletes the Clerk user.
+    // Null unless PRIVACY_DELETES=all: then DELETE /me also deletes the Clerk user.
     { provide: CLERK_USER_DELETER, useFactory: () => clerkUserDeleterFromEnv(process.env) },
+    // 'off' unless PRIVACY_DELETES=history; a bad value fails the API at startup.
+    { provide: PRIVACY_DELETES, useFactory: () => privacyDeletesFromEnv(process.env) },
     { provide: JOB_QUEUE, useClass: PgJobQueue },
   ],
 })

@@ -21,11 +21,10 @@ export interface HistoryDeleted {
 export interface AccountDeleted {
   deleted: DeletedCounts & { tasteProfile: boolean; account: boolean };
   /**
-   * 'deleted': the Clerk user is gone too. 'manual': CLERK_DELETE_USERS is off, so the
-   * owner removes it by hand. 'failed': Clerk refused or was unreachable; Larper's data is
-   * gone, and repeating the request retries Clerk.
+   * 'deleted': the Clerk user is gone too (a Clerk 404 counts). 'failed': Clerk refused or
+   * was unreachable; Larper's data is gone, and repeating the request retries Clerk.
    */
-  clerkUser: 'deleted' | 'manual' | 'failed';
+  clerkUser: 'deleted' | 'failed';
 }
 
 export const DEMO_REFUSAL = {
@@ -58,19 +57,22 @@ export class DataDeletionService {
     return { deleted: rows[0].r };
   }
 
-  // Everything, including the users row; then the Clerk user when that is switched on.
+  // Everything, including the users row; then the Clerk user.
   // The database goes first: if Clerk fails, nothing is stranded (the user can repeat the
   // request), whereas a Clerk user deleted before a failed database delete could never
   // sign in to repeat it.
   async deleteAccount(user: { id: string; clerkId: string }): Promise<AccountDeleted> {
     this.refuseDemo(user.clerkId);
+    // Without a deleter (PRIVACY_DELETES is not 'all') nothing is purged: half a delete
+    // would leave a Clerk user behind with no way to find it.
+    const clerkDelete = this.clerkDelete;
+    if (!clerkDelete) throw new Error('Clerk user deletion is not configured');
     const { rows } = await this.pg.query<{ r: AccountDeleted['deleted'] }>('SELECT delete_my_account($1) AS r', [user.id]);
     await this.cache.forgetUser(user.id);
     this.log.log('account deleted');
 
-    if (!this.clerkDelete) return { deleted: rows[0].r, clerkUser: 'manual' };
     try {
-      await this.clerkDelete(user.clerkId);
+      await clerkDelete(user.clerkId);
       return { deleted: rows[0].r, clerkUser: 'deleted' };
     } catch (err) {
       // Clerk errors can include the request path and the subject it names.
