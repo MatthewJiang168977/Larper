@@ -37,7 +37,7 @@ export class UsersService {
         this.log.warn(`Clerk user check failed${typeof status === 'number' ? ` (HTTP ${status})` : ''}`);
         throw new ServiceUnavailableException();
       }
-      if (!exists) throw new UnauthorizedException();
+      if (!exists) throw accountGone();
     }
 
     const { rows } = await this.pg.query<{ id: string; created: boolean }>(
@@ -52,6 +52,8 @@ export class UsersService {
     // Two replicas racing on a brand-new user: the loser's insert does nothing.
     if (!rows.length) {
       const again = await this.pg.query<{ id: string }>('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
+      // The winner's recheck can have purged it (Clerk no longer has the user).
+      if (!again.rows.length) throw accountGone();
       return again.rows[0].id;
     }
     const { id, created } = rows[0];
@@ -77,7 +79,7 @@ export class UsersService {
     if (exists) return;
     this.rememberGone(clerkId);
     await this.pg.query('SELECT delete_my_account($1)', [id]);
-    throw new UnauthorizedException();
+    throw accountGone();
   }
 
   private checkOnce(check: ClerkUserCheck, clerkId: string): Promise<boolean> {
@@ -112,3 +114,12 @@ export class UsersService {
 
 export const GONE_TTL_MS = 10_000;
 const GONE_MAX = 1_000;
+
+/**
+ * The 401 for "Clerk no longer has this user", told apart from every other 401 (no token, a
+ * token that fails verification) by its code: the web reads account_gone, and only that, as
+ * "your account is already deleted". A bare 401 must never be read that way.
+ */
+export const ACCOUNT_GONE = 'account_gone';
+const accountGone = () =>
+  new UnauthorizedException({ statusCode: 401, code: ACCOUNT_GONE, message: 'this account no longer exists' });
