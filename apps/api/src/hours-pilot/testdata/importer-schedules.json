@@ -1,0 +1,201 @@
+{
+  "24/7": {
+    "v": 1,
+    "tz": "America/New_York",
+    "always": true,
+    "weekly": [],
+    "dates": [],
+    "holidays": null,
+    "partial": "none"
+  },
+  "Mo-Fr 09:00-17:00": {
+    "v": 1,
+    "tz": "America/New_York",
+    "always": false,
+    "weekly": [
+      {
+        "d": 1,
+        "from": 540,
+        "to": 1020
+      },
+      {
+        "d": 2,
+        "from": 540,
+        "to": 1020
+      },
+      {
+        "d": 3,
+        "from": 540,
+        "to": 1020
+      },
+      {
+        "d": 4,
+        "from": 540,
+        "to": 1020
+      },
+      {
+        "d": 5,
+        "from": 540,
+        "to": 1020
+      }
+    ],
+    "dates": [],
+    "holidays": null,
+    "partial": "none"
+  },
+  "Mo-Fr 11:30-14:00,17:00-22:00; Sa,Su 12:00-23:00": {
+    "v": 1,
+    "tz": "America/New_York",
+    "always": false,
+    "weekly": [
+      {
+        "d": 1,
+        "from": 690,
+        "to": 840
+      },
+      {
+        "d": 1,
+        "from": 1020,
+        "to": 1320
+      },
+      {
+        "d": 2,
+        "from": 690,
+        "to": 840
+      },
+      {
+        "d": 2,
+        "from": 1020,
+        "to": 1320
+      },
+      {
+        "d": 3,
+        "from": 690,
+        "to": 840
+      },
+      {
+        "d": 3,
+        "from": 1020,
+        "to": 1320
+      },
+      {
+        "d": 4,
+        "from": 690,
+        "to": 840
+      },
+      {
+        "d": 4,
+        "from": 1020,
+        "to": 1320
+      },
+      {
+        "d": 5,
+        "from": 690,
+        "to": 840
+      },
+      {
+        "d": 5,
+        "from": 1020,
+        "to": 1320
+      },
+      {
+        "d": 6,
+        "from": 720,
+        "to": 1380
+      },
+      {
+        "d": 7,
+        "from": 720,
+        "to": 1380
+      }
+    ],
+    "dates": [],
+    "holidays": null,
+    "partial": "none"
+  },
+  "Mo-Su 17:00-02:00": {
+    "v": 1,
+    "tz": "America/New_York",
+    "always": false,
+    "weekly": [
+      {
+        "d": 1,
+        "from": 1020,
+        "to": 1560
+      },
+      {
+        "d": 2,
+        "from": 1020,
+        "to": 1560
+      },
+      {
+        "d": 3,
+        "from": 1020,
+        "to": 1560
+      },
+      {
+        "d": 4,
+        "from": 1020,
+        "to": 1560
+      },
+      {
+        "d": 5,
+        "from": 1020,
+        "to": 1560
+      },
+      {
+        "d": 6,
+        "from": 1020,
+        "to": 1560
+      },
+      {
+        "d": 7,
+        "from": 1020,
+        "to": 1560
+      }
+    ],
+    "dates": [],
+    "holidays": null,
+    "partial": "none"
+  },
+  "Tu-Su 10:00-18:00; PH off": {
+    "v": 1,
+    "tz": "America/New_York",
+    "always": false,
+    "weekly": [
+      {
+        "d": 2,
+        "from": 600,
+        "to": 1080
+      },
+      {
+        "d": 3,
+        "from": 600,
+        "to": 1080
+      },
+      {
+        "d": 4,
+        "from": 600,
+        "to": 1080
+      },
+      {
+        "d": 5,
+        "from": 600,
+        "to": 1080
+      },
+      {
+        "d": 6,
+        "from": 600,
+        "to": 1080
+      },
+      {
+        "d": 7,
+        "from": 600,
+        "to": 1080
+      }
+    ],
+    "dates": [],
+    "holidays": "closed",
+    "partial": "none"
+  }
+}
