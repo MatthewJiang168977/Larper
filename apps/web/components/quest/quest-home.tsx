@@ -8,7 +8,8 @@ import { OSWindow } from "@/components/larper-os/primitives";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { avatarInitialsAppearance } from "@/components/auth/clerk-appearance";
+import { avatarInitialsAppearance, larperOsAccountMenuAppearance } from "@/components/auth/clerk-appearance";
+import "@/components/auth/larper-os-account-menu.css";
 import { useLocation, type Located } from "@/hooks/use-location";
 import { type CheckinResult, questProps, setDemo, track } from "@/lib/analytics";
 import { ApiError, describeError, postWasOpen, useApi, type DeckItem, type Me, type QuestView, type SkipReason, type Today, type WasOpenAnswer } from "@/lib/api";
@@ -46,8 +47,7 @@ export function demoAccountLocation(loc: Located | null, outside: boolean): Loca
   return reason ? { ...DEMO_MIDTOWN, source: "demo", reason, spot: "Midtown" } : loc;
 }
 
-// Clerk's avatar is a 28 px button; this gives it the same 44 px hit area as everything else.
-export const USER_BUTTON_APPEARANCE = { elements: { userButtonTrigger: "hit-target" } };
+export const USER_BUTTON_APPEARANCE = larperOsAccountMenuAppearance(larperOsClassName);
 
 // Plus ink initials in place of Clerk's generated avatar, for a user with no photo.
 export function userButtonAppearance(user: Parameters<typeof avatarInitialsAppearance>[0]) {

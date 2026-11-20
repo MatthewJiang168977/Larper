@@ -1,0 +1,74 @@
+.larper-os-account-menu.larper-os {
+  inline-size: min(22rem, calc(100vw - 24px));
+  max-inline-size: calc(100vw - 24px);
+  min-inline-size: 0;
+  box-sizing: border-box;
+  background: var(--larper-os-window);
+  border: 1px solid var(--larper-os-ink);
+  border-radius: var(--larper-os-radius-window);
+  box-shadow: var(--larper-os-shadow-raised);
+  color: var(--larper-os-ink);
+  font: 16px/1.4 var(--larper-os-font-body), system-ui, sans-serif;
+}
+
+.larper-os-account-menu .larper-os-account-menu-main {
+  min-inline-size: 0;
+  background: var(--larper-os-window);
+}
+
+.larper-os-account-menu .larper-os-account-menu-identity {
+  min-inline-size: 0;
+}
+
+.larper-os-account-menu :is(.larper-os-account-menu-name, .larper-os-account-menu-email) {
+  min-inline-size: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  font-family: var(--larper-os-font-body), system-ui, sans-serif;
+}
+
+.larper-os-account-menu .larper-os-account-menu-name {
+  color: var(--larper-os-ink);
+}
+
+.larper-os-account-menu .larper-os-account-menu-email {
+  color: var(--larper-os-disabled-ink);
+}
+
+.larper-os-account-menu .larper-os-account-menu-action {
+  min-block-size: var(--larper-os-tap-min);
+  background: var(--larper-os-window);
+  color: var(--larper-os-ink);
+  font: 400 22px/1.1 var(--larper-os-font-pixel), system-ui, sans-serif;
+  transition: none;
+}
+
+.larper-os-account-menu .larper-os-account-menu-icon {
+  color: inherit;
+}
+
+.larper-os-account-menu .larper-os-account-menu-action:not(:disabled):hover {
+  background: var(--larper-os-butter);
+}
+
+.larper-os-account-menu .larper-os-account-menu-action:focus-visible {
+  background: var(--larper-os-butter);
+  outline: 2px solid var(--larper-os-ink);
+  outline-offset: -4px;
+  box-shadow: none;
+}
+
+.larper-os-account-menu .larper-os-account-menu-footer {
+  background: var(--larper-os-paper);
+  border-block-start: 1px solid var(--larper-os-ink);
+  font-family: var(--larper-os-font-body), system-ui, sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .larper-os-account-menu-root,
+  .larper-os-account-menu.larper-os {
+    animation: none;
+    transition: none;
+  }
+}

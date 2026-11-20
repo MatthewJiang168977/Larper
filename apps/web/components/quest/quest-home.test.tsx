@@ -601,7 +601,14 @@ describe("QuestHome: touch targets", () => {
     render(<QuestHome />);
     await settle();
     expect(userButton).toHaveBeenLastCalledWith({
-      appearance: { elements: { userButtonTrigger: "hit-target" } },
+      appearance: {
+        elements: expect.objectContaining({
+          userButtonTrigger: "hit-target",
+          userButtonPopoverCard: "larper-os larper-os-account-menu",
+          userButtonPopoverActionButton: "larper-os-account-menu-action",
+          userButtonPopoverFooter: "larper-os-account-menu-footer",
+        }),
+      },
       userProfileProps: { appearance: undefined },
     });
     expect(screen.getByRole("link", { name: "journal" }).classList).toContain("larper-quest-menu-link");
@@ -620,6 +627,7 @@ describe("QuestHome: touch targets", () => {
       userProfileProps: { appearance: { elements: Record<string, unknown> } };
     };
     expect(appearance.elements.userButtonTrigger).toBe("hit-target");
+    expect(appearance.elements.userButtonPopoverCard).toBe("larper-os larper-os-account-menu");
     expect(appearance.elements.avatarImage).toEqual({ display: "none" });
     expect(appearance.elements.avatarBox).toMatchObject({ "&::after": { content: '"AB"' } });
     // The profile modal ("Manage account") draws the same avatar.
