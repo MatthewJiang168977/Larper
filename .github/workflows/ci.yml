@@ -261,10 +261,10 @@ jobs:
           n() { grep -c -- "$1" <<<"$2" || true; }
           # The Secret the API's CLERK_SECRET_KEY comes from.
           keyfrom() { grep -A1 -- '- name: CLERK_SECRET_KEY' <<<"$1" | grep -o 'secretKeyRef: { name: [^,]*' | sed 's/.*name: //; s/"//g'; }
-          # Off (unset, "off", or an unquoted off read as false): nothing new in any profile.
-          for values in "" "-f $chart/values-aks.yaml" "-f $chart/values-eks.yaml" "$oci" \
-                        "-f $chart/values-demo.yaml" "$oci -f $chart/values-demo.yaml" \
-                        "$oci -f $chart/values-demo.yaml -f $chart/values-oci-a1max.yaml" \
+          # Off (unset, "off", or an unquoted off read as false): nothing new in any profile
+          # but the Oracle target's (values-oci.yaml sets history, below).
+          for values in "" "-f $chart/values-aks.yaml" "-f $chart/values-eks.yaml" \
+                        "-f $chart/values-demo.yaml" "$oci --set privacy.deletes=off" \
                         "--set privacy.deletes=off" "--set-json privacy.deletes=false"; do
             # shellcheck disable=SC2086
             out=$(api $values)
@@ -272,7 +272,16 @@ jobs:
           done
           [[ $(n CLERK_SECRET_KEY "$(api)") == 0 ]] || fail "CLERK_SECRET_KEY rendered by default"
           # shellcheck disable=SC2086
-          [[ $(keyfrom "$(api $oci -f $chart/values-demo.yaml)") == clerk-demo ]] || fail "demo key changed with deletes off"
+          # The Oracle target (values-oci.yaml): history, and the only key is still the demo's.
+          for values in "$oci" "$oci -f $chart/values-demo.yaml" \
+                        "$oci -f $chart/values-demo.yaml -f $chart/values-oci-a1max.yaml"; do
+            # shellcheck disable=SC2086
+            out=$(api $values)
+            grep -q 'name: PRIVACY_DELETES, value: "history"' <<<"$out" || fail "Oracle: not history with: $values"
+            [[ $(n 'name: CLERK_SECRET_KEY' "$out") -le 1 ]] || fail "Oracle: more than one CLERK_SECRET_KEY with: $values"
+          done
+          # shellcheck disable=SC2086
+          [[ $(keyfrom "$(api $oci -f $chart/values-demo.yaml)") == clerk-demo ]] || fail "Oracle: demo key changed with history"
           # history: the setting only, no key of its own.
           out=$(api --set privacy.deletes=history)
           grep -q 'name: PRIVACY_DELETES, value: "history"' <<<"$out" || fail "history: no PRIVACY_DELETES=history"

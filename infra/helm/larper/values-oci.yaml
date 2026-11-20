@@ -75,3 +75,8 @@ queue:
 
 monitoring:
   enabled: true
+
+# Data deletion (docs/decisions/0005-data-deletion.md, "Rollout and rollback", step 3):
+# DELETE /me/history only. "all" also needs privacy.clerkSecret.name (step 4).
+privacy:
+  deletes: "history"
