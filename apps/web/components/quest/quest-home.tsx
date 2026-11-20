@@ -8,7 +8,8 @@ import { OSWindow } from "@/components/larper-os/primitives";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { avatarInitialsAppearance, larperOsAccountMenuAppearance } from "@/components/auth/clerk-appearance";
+import { avatarInitialsAppearance, larperOsAccountMenuAppearance, userProfileAppearance } from "@/components/auth/clerk-appearance";
+import { DemoAccountMenu } from "@/components/auth/demo-account-menu";
 import "@/components/auth/larper-os-account-menu.css";
 import { useLocation, type Located } from "@/hooks/use-location";
 import { type CheckinResult, questProps, setDemo, track } from "@/lib/analytics";
@@ -77,15 +78,22 @@ export function QuestHome() {
   const location = useLocation();
   const userButton = useMemo(() => ({
     appearance: userButtonAppearance(user),
-    userProfileProps: { appearance: avatarInitialsAppearance(user) },
+    userProfileProps: { appearance: userProfileAppearance(user) },
   }), [user]);
-  return <QuestScreen api={api} location={location} accountControl={<UserButton {...userButton} />} />;
+  return (
+    <QuestScreen
+      key={user?.id}
+      api={api}
+      location={location}
+      renderAccountControl={(me) => me && !me.demo ? <UserButton {...userButton} /> : <DemoAccountMenu />}
+    />
+  );
 }
 
-export function QuestScreen({ api, location, accountControl, previewControls }: {
+export function QuestScreen({ api, location, renderAccountControl, previewControls }: {
   api: ReturnType<typeof useApi>;
   location: ReturnType<typeof useLocation>;
-  accountControl?: React.ReactNode;
+  renderAccountControl?: (me: Me | null) => React.ReactNode;
   previewControls?: React.ReactNode;
 }) {
   const { loc: located, retry: retryLocation, retrying: locating } = location;
@@ -456,7 +464,7 @@ export function QuestScreen({ api, location, accountControl, previewControls }: 
           >
             journal
           </Link>
-          {accountControl}
+          {renderAccountControl?.(meError ? null : me)}
         </div>
         {previewControls}
         <div ref={setControlsHost} data-testid="map-controls" className="larper-quest-map-controls" />

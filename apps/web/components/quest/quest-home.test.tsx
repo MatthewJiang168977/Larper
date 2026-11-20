@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { forwardRef, useEffect } from "react";
+import { cloneElement, forwardRef, type ReactElement, useEffect } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Located } from "@/hooks/use-location";
 import { ApiError, type Me, type Today } from "@/lib/api";
@@ -19,9 +19,12 @@ vi.mock("@/app/larper-os", () => ({ larperOsClassName: "larper-os" }));
 
 type UserButtonProps = { appearance?: unknown; userProfileProps?: { appearance?: unknown } };
 const userButton = vi.fn<(props: UserButtonProps) => null>(() => null);
+const signOut = vi.fn();
 let clerkUser: { hasImage: boolean; firstName: string | null; lastName: string | null } | null = null;
 vi.mock("@clerk/nextjs", () => ({
   UserButton: (p: UserButtonProps) => userButton(p),
+  SignOutButton: ({ children }: { children: ReactElement<{ onClick?: () => void }> }) =>
+    cloneElement(children, { onClick: signOut }),
   useUser: () => ({ user: clerkUser }),
 }));
 // The WebGL map: a stand-in that keeps the props it got and marks where it sits in the page.
@@ -190,6 +193,8 @@ const advance = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
 beforeEach(() => {
   location = HERE;
   clerkUser = null;
+  userButton.mockClear();
+  signOut.mockClear();
   retrying = false;
   retryLocation.mockClear();
   preciseFix.mockReset();
@@ -609,7 +614,11 @@ describe("QuestHome: touch targets", () => {
           userButtonPopoverFooter: "larper-os-account-menu-footer",
         }),
       },
-      userProfileProps: { appearance: undefined },
+      userProfileProps: {
+        appearance: {
+          elements: expect.objectContaining({ rootBox: "larper-os-clerk-profile" }),
+        },
+      },
     });
     expect(screen.getByRole("link", { name: "journal" }).classList).toContain("larper-quest-menu-link");
 
@@ -632,6 +641,47 @@ describe("QuestHome: touch targets", () => {
     expect(appearance.elements.avatarBox).toMatchObject({ "&::after": { content: '"AB"' } });
     // The profile modal ("Manage account") draws the same avatar.
     expect(userProfileProps.appearance.elements.avatarImage).toEqual({ display: "none" });
+  });
+
+  it("offers only sign out for the demo, wired to Clerk", async () => {
+    routes["/me"] = ok({ ...ME, demo: true });
+    routes["/quests/today"] = ok(withQuest);
+    render(<QuestHome />);
+    await settle();
+    expect(userButton).not.toHaveBeenCalled();
+
+    const trigger = screen.getByText("account", { selector: "summary" });
+    fireEvent.click(trigger);
+    const action = screen.getByRole("button", { name: "sign out" });
+    expect(screen.queryByText(/manage account/i)).toBeNull();
+    action.focus();
+    fireEvent.keyDown(action, { key: "Escape" });
+    expect(trigger.closest("details")?.open).toBe(false);
+    expect(document.activeElement).toBe(trigger);
+
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "sign out" }));
+    expect(signOut).toHaveBeenCalledOnce();
+  });
+
+  it("uses the sign-out-only menu until /me succeeds for a real account", async () => {
+    let rejectMe!: (error: unknown) => void;
+    routes["/me"] = () => new Promise((_, reject) => { rejectMe = reject; });
+    routes["/quests/today"] = ok(withQuest);
+    render(<QuestHome />);
+    expect(screen.getByText("account", { selector: "summary" })).toBeTruthy();
+    expect(userButton).not.toHaveBeenCalled();
+
+    rejectMe(new ApiError("boom", 503));
+    await settle();
+    expect(screen.getByText("account", { selector: "summary" })).toBeTruthy();
+    expect(userButton).not.toHaveBeenCalled();
+
+    routes["/me"] = ok({ ...ME, demo: false });
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await settle();
+    expect(screen.queryByText("account", { selector: "summary" })).toBeNull();
+    expect(userButton).toHaveBeenCalled();
   });
 });
 

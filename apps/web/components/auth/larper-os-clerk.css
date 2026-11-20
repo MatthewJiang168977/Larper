@@ -1,0 +1,42 @@
+.larper-os-clerk-modal.larper-os {
+  box-sizing: border-box;
+  max-inline-size: calc(100vw - 24px);
+  max-block-size: calc(100dvh - 24px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.larper-os-clerk-modal .larper-os-clerk-profile {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.larper-os-clerk-profile .larper-os-clerk-profile-nav {
+  background: var(--larper-os-window);
+}
+
+.larper-os-clerk-profile .larper-os-clerk-profile-nav-button {
+  color: var(--larper-os-ink);
+  font-family: var(--larper-os-font-body), system-ui, sans-serif;
+}
+
+.larper-os-clerk-profile .larper-os-clerk-profile-nav-button:hover {
+  background: var(--larper-os-butter);
+}
+
+.larper-os-clerk-profile .larper-os-clerk-profile-title {
+  color: var(--larper-os-ink);
+  font: 400 23px/1.1 var(--larper-os-font-pixel), system-ui, sans-serif;
+}
+
+.larper-os-clerk-modal :is(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--larper-os-ink);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .larper-os-clerk-modal.larper-os {
+    animation: none;
+    transition: none;
+  }
+}
