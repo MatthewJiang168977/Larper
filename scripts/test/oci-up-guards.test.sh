@@ -43,8 +43,9 @@ check() { # description, command...
 #     bad (prints something that isn't a key)
 #   FAKE_S3, FAKE_CHECK, FAKE_DEMO: none (no file) | good | a broken variant below
 #     (FAKE_DEMO key-only / bad-key-only: a Clerk key in web.env but no demo user)
-#   FAKE_PRIVACY: none (the repo's values files) | all (one values file sets
-#     privacy.deletes "all")
+#   FAKE_PRIVACY: none (a values file with privacy.deletes "off", so the other tests
+#     don't depend on what the repo's values set) | all (one that sets "all") | repo
+#     (the repo's own values files, as a real deploy reads them)
 # The fake key values are built at run time, so no key-shaped literal sits in this file
 # for the secret scan to flag.
 sandbox() {
@@ -113,11 +114,12 @@ REGION=us-sanjose-1"
     no-key) echo 'NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in' >"$BOX/web.env" ;;
     bad-key | bad-key-only) echo 'CLERK_SECRET_KEY=pk_test_wrongkind' >"$BOX/web.env" ;;
   esac
-  PRIVACY_FILES=
-  if [[ $FAKE_PRIVACY == all ]]; then
-    printf 'privacy:\n  deletes: "all"\n  clerkSecret:\n    name: clerk-privacy\n' >"$BOX/privacy.yaml"
-    PRIVACY_FILES="$BOX/privacy.yaml"
-  fi
+  PRIVACY_FILES="$BOX/privacy.yaml"
+  case $FAKE_PRIVACY in
+    none) printf 'privacy:\n  deletes: "off"\n' >"$BOX/privacy.yaml" ;;
+    all) printf 'privacy:\n  deletes: "all"\n  clerkSecret:\n    name: clerk-privacy\n' >"$BOX/privacy.yaml" ;;
+    repo) PRIVACY_FILES= ;; # oci-up.sh's default list
+  esac
   for tool in ssh scp kubectl helm docker; do
     printf '#!/usr/bin/env bash\necho "%s $*" >>"$FAKE_DIR/deploy-calls"\nexit 1\n' "$tool" >"$BOX/bin/$tool"
   done
@@ -268,6 +270,17 @@ run_up good ""
 FAKE_PRIVACY=none FAKE_DEMO=none
 check "deletes all, key, no demo: gets past the checks to the first remote step" reached_remote
 check "deletes all, key, no demo: prints no secret" prints_no_secret
+
+# 10b2. The repo's own values (values-oci.yaml sets "all"): a deploy with no Clerk key
+#      refuses before anything remote; with a well-formed key it gets past the checks.
+FAKE_PRIVACY=repo
+run_up good ""
+check "repo values, no key: refuses, naming the key" said 'needed: a values file sets privacy.deletes "all" is empty'
+check "repo values, no key: nothing remote, no deploy step" no_remote
+FAKE_PRIVACY=repo FAKE_DEMO=good
+run_up good ""
+FAKE_PRIVACY=none FAKE_DEMO=none
+check "repo values, demo and key: gets past the checks to the first remote step" reached_remote
 
 # 10c. privacy_sets_all (scripts/lib/oci-secrets.sh) reads the values files as the chart
 #      does: only a top-level privacy: block's deletes, quoted or not, comments ignored,

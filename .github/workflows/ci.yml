@@ -272,16 +272,18 @@ jobs:
           done
           [[ $(n CLERK_SECRET_KEY "$(api)") == 0 ]] || fail "CLERK_SECRET_KEY rendered by default"
           # shellcheck disable=SC2086
-          # The Oracle target (values-oci.yaml): history, and the only key is still the demo's.
+          # The Oracle target (values-oci.yaml): all, with exactly one key, from clerk-privacy.
           for values in "$oci" "$oci -f $chart/values-demo.yaml" \
                         "$oci -f $chart/values-demo.yaml -f $chart/values-oci-a1max.yaml"; do
             # shellcheck disable=SC2086
             out=$(api $values)
-            grep -q 'name: PRIVACY_DELETES, value: "history"' <<<"$out" || fail "Oracle: not history with: $values"
-            [[ $(n 'name: CLERK_SECRET_KEY' "$out") -le 1 ]] || fail "Oracle: more than one CLERK_SECRET_KEY with: $values"
+            grep -q 'name: PRIVACY_DELETES, value: "all"' <<<"$out" || fail "Oracle: not all with: $values"
+            [[ $(n 'name: CLERK_SECRET_KEY' "$out") == 1 ]] || fail "Oracle: not exactly one CLERK_SECRET_KEY with: $values"
+            [[ $(keyfrom "$out") == clerk-privacy ]] || fail "Oracle: key not from clerk-privacy with: $values"
           done
           # shellcheck disable=SC2086
-          [[ $(keyfrom "$(api $oci -f $chart/values-demo.yaml)") == clerk-demo ]] || fail "Oracle: demo key changed with history"
+          out=$(helm template larper $chart -n larper -s templates/demo-reset.yaml $oci -f $chart/values-demo.yaml)
+          [[ $(keyfrom "$out") == clerk-demo ]] || fail "Oracle: demo reset lost the demo key"
           # history: the setting only, no key of its own.
           out=$(api --set privacy.deletes=history)
           grep -q 'name: PRIVACY_DELETES, value: "history"' <<<"$out" || fail "history: no PRIVACY_DELETES=history"
