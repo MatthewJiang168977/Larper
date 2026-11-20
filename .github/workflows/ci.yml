@@ -245,6 +245,54 @@ jobs:
           # Public: never a catch-all host, and only the known certificate modes.
           refuses 'public.enabled needs ingress.host' --set public.enabled=true
           refuses 'public.acme must be' --set public.enabled=true --set ingress.host=api.example.com --set public.acme=prod
+          # Data deletion: "all" without a Clerk secret would crash-loop the API; only known values.
+          refuses 'privacy.deletes=all needs privacy.clerkSecret.name' --set privacy.deletes=all
+          refuses 'privacy.deletes=all needs privacy.clerkSecret.name' -f $chart/values-demo.yaml --set privacy.deletes=all
+          refuses 'privacy.deletes must be off, history or all' --set privacy.deletes=yes
+          refuses 'privacy.deletes is true' --set privacy.deletes=true
+      # Data deletion (docs/decisions/0005-data-deletion.md): off renders nothing new in any
+      # profile; history only sets PRIVACY_DELETES; all brings its own CLERK_SECRET_KEY, once.
+      - name: Privacy deletes env
+        run: |
+          chart=infra/helm/larper
+          oci="-f $chart/values-oci.yaml --set postgres.backup.endpointURL=https://objectstorage.example.invalid"
+          api() { helm template larper $chart -n larper -s templates/api.yaml "$@"; }
+          fail() { echo "$*"; exit 1; }
+          n() { grep -c -- "$1" <<<"$2" || true; }
+          # The Secret the API's CLERK_SECRET_KEY comes from.
+          keyfrom() { grep -A1 -- '- name: CLERK_SECRET_KEY' <<<"$1" | grep -o 'secretKeyRef: { name: [^,]*' | sed 's/.*name: //; s/"//g'; }
+          # Off (unset, "off", or an unquoted off read as false): nothing new in any profile.
+          for values in "" "-f $chart/values-aks.yaml" "-f $chart/values-eks.yaml" "$oci" \
+                        "-f $chart/values-demo.yaml" "$oci -f $chart/values-demo.yaml" \
+                        "$oci -f $chart/values-demo.yaml -f $chart/values-oci-a1max.yaml" \
+                        "--set privacy.deletes=off" "--set-json privacy.deletes=false"; do
+            # shellcheck disable=SC2086
+            out=$(api $values)
+            [[ $(n PRIVACY_DELETES "$out") == 0 ]] || fail "PRIVACY_DELETES rendered with: ${values:-defaults}"
+          done
+          [[ $(n CLERK_SECRET_KEY "$(api)") == 0 ]] || fail "CLERK_SECRET_KEY rendered by default"
+          # shellcheck disable=SC2086
+          [[ $(keyfrom "$(api $oci -f $chart/values-demo.yaml)") == clerk-demo ]] || fail "demo key changed with deletes off"
+          # history: the setting only, no key of its own.
+          out=$(api --set privacy.deletes=history)
+          grep -q 'name: PRIVACY_DELETES, value: "history"' <<<"$out" || fail "history: no PRIVACY_DELETES=history"
+          [[ $(n CLERK_SECRET_KEY "$out") == 0 ]] || fail "history: CLERK_SECRET_KEY rendered"
+          # all: the key from privacy.clerkSecret, alone and over the demo (exactly one, never the demo's).
+          sec="--set privacy.deletes=all --set privacy.clerkSecret.name=clerk-privacy"
+          for values in "$sec" "$oci -f $chart/values-demo.yaml $sec"; do
+            # shellcheck disable=SC2086
+            out=$(api $values)
+            grep -q 'name: PRIVACY_DELETES, value: "all"' <<<"$out" || fail "all: no PRIVACY_DELETES=all with: $values"
+            [[ $(n 'name: CLERK_SECRET_KEY' "$out") == 1 ]] || fail "all: not exactly one CLERK_SECRET_KEY with: $values"
+            [[ $(keyfrom "$out") == clerk-privacy ]] || fail "all: key not from privacy.clerkSecret with: $values"
+          done
+          # shellcheck disable=SC2086
+          out=$(api $oci -f $chart/values-demo.yaml $sec)
+          [[ $(n DEMO_CLERK_USER_ID "$out") == 1 ]] || fail "all: demo user id lost"
+          # The demo reset keeps the demo's key whatever privacy.deletes is.
+          # shellcheck disable=SC2086
+          out=$(helm template larper $chart -n larper -s templates/demo-reset.yaml $oci -f $chart/values-demo.yaml $sec)
+          [[ $(keyfrom "$out") == clerk-demo ]] || fail "all: demo reset lost the demo key"
       # Rate limits are on unless a load test turns them off: no profile may ship them off.
       - name: Rate limits on in every profile
         run: |

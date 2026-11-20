@@ -54,7 +54,8 @@ api:
 
 clerk:
   # Public by design (it ships to every browser). The API derives the JWKS URL from it,
-  # so verifying tokens needs no Clerk secret (only demo.enabled brings one).
+  # so verifying tokens needs no Clerk secret (only demo.enabled and privacy.deletes=all
+  # bring one).
   publishableKey: pk_test_bmF0aW9uYWwtcmVkZmlzaC04MTA0LmNsZXJrLmFjY291bnRzLmRldiQ
   # Origins allowed in a token's azp claim (comma-separated).
   authorizedParties: http://localhost:3001
@@ -71,6 +72,17 @@ demo:
     # Every night at 04:00 New York time (the demo region's).
     schedule: "0 4 * * *"
     timeZone: America/New_York
+
+# Data deletion (docs/decisions/0005-data-deletion.md, "Rollout and rollback"): the API's
+# PRIVACY_DELETES. "off" renders nothing; "history" opens DELETE /me/history; "all" also
+# opens DELETE /me, which needs the Clerk secret key (D7) from the Secret clerkSecret.name,
+# independent of demo.enabled. Quote the value: unquoted, YAML reads off as false.
+# Rendering refuses "all" without clerkSecret.name; it can't check the Secret exists.
+privacy:
+  deletes: "off"
+  clerkSecret:
+    name: ""
+    key: secretKey
 
 ingress:
   className: traefik
