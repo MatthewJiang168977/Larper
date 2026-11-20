@@ -19,3 +19,23 @@ export const larperOsDayStyle = makeQuestMapStyle({
 }, {
   anchor: "map", color: "#fff4df", intensity: 0.35, position: [1.4, 210, 40],
 });
+
+export const larperOsNightStyle = makeQuestMapStyle({
+  paper: "#251e29",
+  paperDeep: "#312535",
+  park: "#25352c",
+  wood: "#25352c",
+  water: "#182e35",
+  waterLine: "#335663",
+  waterLabel: "#b9e3e6",
+  inkMajor: "#675263",
+  inkMinor: "#675263",
+  inkPath: "#675263",
+  building: "#51414b",
+  buildingTop: "#6a5363",
+  buildingEdge: "#3e323d",
+  label: "#f9efe4",
+  labelHalo: "#251e29",
+}, {
+  anchor: "map", color: "#b9e3e6", intensity: 0.22, position: [1.4, 230, 55],
+});

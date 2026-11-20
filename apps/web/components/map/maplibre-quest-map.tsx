@@ -193,14 +193,18 @@ function allowRotation(map: MLMap, on: boolean) {
 
 export default function MapLibreQuestMap({
   me, quest, deck, selectedId, onSelect, bottomInset, rightInset = 0, bottomCovered = false,
-  controlsHost, initialStyle = journalStyle,
+  controlsHost, initialStyle = journalStyle, palette,
 }: QuestMapProps & {
-  /** Read once when the map mounts. Remount to use a different initial style. */
+  /** Base style for maps with a fixed palette. Read when the map mounts. */
   initialStyle?: StyleSpecification;
+  /** Live styles with the same layer structure and sources, differing only in paint and light. */
+  palette?: { mode: "day" | "night"; style: StyleSpecification };
 }) {
+  const paletteStyle = palette?.style;
   const markerDescriptionId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
+  const appliedPaletteRef = useRef<StyleSpecification | undefined>(undefined);
   const markersRef = useRef<{ marker: Marker; pin: HTMLElement; placeId: string }[]>([]);
   // The same pins in keyboard order: the quest, then the leads by number.
   const pinOrderRef = useRef<{ marker: Marker; pin: HTMLElement; placeId: string }[]>([]);
@@ -239,7 +243,7 @@ export default function MapLibreQuestMap({
       libRef.current = lib;
       const map = new lib.Map({
         container: containerRef.current,
-        style: initialStyle,
+        style: paletteStyle ? { ...paletteStyle, transition: { duration: 0, delay: 0 } } : initialStyle,
         center: [me.lng, me.lat],
         zoom: 15.6,
         pitch: PITCH,
@@ -248,6 +252,7 @@ export default function MapLibreQuestMap({
         attributionControl: { compact: true },
       });
       mapRef.current = map;
+      appliedPaletteRef.current = paletteStyle;
       setReady(true);
     })();
     return () => {
@@ -262,9 +267,41 @@ export default function MapLibreQuestMap({
       markersRef.current = [];
       pinOrderRef.current = [];
     };
-    // Style and camera are set on mount. Later camera moves go through fly-to.
+    // Set the starting style and camera on mount. Later palette changes update paint and light.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const previous = appliedPaletteRef.current;
+    if (!ready || !map || !paletteStyle || !previous || paletteStyle === previous) return;
+
+    const apply = () => {
+      // Leave the tile sources and the user's 2D/3D layout in place.
+      for (const layer of paletteStyle.layers) {
+        if (!("paint" in layer)) continue;
+        const priorLayer = previous.layers.find(({ id }) => id === layer.id);
+        const priorPaint = priorLayer && "paint" in priorLayer ? priorLayer.paint : undefined;
+        for (const [name, value] of Object.entries(layer.paint ?? {})) {
+          const oldValue = priorPaint?.[name as keyof typeof priorPaint];
+          if (JSON.stringify(oldValue) !== JSON.stringify(value)) {
+            map.setPaintProperty(layer.id, name as Parameters<MLMap["setPaintProperty"]>[1], value);
+          }
+        }
+      }
+      if (paletteStyle.light) map.setLight(paletteStyle.light);
+      appliedPaletteRef.current = paletteStyle;
+    };
+    if (map.getLayer(BUILDINGS_3D)) {
+      apply();
+      return;
+    }
+    // style.load fires once the layers exist. Tile loading can continue independently.
+    map.once("style.load", apply);
+    return () => {
+      map.off("style.load", apply);
+    };
+  }, [ready, paletteStyle]);
 
   // "You are here" follows location updates: the dot, and under it a halo as wide as
   // the reading's accuracy, re-measured as the zoom changes.
@@ -559,7 +596,7 @@ export default function MapLibreQuestMap({
   return (
     // z-0: the page puts the map after its header and sheet (so they come first in the Tab
     // order); this keeps MapLibre's own layers under them all the same.
-    <div className="absolute inset-0 z-0">
+    <div className="absolute inset-0 z-0" data-map-palette={palette?.mode}>
       <div ref={containerRef} className="h-full w-full" aria-label="Map of nearby quests" role="region" />
       {/* In the page's top bar when it gives a place for them (they wrap below its pill
           when both don't fit); otherwise top right, level with the header. */}
