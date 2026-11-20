@@ -43,6 +43,8 @@ const DAY_TIME_ZONE = 'America/New_York'; // when "today" ends (doneToday); the 
 // Bumped from v3 when the trust gate (eligibility.ts) began filtering before ranking:
 // decks cached by older pods hold places the gate now refuses.
 const DECK_CACHE_VERSION = 'v4';
+/** Where a quest was offered is only needed while the offer is open (the stale-offer check). */
+export const SCRUB_ORIGINS_SQL = `UPDATE quests SET origin = NULL WHERE origin IS NOT NULL AND status IN ('expired', 'completed', 'skipped')`;
 const PRUNE_ATTEMPTS_EVERY_MS = 6 * 3600_000; // retention is 90 days; this only bounds the overshoot
 
 export const EVENT_ACTION: Record<QuestAction, EventAction> = {
@@ -207,6 +209,7 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     try {
       await tx.query('BEGIN');
       if (checkIn) await this.checkGeofence(tx, checkIn, at);
+      await this.lockUserQuest(tx, userId, questId);
 
       // "Not today" leaves the reason 'unstated' until the user gives one (giveReason).
       // A simulated demo check-in is marked in the quest's reasons, so the journal can
@@ -217,7 +220,8 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
         `UPDATE quests SET status = $4::quest_status, updated_at = now(), skip_reason = coalesce($5::skip_reason, skip_reason),
                 reasons = CASE WHEN $6 THEN reasons || '{"simulated": true}'::jsonb ELSE reasons END,
                 accepted_at = CASE WHEN $4::quest_status = 'accepted' THEN now() ELSE accepted_at END,
-                completed_at = CASE WHEN $4::quest_status = 'completed' THEN now() ELSE completed_at END
+                completed_at = CASE WHEN $4::quest_status = 'completed' THEN now() ELSE completed_at END,
+                origin = CASE WHEN $4::quest_status IN ('completed', 'skipped') THEN NULL ELSE origin END
          WHERE id = $1 AND user_id = $2 AND status = ANY($3::quest_status[])
          RETURNING status, place_id::text AS "placeId"`,
         [questId, userId, t.from, t.to, action === 'not-today' ? 'unstated' : null, !!checkIn?.simulated],
@@ -227,10 +231,7 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
           'SELECT status FROM quests WHERE id = $1 AND user_id = $2',
           [questId, userId],
         );
-        if (!cur.rows.length) {
-          if (checkIn) checkIn.outcome = 'not_found';
-          throw new NotFoundException('no such quest');
-        }
+        if (!cur.rows.length) throw new NotFoundException('no such quest');
         if (checkIn) checkIn.outcome = 'conflict';
         throw new ConflictException(`cannot ${VERB[action]} a quest that is ${cur.rows[0].status}`);
       }
@@ -255,6 +256,7 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
         ...(checkIn?.simulated ? { simulated: true as const, distanceM: Math.round(checkIn.geofence!.distanceM) } : {}),
       };
     } catch (err) {
+      if (checkIn && err instanceof NotFoundException) checkIn.outcome = 'not_found';
       await tx.query('ROLLBACK');
       throw err;
     } finally {
@@ -264,6 +266,16 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
         await this.recordAttempt(checkIn);
       }
     }
+  }
+
+  // Lock the user before the quest so history/account deletion can wait before it
+  // touches children, even for actions that insert a row with a user FK.
+  private async lockUserQuest(tx: PoolClient, userId: string, questId: string) {
+    const { rows } = await tx.query<{ present: boolean }>(
+      'SELECT lock_user_quest($1, $2) AS present',
+      [userId, questId],
+    );
+    if (!rows[0].present) throw new NotFoundException('no such quest');
   }
 
   // Outside the action's transaction: a rejected check-in rolls that back, and its
@@ -279,6 +291,9 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
 
   // Check-in attempts older than 90 days go (migration 0014's prune_checkin_attempts),
   // on start and every few hours, so rows don't outlive the retention while it's quiet.
+  // The same sweep drops the exact position (origin) of every quest whose offer is over
+  // (migration 0020): the paths that resolve a quest do it themselves, this catches rows
+  // from before and anything a path missed.
   private pruneTimer?: NodeJS.Timeout;
   onModuleInit() {
     const prune = () =>
@@ -288,8 +303,19 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
           if (Number(rows[0]?.n) > 0) this.logger.log(`pruned ${rows[0].n} check-in attempts past 90 days`);
         })
         .catch((err: Error) => this.logger.warn(`check-in attempt pruning failed: ${err.message}`));
+    const scrub = () =>
+      Promise.resolve()
+        .then(() => this.pg.query(SCRUB_ORIGINS_SQL))
+        .then(({ rowCount }) => {
+          if (rowCount) this.logger.log(`dropped the offer position of ${rowCount} resolved quests`);
+        })
+        .catch((err: Error) => this.logger.warn(`offer position scrub failed: ${err.message}`));
     void prune();
-    this.pruneTimer = setInterval(() => void prune(), PRUNE_ATTEMPTS_EVERY_MS);
+    void scrub();
+    this.pruneTimer = setInterval(() => {
+      void prune();
+      void scrub();
+    }, PRUNE_ATTEMPTS_EVERY_MS);
     this.pruneTimer.unref();
   }
 
@@ -304,6 +330,7 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     const tx = await this.pg.connect();
     try {
       await tx.query('BEGIN');
+      await this.lockUserQuest(tx, userId, questId);
       const { rows } = await tx.query<{ placeId: string }>(
         `UPDATE quests SET skip_reason = $3
          WHERE id = $1 AND user_id = $2 AND status = 'skipped' AND skip_reason = 'unstated'
@@ -347,29 +374,40 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
   // nothing reacts to it yet (no event, no taste, no effect on the schedule).
   async wasOpen(userId: string, questId: string, answer: WasOpenAnswer): Promise<{ wasOpen: WasOpenAnswer }> {
     requireObserver(userId); // an observation always has a user (also a CHECK in migration 0019)
-    const { rows } = await this.pg.query<{ status: QuestStatus; placeId: string; at: Date; simulated: boolean }>(
-      `SELECT status, place_id::text AS "placeId", coalesce(completed_at, updated_at) AS at,
-              coalesce((reasons->>'simulated')::boolean, false) AS simulated
-       FROM quests WHERE id = $1 AND user_id = $2`,
-      [questId, userId],
-    );
-    if (!rows.length) throw new NotFoundException('no such quest');
-    const q = rows[0];
-    if (q.status !== 'completed') throw new ConflictException('only a quest you checked in at can be asked about');
-    if (q.simulated) throw new ConflictException('a simulated check-in has no answer: nobody went');
+    const tx = await this.pg.connect();
+    try {
+      await tx.query('BEGIN');
+      await this.lockUserQuest(tx, userId, questId); // user first, then quest: 404 if either is gone
+      const { rows } = await tx.query<{ status: QuestStatus; placeId: string; at: Date; simulated: boolean }>(
+        `SELECT status, place_id::text AS "placeId", coalesce(completed_at, updated_at) AS at,
+                coalesce((reasons->>'simulated')::boolean, false) AS simulated
+         FROM quests WHERE id = $1 AND user_id = $2`,
+        [questId, userId],
+      );
+      if (!rows.length) throw new NotFoundException('no such quest');
+      const q = rows[0];
+      if (q.status !== 'completed') throw new ConflictException('only a quest you checked in at can be asked about');
+      if (q.simulated) throw new ConflictException('a simulated check-in has no answer: nobody went');
 
-    await this.pg.query(
-      `INSERT INTO place_hours_facts (place_id, kind, source, fetched_at, confidence, was_open, quest_id, user_id)
-       VALUES ($1, 'observation', 'check-in', $2, $3::real, $4::boolean, $5, $6)
-       ON CONFLICT (quest_id) WHERE quest_id IS NOT NULL DO NOTHING`,
-      [q.placeId, q.at, answer === 'didnt_check' ? 0 : 0.9, answer === 'didnt_check' ? null : answer === 'yes', questId, userId],
-    );
-    const stored = await this.pg.query<{ wasOpen: boolean | null }>(
-      'SELECT was_open AS "wasOpen" FROM place_hours_facts WHERE quest_id = $1 AND user_id = $2',
-      [questId, userId],
-    );
-    const w = stored.rows[0]?.wasOpen;
-    return { wasOpen: w === true ? 'yes' : w === false ? 'no' : 'didnt_check' };
+      await tx.query(
+        `INSERT INTO place_hours_facts (place_id, kind, source, fetched_at, confidence, was_open, quest_id, user_id)
+         VALUES ($1, 'observation', 'check-in', $2, $3::real, $4::boolean, $5, $6)
+         ON CONFLICT (quest_id) WHERE quest_id IS NOT NULL DO NOTHING`,
+        [q.placeId, q.at, answer === 'didnt_check' ? 0 : 0.9, answer === 'didnt_check' ? null : answer === 'yes', questId, userId],
+      );
+      const stored = await tx.query<{ wasOpen: boolean | null }>(
+        'SELECT was_open AS "wasOpen" FROM place_hours_facts WHERE quest_id = $1 AND user_id = $2',
+        [questId, userId],
+      );
+      await tx.query('COMMIT');
+      const w = stored.rows[0]?.wasOpen;
+      return { wasOpen: w === true ? 'yes' : w === false ? 'no' : 'didnt_check' };
+    } catch (err) {
+      await tx.query('ROLLBACK');
+      throw err;
+    } finally {
+      tx.release();
+    }
   }
 
   // A check-in counts only near the place (the rule and its messages: checkin.ts).
@@ -582,7 +620,7 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
   // Accepted quests never expire on their own: the user committed to them.
   private async expireStaleOffer(userId: string, lat: number, lng: number) {
     await this.pg.query(
-      `UPDATE quests SET status = 'expired', updated_at = now()
+      `UPDATE quests SET status = 'expired', updated_at = now(), origin = NULL
        WHERE user_id = $1 AND status = 'offered'
          AND (created_at < now() - $4::interval
               OR NOT ST_DWithin(origin, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography, $5))`,

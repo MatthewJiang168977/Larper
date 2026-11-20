@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -152,6 +153,21 @@ func handle(ctx context.Context, pool *pgxpool.Pool, r *kgo.Record) (outcome, er
 	}
 	if tag.RowsAffected() == 0 {
 		return duplicate, tx.Commit(ctx)
+	}
+
+	// A delayed event may outlive its quest. Lock the user and quest before the
+	// profile so history/account deletion either waits for us or wins and makes
+	// this event ineligible to learn from.
+	questID, err := strconv.ParseInt(evt.QuestId, 10, 64)
+	if err != nil {
+		return ignored, tx.Commit(ctx) // not a quest id; record the event so a redelivery is a duplicate
+	}
+	var present bool
+	if err := tx.QueryRow(ctx, `SELECT lock_user_quest($1, $2)`, evt.UserId, questID).Scan(&present); err != nil {
+		return "", err
+	}
+	if !present {
+		return ignored, tx.Commit(ctx) // user or quest gone; record the event, nothing to learn from
 	}
 
 	// Lock the profile row. Two events for one user never race (same partition, one

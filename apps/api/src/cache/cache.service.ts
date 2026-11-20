@@ -41,6 +41,23 @@ export class CacheService implements OnApplicationShutdown {
     return { value, hit: false };
   }
 
+  // Drops a user's cached decks (keys deck:<version>:<userId>:...) after their data is
+  // deleted, so nothing ranked for the old history is served from the cache. Best effort:
+  // decks expire on their own within DECK_TTL_S, and Redis being down is not an error here.
+  async forgetUser(userId: string): Promise<void> {
+    if (!/^\d+$/.test(userId)) return;
+    try {
+      const keys: string[] = [];
+      for await (const batch of this.redis.scanStream({ match: `deck:*:${userId}:*`, count: 200 })) {
+        keys.push(...(batch as string[]));
+      }
+      if (keys.length) await this.redis.del(...keys);
+    } catch (err) {
+      // The error class only: no user id, and no message that could carry a key.
+      this.log.warn(`cache clear after a delete failed (${(err as Error).name})`);
+    }
+  }
+
   async onApplicationShutdown() {
     this.redis.disconnect();
   }

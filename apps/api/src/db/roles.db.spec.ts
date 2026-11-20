@@ -148,7 +148,7 @@ describeDb('per-service database roles (real database)', () => {
     expect(actual).toEqual(expected);
   });
 
-  it('grants nothing else: no column or sequence grants, one function, no memberships or owned objects', async () => {
+  it('grants nothing else: no column or sequence grants, only named functions, no memberships or owned objects', async () => {
     const { rows } = await owner.query<{ what: string; role: string; obj: string }>(
       `SELECT 'column' AS what, grantee AS role, table_name || '.' || column_name AS obj
          FROM information_schema.column_privileges c
@@ -171,15 +171,30 @@ describeDb('per-service database roles (real database)', () => {
          FROM pg_class WHERE pg_get_userbyid(relowner) = ANY($1)`,
       [ROLES],
     );
-    // The one function grant: the API prunes check-in attempts past 90 days (migration
-    // 0014) through a SECURITY DEFINER function instead of a DELETE grant.
-    expect(rows).toEqual([{ what: 'routine', role: 'larper_api', obj: 'prune_checkin_attempts' }]);
-    const exec = await owner.query<{ rolname: string; can: boolean }>(
-      `SELECT rolname, has_function_privilege(rolname, 'prune_checkin_attempts()', 'EXECUTE') AS can
-       FROM pg_roles WHERE rolname = ANY($1) ORDER BY rolname`,
-      [ROLES],
+    // The function grants: the API prunes check-in attempts past 90 days (migration 0014)
+    // and deletes/exports one user's own data (0020). Quest writers and the taste
+    // worker use a narrow locking function with no extra table grants.
+    const grants = {
+      delete_my_account: ['larper_api'],
+      delete_my_history: ['larper_api'],
+      export_my_checkin_attempts: ['larper_api'],
+      lock_user_quest: ['larper_api', 'larper_taste'],
+      prune_checkin_attempts: ['larper_api'],
+    };
+    const expected = Object.entries(grants).flatMap(([obj, allow]) =>
+      allow.map((role) => ({ what: 'routine', role, obj })),
     );
-    expect(exec.rows.filter((r) => r.can).map((r) => r.rolname)).toEqual(['larper_api']);
+    expect(rows.sort((a, b) => a.obj.localeCompare(b.obj) || a.role.localeCompare(b.role))).toEqual(expected);
+    const exec = await owner.query<{ what: string; role: string; obj: string; can: boolean }>(
+      `SELECT 'routine' AS what, rolname AS role, split_part(fn, '(', 1) AS obj,
+              has_function_privilege(rolname, fn, 'EXECUTE') AS can
+       FROM pg_roles, unnest($2::text[]) AS fn WHERE rolname = ANY($1) ORDER BY fn, rolname`,
+      [
+        ROLES,
+        ['prune_checkin_attempts()', 'delete_my_history(bigint)', 'delete_my_account(bigint)', 'export_my_checkin_attempts(bigint)', 'lock_user_quest(bigint,bigint)'],
+      ],
+    );
+    expect(exec.rows.filter((r) => r.can).map(({ what, role, obj }) => ({ what, role, obj }))).toEqual(expected);
   });
 
   it('has no role attributes beyond LOGIN, and DDL rights on nothing', async () => {
