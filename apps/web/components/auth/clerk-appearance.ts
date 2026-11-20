@@ -193,6 +193,26 @@ export const larperOsAuthAppearance = {
   },
 };
 
+export function larperOsAccountMenuAppearance(osClassName: string) {
+  return {
+    elements: {
+      // Give the 28 px avatar the same 44 px hit area as the other map controls.
+      userButtonTrigger: "hit-target",
+      userButtonPopoverRootBox: "larper-os-account-menu-root",
+      // The popover can render in a portal. Carry the OS tokens and fonts with it.
+      userButtonPopoverCard: `${osClassName} larper-os-account-menu`,
+      userButtonPopoverMain: "larper-os-account-menu-main",
+      userPreviewTextContainer: "larper-os-account-menu-identity",
+      userPreviewMainIdentifier: "larper-os-account-menu-name",
+      userPreviewMainIdentifierText: "larper-os-account-menu-name",
+      userPreviewSecondaryIdentifier: "larper-os-account-menu-email",
+      userButtonPopoverActionButton: "larper-os-account-menu-action",
+      userButtonPopoverActionButtonIconBox: "larper-os-account-menu-icon",
+      userButtonPopoverFooter: "larper-os-account-menu-footer",
+    },
+  };
+}
+
 type AvatarUser = {
   hasImage: boolean;
   firstName: string | null;
