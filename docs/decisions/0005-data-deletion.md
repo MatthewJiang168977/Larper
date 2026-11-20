@@ -178,7 +178,9 @@ the deleted user is kept.**
   Every "Clerk has no such user" 401 carries `code: "account_gone"`. Every other 401
   (no token, a token that fails verification) is bare. The web reads only `account_gone`
   as "your account is already deleted", so a session problem is never reported as a
-  deletion.
+  deletion. One `account_gone` doesn't come from Clerk: when another request's insert won
+  and its row was gone by our re-read, it was purged by a concurrent recheck or delete, so
+  the account really is gone. This can happen even with the check off (`off` or `history`).
 
   If a cleanup purge fails, the API logs it without any id. The account is still reported
   deleted, because the user's own data and sign-in are gone.

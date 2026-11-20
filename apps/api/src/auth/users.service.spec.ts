@@ -1,7 +1,10 @@
 import { Logger, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import type { Pool } from 'pg';
+import { Test } from '@nestjs/testing';
+import { CacheService } from '../cache/cache.service';
+import { PG } from '../db/db.module';
 import { ClerkApiError } from '../demo/clerk-api';
-import { clerkUserCheck, clerkUserCheckFromEnv } from './clerk-user-check';
+import { CLERK_USER_CHECK, clerkUserCheck, clerkUserCheckFromEnv } from './clerk-user-check';
 import { ACCOUNT_GONE, GONE_TTL_MS, UsersService } from './users.service';
 
 // UsersService.ensure with PRIVACY_DELETES=all: a new row only for a Clerk user that
@@ -45,9 +48,39 @@ describe('UsersService.ensure with the Clerk check', () => {
     // runs its last purge, and only then does this insert land.
     const { pool, users, query } = fakePool();
     const check = jest.fn<Promise<boolean>, [string]>().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
-    await expect(new UsersService(pool, check).ensure(ID)).rejects.toBeInstanceOf(UnauthorizedException);
+    const forgetUser = jest.fn(async () => undefined);
+    const cache = { forgetUser } as unknown as CacheService;
+    await expect(new UsersService(pool, check, cache).ensure(ID)).rejects.toBeInstanceOf(UnauthorizedException);
     expect(users).toEqual({});
     expect(query.mock.calls.some(([sql, p]) => sql.startsWith('SELECT delete_my_account') && p[0] === '100')).toBe(true);
+    // Its decks go too, after the purge: nothing keyed by the purged id is left behind.
+    expect(forgetUser.mock.calls).toEqual([['100']]);
+  });
+
+  it('clears no cache when nothing was purged', async () => {
+    const forgetUser = jest.fn(async () => undefined);
+    const cache = { forgetUser } as unknown as CacheService;
+    await new UsersService(fakePool().pool, async () => true, cache).ensure(ID);
+    expect(forgetUser).not.toHaveBeenCalled();
+  });
+
+  it('gets the shared CacheService through Nest DI, so a recheck purge clears decks in the real app', async () => {
+    // Built by Nest, as in the app: a parameter typed `CacheService | null` with no explicit
+    // token is emitted as Object and silently injected as null, so the constructor-level tests
+    // above can't catch a missing token. This one resolves it the way the app does.
+    const forgetUser = jest.fn(async () => undefined);
+    const { pool } = fakePool();
+    const check = jest.fn<Promise<boolean>, [string]>().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        UsersService,
+        { provide: PG, useValue: pool },
+        { provide: CLERK_USER_CHECK, useValue: check },
+        { provide: CacheService, useValue: { forgetUser } },
+      ],
+    }).compile();
+    await expect(moduleRef.get(UsersService).ensure(ID)).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(forgetUser.mock.calls).toEqual([['100']]);
   });
 
   it('keeps a new row when the recheck itself fails (a brand-new sign-up), logging no id', async () => {
@@ -112,11 +145,18 @@ describe('UsersService.ensure with the Clerk check', () => {
     // Our insert does nothing (another pod won), and by our re-read the winner's recheck has
     // already purged that row: nothing is there.
     const query = jest.fn(async (sql: string) => {
-      if (sql.startsWith('SELECT id FROM users')) return { rows: [] };
-      return { rows: [] }; // the insert CTE: found nothing, inserted nothing
+      if (sql.startsWith('WITH found AS')) return { rows: [] }; // the insert CTE lost the race: no row
+      if (sql.startsWith('SELECT id FROM users')) return { rows: [] }; // first read, and the re-read: purged
+      throw new Error(`unexpected query: ${sql}`);
     });
     const err = goneBody(new UsersService({ query } as unknown as Pool, async () => true).ensure(ID));
     expect(await err).toMatchObject({ statusCode: 401, code: ACCOUNT_GONE });
+    // First read, the insert, then the re-read that found the winner's row already gone.
+    expect(query.mock.calls.map(([sql]) => (sql as string).slice(0, 13))).toEqual([
+      'SELECT id FRO',
+      'WITH found AS',
+      'SELECT id FRO',
+    ]);
   });
 
   it('503 and no row when Clerk fails (5xx, timeout), logging no id', async () => {
