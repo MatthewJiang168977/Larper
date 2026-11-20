@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, Optional, ServiceUnavailableException, Unau
 import { Pool } from 'pg';
 import { PG } from '../db/db.module';
 import { isDemoUser } from '../demo/demo-account';
+import { CacheService } from '../cache/cache.service';
 import { CLERK_USER_CHECK, type ClerkUserCheck } from './clerk-user-check';
 
 @Injectable()
@@ -16,6 +17,8 @@ export class UsersService {
     @Inject(PG) private readonly pg: Pool,
     // Null unless PRIVACY_DELETES=all (clerk-user-check.ts).
     @Optional() @Inject(CLERK_USER_CHECK) private readonly clerkCheck: ClerkUserCheck | null = null,
+    // The app's one cache (CacheModule, global). Optional for tests that build this directly.
+    @Optional() private readonly cache: CacheService | null = null,
   ) {}
 
   // Returns our user id for a Clerk user, creating the row on first sight.
@@ -79,6 +82,9 @@ export class UsersService {
     if (exists) return;
     this.rememberGone(clerkId);
     await this.pg.query('SELECT delete_my_account($1)', [id]);
+    // A concurrent request may already have cached a deck under this id: drop it, as
+    // DELETE /me does, so nothing keyed by the purged id outlives it. forgetUser logs no id.
+    await this.cache?.forgetUser(id);
     throw accountGone();
   }
 
