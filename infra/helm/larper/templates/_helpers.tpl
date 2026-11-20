@@ -24,11 +24,41 @@ Clerk secret key and the user's id come from the Secret demo.secretName, created
 outside the chart (scripts/oci-up.sh, from apps/web/.env.local and the demo env file).
 */}}
 {{- define "larper.demoEnv" -}}
+{{ include "larper.demoClerkKey" . }}
+{{ include "larper.demoUserEnv" . }}
+{{- end -}}
+
+{{/* The two halves of larper.demoEnv: the API takes only the second when
+privacy.deletes=all brings its own CLERK_SECRET_KEY (never two of the same name). */}}
+{{- define "larper.demoClerkKey" -}}
 - name: CLERK_SECRET_KEY
   valueFrom: { secretKeyRef: { name: {{ .Values.demo.secretName }}, key: secretKey } }
+{{- end -}}
+
+{{- define "larper.demoUserEnv" -}}
 - name: DEMO_CLERK_USER_ID
   valueFrom: { secretKeyRef: { name: {{ .Values.demo.secretName }}, key: userId } }
 - { name: DEMO_EMAIL, value: {{ required "demo.email is required with demo.enabled" .Values.demo.email | quote }} }
+{{- end -}}
+
+{{/*
+privacy.deletes, checked: off, history or all (docs/decisions/0005-data-deletion.md).
+Unset, empty or false (an unquoted off in a values file) is off. "all" without a
+Clerk secret would make every new API pod exit at startup, so refuse to render it.
+*/}}
+{{- define "larper.privacyDeletes" -}}
+{{- $d := .Values.privacy.deletes -}}
+{{- if and (kindIs "bool" $d) $d -}}
+{{- fail "privacy.deletes is true: quote the value, \"off\", \"history\" or \"all\"" -}}
+{{- end -}}
+{{- $d = default "off" $d | toString -}}
+{{- if not (has $d (list "off" "history" "all")) -}}
+{{- fail (printf "privacy.deletes must be off, history or all, not %q" $d) -}}
+{{- end -}}
+{{- if and (eq $d "all") (not .Values.privacy.clerkSecret.name) -}}
+{{- fail "privacy.deletes=all needs privacy.clerkSecret.name (a Secret with the Clerk secret key under privacy.clerkSecret.key): without CLERK_SECRET_KEY the API exits at startup and its pods crash-loop" -}}
+{{- end -}}
+{{- $d -}}
 {{- end -}}
 
 {{/*

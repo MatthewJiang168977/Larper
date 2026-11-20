@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
 import { AuthModule } from './auth/auth.module';
-import { CacheService } from './cache/cache.service';
+import { CacheModule } from './cache/cache.module';
 import { DbModule } from './db/db.module';
 import { DemoModule } from './demo/demo.module';
 import { HealthController } from './health/health.controller';
@@ -22,12 +22,11 @@ import { ThrottleModule } from './throttle/throttle.module';
 
 @Module({
   // Sentry: route names on traces, and unexpected errors (not 4xx) reported.
-  imports: [SentryModule.forRoot(), DbModule, AuthModule, ThrottleModule, DemoModule],
+  imports: [SentryModule.forRoot(), DbModule, CacheModule, AuthModule, ThrottleModule, DemoModule],
   controllers: [HealthController, ProfileController, QuestsController, SavedPlacesController, MeDataController],
   providers: [
     { provide: APP_FILTER, useClass: SentryGlobalFilter },
     TagsService,
-    CacheService,
     QuestsService,
     AreasService,
     DataExportService,

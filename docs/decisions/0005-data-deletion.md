@@ -109,18 +109,28 @@ Owner steps:
    (`kubectl -n larper get pods -o wide`, and the image tags), and that nothing is in
    flight. Old API pods take their locks in the reverse order, and the old worker stalls
    on a missing user.
-3. Turn on `history` through a Helm value. That is a live change and needs the owner's
-   approval. This PR does not add the Helm value. It would be an environment entry such
-   as `PRIVACY_DELETES: history` in the API's environment in
-   `infra/helm/larper/values.yaml`, applied with the usual deploy.
-4. Turn on `all` the same way, after `history` has been checked. **Do not set it before
-   the key is there:** `PRIVACY_DELETES=all` with no `CLERK_SECRET_KEY` makes the new API
-   pods exit at startup and crash-loop. Today the key reaches the API pod only through
-   `larper.demoEnv` when `demo.enabled`, and `scripts/oci-up.sh` turns demo off when
-   `DEMO_USER_ID` is missing. So enabling `all` needs the key from a non-demo source
-   first (a Helm change: a Secret reference in the API's environment independent of
-   `demo.enabled`), then `all`. Both are live changes needing the owner's approval; this
-   PR does not change Helm.
+3. Turn on `history` with the Helm value `privacy.deletes: "history"` (or
+   `--set privacy.deletes=history`) on the usual deploy; the chart renders it as the API's
+   `PRIVACY_DELETES`. That is a live change and needs the owner's approval. Quote the value
+   in a values file: an unquoted `off` reads as false (treated as off).
+4. Turn on `all` after `history` has been checked, in two deploys:
+   - First deploy a `scripts/oci-up.sh` that writes the Secret `clerk-privacy` (key
+     `secretKey`) from `CLERK_SECRET_KEY` in `apps/web/.env.local`, the same key the demo
+     uses. It writes the Secret whenever that file has the key, whether or not the demo
+     is on. Check that the Secret exists and holds the same key as `clerk-demo` (compare
+     hashes; don't print it).
+   - Then set `privacy.deletes: "all"` and `privacy.clerkSecret.name: clerk-privacy`
+     (and `privacy.clerkSecret.key` only if the key isn't `secretKey`) in
+     `values-oci.yaml`, and deploy as usual.
+
+   With `all`, the chart gives the API `CLERK_SECRET_KEY` from that Secret whether or
+   not `demo.enabled`; the demo's key is not rendered a second time. `helm template`
+   refuses `all` with no `privacy.clerkSecret.name`, and `oci-up.sh` refuses a values
+   file that sets `all` without a well-formed key in `apps/web/.env.local`, because
+   `PRIVACY_DELETES=all` with no key makes the API pods exit at startup and crash-loop.
+   The chart can't check that the Secret exists: a missing one leaves the new pods in
+   `CreateContainerConfigError` (the old ones keep serving). Both deploys are live
+   changes needing the owner's approval.
 5. Rollback: set `PRIVACY_DELETES` back to off first (`history` if only `all` should
    go). Then roll the workers back to a build that skips missing users and quests. Only
    then consider reverting 0020.
@@ -178,7 +188,9 @@ the deleted user is kept.**
   Every "Clerk has no such user" 401 carries `code: "account_gone"`. Every other 401
   (no token, a token that fails verification) is bare. The web reads only `account_gone`
   as "your account is already deleted", so a session problem is never reported as a
-  deletion.
+  deletion. One `account_gone` doesn't come from Clerk: when another request's insert won
+  and its row was gone by our re-read, it was purged by a concurrent recheck or delete, so
+  the account really is gone. This can happen even with the check off (`off` or `history`).
 
   If a cleanup purge fails, the API logs it without any id. The account is still reported
   deleted, because the user's own data and sign-in are gone.
@@ -197,10 +209,10 @@ the deleted user is kept.**
   limits are keyed by a hash that is not stored beyond its counter window, so a limit can
   carry over to a new account for a short time. Existing logs and events keep ids until
   their own retention runs out (see the end of the next section).
-- **`CLERK_SECRET_KEY` must reach the API pod for `all`.** Today only the demo env
-  provides it (`larper.demoEnv`, when `demo.enabled`). Enabling `all` therefore needs a
-  Helm values change, which is a live change needing the owner's approval; this PR does
-  not change Helm. The same key now also serves the new-account check above.
+- **`CLERK_SECRET_KEY` must reach the API pod for `all`.** With `privacy.deletes: "all"`
+  the chart takes it from the Secret `privacy.clerkSecret.name`, independent of
+  `demo.enabled`, and refuses to render without that name (see "Rollout and rollback").
+  Setting it is a live change needing the owner's approval. The same key now also serves the new-account check above.
 
 Suggested privacy wording: "Deleting your account removes your data from Larper and
 deletes your sign-in. You can sign up again later with the same email as a new account.
