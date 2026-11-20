@@ -26,6 +26,13 @@ describe("useApi", () => {
     await expect(call()).rejects.toMatchObject({ name: "ApiError", status: 422, message: "You're 110 m away" });
   });
 
+  it("passes a 401's code through, so account_gone can be told from a bare 401", async () => {
+    fetchMock.mockResolvedValue(json(401, { statusCode: 401, code: "account_gone", message: "this account no longer exists" }));
+    await expect(call()).rejects.toMatchObject({ status: 401, code: "account_gone" });
+    fetchMock.mockResolvedValue(json(401, { message: "Unauthorized" }));
+    await expect(call()).rejects.toMatchObject({ status: 401, code: undefined });
+  });
+
   it("joins Nest's validation messages", async () => {
     fetchMock.mockResolvedValue(json(400, { message: ["lat must be a number", "lng must be a number"] }));
     await expect(call()).rejects.toMatchObject({ message: "lat must be a number; lng must be a number" });

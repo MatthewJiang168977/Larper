@@ -20,12 +20,15 @@ const journalDate = new Intl.DateTimeFormat("en-US", {
 });
 const errorTitle = "couldn't open the journal";
 
-export function JournalView({ entries, error, retry, previewControls, mapHref = "/" }: {
+export function JournalView({ entries, error, retry, previewControls, mapHref = "/", hideMapLink = false, dataPanel }: {
   entries: JournalEntry[] | null;
   error: string | null;
   retry: () => void;
   previewControls?: ReactNode;
   mapHref?: string;
+  hideMapLink?: boolean;
+  /** The "your data" section (export and delete), under the list. */
+  dataPanel?: ReactNode;
 }) {
   const count = entries?.length;
   const footer = error ? errorTitle : count === undefined ? "opening the journal…" : `${count} ${count === 1 ? "file" : "files"}`;
@@ -85,13 +88,16 @@ export function JournalView({ entries, error, retry, previewControls, mapHref = 
               </ol>
             </OSQuestPanel>
           )}
-          <Link href={mapHref} className="larper-os-button larper-journal-back">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M19 12H5m6-6-6 6 6 6" />
-            </svg>
-            back to the map
-          </Link>
+          {dataPanel}
+          {!hideMapLink && (
+            <Link href={mapHref} className="larper-os-button larper-journal-back">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M19 12H5m6-6-6 6 6 6" />
+              </svg>
+              back to the map
+            </Link>
+          )}
         </OSWindow>
       </div>
     </main>

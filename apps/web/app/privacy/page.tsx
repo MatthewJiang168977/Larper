@@ -39,6 +39,47 @@ const SERVICES: { name: string; what: string; collects: string[] }[] = [
   },
 ];
 
+// Keep in step with apps/api/src/privacy and docs/decisions/0005-data-deletion.md.
+const YOUR_DATA: { title: string; points: string[] }[] = [
+  {
+    title: "Download my data",
+    points: [
+      "One JSON file with your Larper account record (its ID, Clerk ID and creation date), taste profile, quest journal with places, check-ins and check-in attempts, answers to “was it open?”, and saved places.",
+      "For open or accepted quests, the journal includes your precise location at the time of the offer if Larper still holds it. Check-in attempts include measurements such as distance and location accuracy.",
+      "Find it under “your data” at the bottom of the journal.",
+    ],
+  },
+  {
+    title: "Delete my history",
+    points: [
+      "Removes your journal, check-ins and attempts, “was it open?” answers and saved places.",
+      "Keeps your account, your sign-in and your taste profile.",
+    ],
+  },
+  {
+    title: "Delete my account",
+    points: [
+      "Removes all of the above, plus your taste profile and your Larper account.",
+      "Also deletes your sign-in, then signs you out. If removing the sign-in doesn't go through, your data is still deleted and you stay signed in to try again.",
+      "You can sign up again later, with the same email if you like. That makes a new, empty account. After deletion Larper writes nothing new that identifies you. Records made before, such as server logs and event records, keep your account number until they expire on their usual schedule.",
+    ],
+  },
+  {
+    title: "Backups",
+    points: [
+      "Copies of deleted data can stay for about 3 weeks under the usual backup schedule. Backup storage has a 60-day cleanup rule for old objects.",
+      "Restoring a backup could bring back data deleted after that backup was taken. You can delete it again if that happens.",
+      "The shared demo account can't be exported or deleted because it belongs to every visitor.",
+    ],
+  },
+  {
+    title: "Events already sent",
+    points: [
+      "Events already sent to our event broker can remain after deletion until its scheduled cleanup, with no fixed deletion deadline.",
+    ],
+  },
+];
+
 const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
 export default function PrivacyPage() {
@@ -64,6 +105,23 @@ export default function PrivacyPage() {
             <p className="mt-1 text-ink-soft">{s.what}</p>
             <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">
               {s.collects.map((c) => (
+                <li key={c}>{c}</li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+
+      <h2 className="mt-8 text-2xl font-medium">Your data</h2>
+      <p className="mt-2 text-ink-soft">You can take your data with you, or delete it, from the journal. Some options are switched on step by step, and the journal shows only the ones that are available.</p>
+      <div className="mt-4 divide-y divide-rule border-y border-rule">
+        {YOUR_DATA.map((s) => (
+          <section key={s.title} aria-labelledby={`data-${slug(s.title)}`} className="py-5">
+            <h3 id={`data-${slug(s.title)}`} className="text-lg font-medium">
+              {s.title}
+            </h3>
+            <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">
+              {s.points.map((c) => (
                 <li key={c}>{c}</li>
               ))}
             </ul>

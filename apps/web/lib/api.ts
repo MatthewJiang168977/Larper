@@ -9,6 +9,17 @@ export interface Me {
   topTags: string[];
   /** The shared demo account ("Try the demo"): Midtown stands in for an unusable location. */
   demo?: boolean;
+  /**
+   * Which export and delete controls the API has switched on. Older API pods omit it:
+   * treat a missing value as all false. All false for the demo account.
+   */
+  privacy?: Privacy;
+}
+
+export interface Privacy {
+  export: boolean;
+  deleteHistory: boolean;
+  deleteAccount: boolean;
 }
 
 export interface VibeCard {
