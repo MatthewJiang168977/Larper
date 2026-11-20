@@ -4,6 +4,7 @@
 import { useSignIn } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { OSQuestPanel, osPrimaryButtonClass } from "@/components/larper-os/primitives";
 import { setDemo, track } from "@/lib/analytics";
 import { ApiError, demoTicket, describeError } from "@/lib/api";
 import { demoEnabled } from "./demo-account";
@@ -20,7 +21,15 @@ export function demoError(e: unknown): string {
   return "Couldn't start the demo. Try again.";
 }
 
-export function TryDemoButton({ className, redirectTo = "/" }: { className?: string; redirectTo?: string }) {
+export function TryDemoButton({
+  className,
+  redirectTo = "/",
+  labels = { idle: "Try the demo", busy: "Starting the demo…" },
+}: {
+  className?: string;
+  redirectTo?: string;
+  labels?: { idle: string; busy: string };
+}) {
   const { signIn } = useSignIn();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -58,7 +67,7 @@ export function TryDemoButton({ className, redirectTo = "/" }: { className?: str
   return (
     <span className="inline-flex flex-col items-center gap-2">
       <button type="button" className={className} onClick={start} disabled={busy} aria-busy={busy}>
-        {busy ? "Starting the demo…" : "Try the demo"}
+        {busy ? labels.busy : labels.idle}
       </button>
       {error && (
         <span role="alert" className="max-w-xs text-sm text-oxblood">
@@ -73,11 +82,13 @@ export function TryDemoButton({ className, redirectTo = "/" }: { className?: str
 export function DemoPanel({ signUpMode }: { signUpMode: string | undefined }) {
   if (!demoEnabled(signUpMode)) return null;
   return (
-    <section aria-label="Demo" className="flex w-full max-w-sm flex-col items-center gap-2 rounded border border-rule bg-paper px-4 py-3 text-center text-sm">
-      <p className="field-label">Just looking?</p>
-      <p>Sign-ups are by invitation. Look around with the shared demo account, no password needed.</p>
-      <TryDemoButton className="stamp-btn rounded-md bg-oxblood px-4 py-2 text-paper" />
-      <p className="text-xs text-ink-label">Everyone shares it, and it&apos;s reset every night.</p>
-    </section>
+    <OSQuestPanel>
+      <section aria-label="demo" className="larper-os-auth-demo">
+        <h2>just looking?</h2>
+        <p>sign-ups are by invitation. look around with the shared demo account, no password needed.</p>
+        <TryDemoButton className={osPrimaryButtonClass} labels={{ idle: "try the demo", busy: "starting the demo…" }} />
+        <p className="larper-os-auth-demo-note">everyone shares it, and it’s reset every night.</p>
+      </section>
+    </OSQuestPanel>
   );
 }

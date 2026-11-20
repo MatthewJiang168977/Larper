@@ -1,9 +1,19 @@
+import { render, screen } from "@testing-library/react";
 import { isValidElement, Suspense, type ReactElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { larperOsAuthAppearance } from "./clerk-appearance";
+import { signInAppearance } from "./demo-account";
 
-const { SignIn, SignUp } = vi.hoisted(() => ({ SignIn: () => null, SignUp: () => null }));
+const { SignIn, SignUp } = vi.hoisted(() => ({
+  SignIn: () => <div data-testid="sign-in-form" />,
+  SignUp: () => <div data-testid="sign-up-form" />,
+}));
 vi.mock("@clerk/nextjs", () => ({ SignIn, SignUp }));
-vi.mock("@/components/auth/try-demo", () => ({ DemoPanel: () => null }));
+vi.mock("@/app/larper-os", () => ({ larperOsClassName: "larper-os" }));
+vi.mock("@/components/auth/try-demo", () => ({
+  DemoPanel: ({ signUpMode }: { signUpMode?: string }) =>
+    signUpMode === "restricted" ? <aside aria-label="demo" /> : null,
+}));
 
 const { default: SignInPage } = await import("@/app/sign-in/[[...sign-in]]/page");
 const { default: SignUpPage } = await import("@/app/sign-up/[[...sign-up]]/page");
@@ -23,16 +33,44 @@ function find(node: ReactNode, type: unknown, path: unknown[] = []): { el: React
 }
 
 // Clerk's forms read the URL at request time, so under Cache Components they must
-// stream inside a Suspense boundary; the theme comes from <ClerkProvider>.
+// stream inside a Suspense boundary.
 describe("sign-in and sign-up pages", () => {
-  it("render Clerk's sign-in form inside Suspense, with its own sign-up-link rule only", () => {
+  it("passes only appearance to Clerk's sign-in form and keeps it inside Suspense", () => {
     const hit = find(SignInPage(), SignIn);
     expect(hit?.path).toContain(Suspense);
-    const appearance = (hit!.el.props as { appearance?: unknown }).appearance;
-    expect(appearance === undefined || JSON.stringify(appearance).includes("footerAction")).toBe(true);
+    expect(hit?.el.props).toEqual({ appearance: signInAppearance(process.env.NEXT_PUBLIC_SIGNUP_MODE) });
   });
 
-  it("render Clerk's sign-up form inside Suspense", () => {
-    expect(find(SignUpPage(), SignUp)?.path).toContain(Suspense);
+  it("passes only appearance to Clerk's sign-up form and keeps it inside Suspense", () => {
+    const hit = find(SignUpPage(), SignUp);
+    expect(hit?.path).toContain(Suspense);
+    expect(hit?.el.props).toEqual({ appearance: larperOsAuthAppearance });
+  });
+
+  it.each([
+    { Page: SignInPage, title: "sign in", form: "sign-in-form" },
+    { Page: SignUpPage, title: "sign up", form: "sign-up-form" },
+  ])("renders the $title form in a Larper OS window", ({ Page, title, form }) => {
+    render(<Page />);
+    const main = screen.getByRole("main");
+    const window = screen.getByRole("region", { name: title });
+    expect(main.classList.contains("larper-os")).toBe(true);
+    expect(main.contains(screen.getByText("larper os"))).toBe(true);
+    expect(main.contains(window)).toBe(true);
+    expect(window.contains(screen.getByTestId(form))).toBe(true);
+  });
+
+  it("puts the restricted-mode demo after the sign-in form in the window", () => {
+    vi.stubEnv("NEXT_PUBLIC_SIGNUP_MODE", "restricted");
+    try {
+      render(<SignInPage />);
+      const window = screen.getByRole("region", { name: "sign in" });
+      const demo = screen.getByRole("complementary", { name: "demo" });
+      const form = screen.getByTestId("sign-in-form");
+      expect(window.contains(demo)).toBe(true);
+      expect(form.compareDocumentPosition(demo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
