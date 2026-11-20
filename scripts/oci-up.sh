@@ -170,11 +170,22 @@ if [[ $CLOSE == 0 ]]; then
   # Clerk key must be there too. (Before, a missing key quietly turned "Try the demo"
   # off in production.) No user id: the demo is off, as on the stand-in.
   DEMO_USER_ID=$(env_value "$DEMO_ENV" DEMO_USER_ID)
-  CLERK_SECRET_KEY=
+  CLERK_SECRET_KEY=$(env_value "$WEB_ENV" CLERK_SECRET_KEY)
   if [[ -n $DEMO_USER_ID ]]; then
     secret_shape "clerk-demo userId (DEMO_USER_ID in $DEMO_ENV)" "$CLERK_USER_ID_RE" "$DEMO_USER_ID"
-    CLERK_SECRET_KEY=$(env_value "$WEB_ENV" CLERK_SECRET_KEY)
     secret_shape "clerk-demo secretKey (CLERK_SECRET_KEY in $WEB_ENV)" "$CLERK_SECRET_KEY_RE" "$CLERK_SECRET_KEY"
+  fi
+  # clerk-privacy: the same Clerk key for DELETE /me (privacy.deletes "all",
+  # privacy.clerkSecret.name; docs/decisions/0005-data-deletion.md, D7), whether or not
+  # the demo is on. Written whenever WEB_ENV has the key, so it is there before a values
+  # file turns "all" on; required once one does: without it the API pods couldn't start.
+  # PRIVACY_VALUES_FILES is for scripts/test/oci-up-guards.test.sh; leave it unset.
+  read -r -a privacy_files <<<"${PRIVACY_VALUES_FILES:-infra/helm/larper/values-oci.yaml infra/helm/larper/values-demo.yaml infra/helm/larper/values-oci-a1max.yaml}"
+  privacy_what="clerk-privacy secretKey (CLERK_SECRET_KEY in $WEB_ENV)"
+  if privacy_sets_all "${privacy_files[@]}"; then
+    secret_shape "$privacy_what, needed: a values file sets privacy.deletes \"all\"" "$CLERK_SECRET_KEY_RE" "$CLERK_SECRET_KEY"
+  elif [[ -n $CLERK_SECRET_KEY ]]; then
+    secret_shape "$privacy_what" "$CLERK_SECRET_KEY_RE" "$CLERK_SECRET_KEY"
   fi
 fi
 
@@ -407,6 +418,14 @@ if [[ -n $SENTRY_API_DSN ]]; then
   sentry=(--set sentry.enabled=true)
 else
   log "no $SENTRY_ENV: Sentry is off (infra/oci-k3s/README.md, \"Sentry\")"
+fi
+
+# clerk-privacy (values privacy.clerkSecret.name): the Clerk key for DELETE /me with
+# privacy.deletes "all", independent of the demo. Checked up front, and required there
+# when a values file sets "all". Without a key there is nothing to write.
+if [[ -n $CLERK_SECRET_KEY ]]; then
+  kubectl -n larper create secret generic clerk-privacy --from-literal=secretKey="$CLERK_SECRET_KEY" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 fi
 
 # The demo account (values-oci.yaml demo.enabled; infra/oci-k3s/README.md, "The public

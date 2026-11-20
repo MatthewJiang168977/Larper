@@ -36,6 +36,26 @@ secret_shape() { # what (and where it comes from), regex, value
   }
 }
 
+# privacy_sets_all FILE...: true if one of these values files sets privacy.deletes to "all"
+# (block style, as the chart's values files write it: a top-level privacy: and an
+# indented deletes:). oci-up.sh asks it whether the deploy needs the clerk-privacy key;
+# scripts/test/oci-up-guards.test.sh checks it agrees with the chart for the Oracle files.
+# A file that doesn't exist stops the deploy, so a wrong path can't read as "not all".
+privacy_sets_all() {
+  local f
+  for f in "$@"; do
+    [[ -f $f ]] || { echo "refusing to deploy: no values file $f" >&2; exit 1; }
+    awk '{ sub(/\r$/, "") }
+      /^[^[:space:]#]/ { inp = ($0 ~ /^privacy:[[:space:]]*(#.*)?$/) }
+      inp && /^[[:space:]]+deletes:/ {
+        v = $0; sub(/^[[:space:]]+deletes:[[:space:]]*/, "", v); sub(/[[:space:]]*#.*$/, "", v)
+        gsub(/["\047]/, "", v); if (v == "all") found = 1
+      }
+      END { exit !found }' "$f" && return 0
+  done
+  return 1
+}
+
 env_value() { # file, key: the value of its first KEY=value line, CR and quotes stripped; empty if none
   local v
   v=$(grep -E "^$2=" "$1" 2>/dev/null | head -n1 || true)
