@@ -25,7 +25,7 @@ FAKE_SQS_SECRET=$(printf 'abcdefghij%.0s' 1 2 3 4) # 40 characters
 FAKE_S3_SECRET=$(printf 'Zyxwvutsrq%.0s' 1 2 3 4)
 FAKE_S3_ID=$(printf '0123456789%.0s' 1 2 3 4)
 FAKE_CLERK_KEY=$(printf 'sk_%s_%s' test FakeFakeFake123)
-FAKE_TF=good FAKE_S3=none FAKE_CHECK=none FAKE_DEMO=none FAKE_SENTRY=none
+FAKE_TF=good FAKE_S3=none FAKE_CHECK=none FAKE_DEMO=none FAKE_SENTRY=none FAKE_PRIVACY=none
 check() { # description, command...
   local what=$1; shift
   if "$@"; then echo "ok   $what"; else echo "FAIL $what"; fails=$((fails + 1)); fi
@@ -42,6 +42,9 @@ check() { # description, command...
 #   FAKE_TF: good | fail (terraform output exits 1) | empty (exits 0, prints nothing) |
 #     bad (prints something that isn't a key)
 #   FAKE_S3, FAKE_CHECK, FAKE_DEMO: none (no file) | good | a broken variant below
+#     (FAKE_DEMO key-only / bad-key-only: a Clerk key in web.env but no demo user)
+#   FAKE_PRIVACY: none (the repo's values files) | all (one values file sets
+#     privacy.deletes "all")
 # The fake key values are built at run time, so no key-shaped literal sits in this file
 # for the secret scan to flag.
 sandbox() {
@@ -106,10 +109,15 @@ REGION=us-sanjose-1"
     bad-user) echo 'DEMO_USER_ID=3KZtest' >"$BOX/demo.env" ;;
   esac
   case $FAKE_DEMO in
-    good | bad-user) printf 'CLERK_SECRET_KEY="%s"\n' "$FAKE_CLERK_KEY" >"$BOX/web.env" ;;
+    good | bad-user | key-only) printf 'CLERK_SECRET_KEY="%s"\n' "$FAKE_CLERK_KEY" >"$BOX/web.env" ;;
     no-key) echo 'NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in' >"$BOX/web.env" ;;
-    bad-key) echo 'CLERK_SECRET_KEY=pk_test_wrongkind' >"$BOX/web.env" ;;
+    bad-key | bad-key-only) echo 'CLERK_SECRET_KEY=pk_test_wrongkind' >"$BOX/web.env" ;;
   esac
+  PRIVACY_FILES=
+  if [[ $FAKE_PRIVACY == all ]]; then
+    printf 'privacy:\n  deletes: "all"\n  clerkSecret:\n    name: clerk-privacy\n' >"$BOX/privacy.yaml"
+    PRIVACY_FILES="$BOX/privacy.yaml"
+  fi
   for tool in ssh scp kubectl helm docker; do
     printf '#!/usr/bin/env bash\necho "%s $*" >>"$FAKE_DIR/deploy-calls"\nexit 1\n' "$tool" >"$BOX/bin/$tool"
   done
@@ -133,7 +141,7 @@ run_up() { # FAKE_OCI mode, FAKE_GIT_STATUS, oci-up.sh arguments...
     FAKE_GIT_STATUS="$status" OCI_ENV_FILE="$BOX/instance.env" OCI_CLI_CONFIG_FILE="$BOX/home/.oci/config" \
     PUBLIC_ENV=/nonexistent SSH_KEY="$BOX/no-key" FAKE_TF="$FAKE_TF" FAKE_SQS_SECRET="$FAKE_SQS_SECRET" \
     S3_ENV="$BOX/s3.env" CHECK_ENV="$BOX/check.env" DEMO_ENV="$BOX/demo.env" WEB_ENV="$BOX/web.env" \
-    SENTRY_ENV="$BOX/sentry.env" \
+    SENTRY_ENV="$BOX/sentry.env" PRIVACY_VALUES_FILES="$PRIVACY_FILES" \
     timeout 60 "$BASH_BIN" "$UP" "$@" >"$BOX/out" 2>&1
   RC=$?; [[ -n ${DEBUG:-} ]] && { echo "--- rc=$RC"; cat "$BOX/out"; }
 }
@@ -221,7 +229,7 @@ broken() { # description, expected message, FAKE_*=value..., -- oci-up.sh argume
   while [[ $# -gt 0 && $1 != -- ]]; do printf -v "${1%%=*}" '%s' "${1#*=}"; shift; done
   [[ ${1:-} == -- ]] && shift
   run_up good "" "$@"
-  FAKE_TF=good FAKE_S3=none FAKE_CHECK=none FAKE_DEMO=none FAKE_SENTRY=none
+  FAKE_TF=good FAKE_S3=none FAKE_CHECK=none FAKE_DEMO=none FAKE_SENTRY=none FAKE_PRIVACY=none
   check "$what: exits non-zero" test "$RC" -ne 0
   check "$what: says which value, from where" said "$msg"
   check "$what: nothing remote, no deploy step" no_remote
@@ -240,6 +248,11 @@ broken "sentry, workers DSN not https" "sentry WORKERS_DSN (.*sentry.env) isn't 
 broken "clerk-demo, key missing (no longer turns the demo off quietly)" "clerk-demo secretKey (CLERK_SECRET_KEY in .*web.env) is empty" FAKE_DEMO=no-key
 broken "clerk-demo, not a secret key" "clerk-demo secretKey (CLERK_SECRET_KEY in .*web.env) isn't in the expected shape" FAKE_DEMO=bad-key
 broken "clerk-demo, user id malformed" "clerk-demo userId (DEMO_USER_ID in .*demo.env) isn't in the expected shape" FAKE_DEMO=bad-user
+# clerk-privacy: a key with no demo user is still checked (it is written); and a values
+# file that sets privacy.deletes "all" needs one, demo or not.
+broken "clerk-privacy, not a secret key (no demo)" "clerk-privacy secretKey (CLERK_SECRET_KEY in .*web.env) isn't in the expected shape" FAKE_DEMO=bad-key-only
+broken "clerk-privacy, deletes all without a key" 'clerk-privacy secretKey (CLERK_SECRET_KEY in .*web.env), needed: a values file sets privacy.deletes "all" is empty' FAKE_PRIVACY=all
+broken "clerk-privacy, deletes all with a malformed key" "needed: a values file sets privacy.deletes \"all\" isn't in the expected shape" FAKE_PRIVACY=all FAKE_DEMO=bad-key-only
 
 # 10. All of them present and well-formed (a quoted Clerk key too): past the checks to
 #     the first remote step, with nothing printed.
@@ -248,6 +261,42 @@ run_up good ""
 FAKE_TF=good FAKE_S3=none FAKE_CHECK=none FAKE_DEMO=none FAKE_SENTRY=none
 check "all Secrets well-formed: gets past the checks to the first remote step" reached_remote
 check "all Secrets well-formed: prints no secret" prints_no_secret
+
+# 10b. privacy.deletes "all" with a well-formed key and no demo user: past the checks.
+FAKE_PRIVACY=all FAKE_DEMO=key-only
+run_up good ""
+FAKE_PRIVACY=none FAKE_DEMO=none
+check "deletes all, key, no demo: gets past the checks to the first remote step" reached_remote
+check "deletes all, key, no demo: prints no secret" prints_no_secret
+
+# 10c. privacy_sets_all (scripts/lib/oci-secrets.sh) reads the values files as the chart
+#      does: only a top-level privacy: block's deletes, quoted or not, comments ignored,
+#      CRLF too; a missing file stops rather than reading as "not all".
+psa() { # expected (yes|no|exit), YAML (printf format)
+  local f="$BOX/psa.yaml" got
+  # shellcheck disable=SC2059
+  printf "$2" >"$f"
+  got=$( (source scripts/lib/oci-secrets.sh; if privacy_sets_all "$f"; then echo yes; else echo no; fi) 2>/dev/null) || got=exit
+  [[ $got == "$1" ]]
+}
+check "privacy_sets_all: quoted all" psa yes 'privacy:\n  deletes: "all"\n'
+check "privacy_sets_all: unquoted all, comment" psa yes 'api:\n  x: 1\nprivacy:\n  clerkSecret:\n    name: s\n  deletes: all # on\n'
+check "privacy_sets_all: CRLF" psa yes 'privacy:\r\n  deletes: "all"\r\n'
+check "privacy_sets_all: history" psa no 'privacy:\n  deletes: "history"\n'
+check "privacy_sets_all: commented out" psa no 'privacy:\n  # deletes: "all"\n  deletes: "off"\n'
+check "privacy_sets_all: another block's deletes" psa no 'api:\n  deletes: all\nprivacy:\n  deletes: "off"\n'
+psa_missing() { local got; got=$( (source scripts/lib/oci-secrets.sh; privacy_sets_all "$BOX/nope.yaml"; echo reached) 2>/dev/null); [[ $? == 1 && $got != *reached* ]]; }
+check "privacy_sets_all: missing file stops" psa_missing
+# The repo's Oracle values: it agrees with what the chart renders (real helm, as CI has).
+if command -v helm >/dev/null; then
+  chart=infra/helm/larper
+  rendered=$(helm template larper "$chart" -n larper -s templates/api.yaml -f "$chart/values-oci.yaml" \
+    -f "$chart/values-demo.yaml" -f "$chart/values-oci-a1max.yaml" \
+    --set postgres.backup.endpointURL=https://objectstorage.example.invalid | grep -c 'name: PRIVACY_DELETES, value: "all"' || true)
+  read_all=$( (source scripts/lib/oci-secrets.sh
+    privacy_sets_all "$chart/values-oci.yaml" "$chart/values-demo.yaml" "$chart/values-oci-a1max.yaml" && echo 1 || echo 0) )
+  check "privacy_sets_all agrees with the chart for the Oracle values ($read_all)" test "$rendered" == "$read_all"
+fi
 
 # 11. --close writes no Secret, so a broken source doesn't stop it.
 FAKE_TF=fail

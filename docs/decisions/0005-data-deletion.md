@@ -113,19 +113,24 @@ Owner steps:
    `--set privacy.deletes=history`) on the usual deploy; the chart renders it as the API's
    `PRIVACY_DELETES`. That is a live change and needs the owner's approval. Quote the value
    in a values file: an unquoted `off` reads as false (treated as off).
-4. Turn on `all` after `history` has been checked. First make sure a Secret in the
-   `larper` namespace holds the Clerk secret key (the same instance the web app uses):
-   `clerk-demo` (key `secretKey`) exists only when `scripts/oci-up.sh` had a
-   `DEMO_USER_ID`, so a dedicated Secret is safer. Then set
-   `privacy.clerkSecret.name: <that Secret>` (and `privacy.clerkSecret.key` if its key
-   isn't `secretKey`) with `privacy.deletes: "all"`. The chart then gives the API
-   `CLERK_SECRET_KEY` from that Secret whether or not `demo.enabled` (the demo's key is
-   not rendered a second time), and `helm template` refuses `all` with no
-   `privacy.clerkSecret.name`, because `PRIVACY_DELETES=all` with no key makes the API
-   pods exit at startup and crash-loop. The chart can't check that the Secret exists: a
-   missing one leaves the new pods in `CreateContainerConfigError` (the old ones keep
-   serving). Creating the Secret and the deploy are live changes needing the owner's
-   approval.
+4. Turn on `all` after `history` has been checked, in two deploys:
+   - First deploy a `scripts/oci-up.sh` that writes the Secret `clerk-privacy` (key
+     `secretKey`) from `CLERK_SECRET_KEY` in `apps/web/.env.local`, the same key the demo
+     uses. It writes the Secret whenever that file has the key, whether or not the demo
+     is on. Check that the Secret exists and holds the same key as `clerk-demo` (compare
+     hashes; don't print it).
+   - Then set `privacy.deletes: "all"` and `privacy.clerkSecret.name: clerk-privacy`
+     (and `privacy.clerkSecret.key` only if the key isn't `secretKey`) in
+     `values-oci.yaml`, and deploy as usual.
+
+   With `all`, the chart gives the API `CLERK_SECRET_KEY` from that Secret whether or
+   not `demo.enabled`; the demo's key is not rendered a second time. `helm template`
+   refuses `all` with no `privacy.clerkSecret.name`, and `oci-up.sh` refuses a values
+   file that sets `all` without a well-formed key in `apps/web/.env.local`, because
+   `PRIVACY_DELETES=all` with no key makes the API pods exit at startup and crash-loop.
+   The chart can't check that the Secret exists: a missing one leaves the new pods in
+   `CreateContainerConfigError` (the old ones keep serving). Both deploys are live
+   changes needing the owner's approval.
 5. Rollback: set `PRIVACY_DELETES` back to off first (`history` if only `all` should
    go). Then roll the workers back to a build that skips missing users and quests. Only
    then consider reverting 0020.
