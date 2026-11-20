@@ -98,6 +98,101 @@ export const CLERK_APPEARANCE = {
   },
 };
 
+const osInk = "var(--larper-os-ink)";
+const osPaper = "var(--larper-os-paper)";
+const osWindow = "var(--larper-os-window)";
+const osRed = "var(--larper-os-red)";
+const osMutedInk = "var(--larper-os-disabled-ink)";
+const osFocus = { outline: `2px solid ${osInk}`, outlineOffset: "2px", boxShadow: "none" };
+const osLink = {
+  color: osRed,
+  textDecoration: "underline",
+  textUnderlineOffset: "0.15em",
+  "&:hover": { color: osRed },
+  "&:focus-visible": osFocus,
+};
+const osButton = {
+  minHeight: "var(--larper-os-tap-min)",
+  border: `1px solid ${osInk}`,
+  backgroundColor: osPaper,
+  backgroundImage: "none",
+  color: osInk,
+  boxShadow: "var(--larper-os-shadow-raised)",
+  transition: "none",
+  "&:hover": { backgroundColor: "var(--larper-os-butter)", color: osInk },
+  "&:active": { transform: "none", backgroundColor: osInk, color: osPaper },
+  "&:focus-visible": osFocus,
+  "&:disabled": {
+    backgroundColor: "var(--larper-os-disabled)",
+    color: osMutedInk,
+    boxShadow: "none",
+  },
+};
+const osField = {
+  minHeight: "var(--larper-os-tap-min)",
+  backgroundColor: osPaper,
+  border: `1px solid ${osInk}`,
+  boxShadow: "none",
+  transition: "none",
+  "&::placeholder": { color: osMutedInk, opacity: 1 },
+  "&:focus, &:focus-visible": osFocus,
+};
+
+// Applied only to the route's form. The provider still themes user menus and avatars.
+export const larperOsAuthAppearance = {
+  variables: {
+    colorPrimary: "var(--larper-os-pool)",
+    colorPrimaryForeground: osInk,
+    colorDanger: osRed,
+    colorNeutral: osInk,
+    colorForeground: osInk,
+    colorMutedForeground: osMutedInk,
+    colorMuted: osWindow,
+    colorBackground: osWindow,
+    colorInput: osPaper,
+    colorInputForeground: osInk,
+    colorBorder: osInk,
+    colorRing: osInk,
+    colorShadow: osInk,
+    fontFamily: "var(--larper-os-font-body), system-ui, sans-serif",
+    fontFamilyButtons: "var(--larper-os-font-body), system-ui, sans-serif",
+    fontFamilyMono: "var(--font-jetbrains), ui-monospace, monospace",
+    borderRadius: "var(--larper-os-radius-tag)",
+  },
+  elements: {
+    rootBox: { width: "100%", minWidth: 0 },
+    cardBox: { width: "100%", maxWidth: "100%", backgroundColor: osWindow, border: "none", boxShadow: "none" },
+    card: { width: "100%", padding: "16px", backgroundColor: osWindow },
+    footer: { background: osWindow, borderTop: `1px solid ${osInk}` },
+    headerTitle: {
+      fontFamily: "var(--larper-os-font-pixel), system-ui, sans-serif",
+      fontWeight: 400,
+      fontSize: "clamp(26px, 6vw, 32px)",
+      letterSpacing: "normal",
+      overflowWrap: "anywhere",
+    },
+    headerSubtitle: { color: osMutedInk, overflowWrap: "anywhere" },
+    formButtonPrimary: {
+      ...osButton,
+      backgroundColor: "var(--larper-os-pool)",
+      "&:hover": { backgroundColor: "var(--larper-os-pool-hover)", color: osInk },
+    },
+    socialButtonsBlockButton: osButton,
+    alternativeMethodsBlockButton: osButton,
+    formFieldInput: osField,
+    otpCodeFieldInput: osField,
+    button: { "&:focus-visible": osFocus },
+    footerActionLink: osLink,
+    formFieldAction: osLink,
+    formResendCodeLink: osLink,
+    identityPreviewEditButton: osLink,
+    backLink: osLink,
+    headerBackLink: osLink,
+    dividerLine: { backgroundColor: osInk },
+    formFieldErrorText: { color: osRed },
+  },
+};
+
 type AvatarUser = {
   hasImage: boolean;
   firstName: string | null;

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api";
 import { DemoPanel, demoError, TryDemoButton } from "./try-demo";
@@ -92,8 +92,20 @@ describe("DemoPanel", () => {
     const { container, rerender } = render(<DemoPanel signUpMode="public" />);
     expect(container.textContent).toBe("");
     rerender(<DemoPanel signUpMode="restricted" />);
-    expect(screen.getByRole("region", { name: "Demo" }).textContent).toContain("Try the demo");
+    const panel = screen.getByRole("region", { name: "demo" });
+    expect(panel.closest(".larper-os-panel")).toBeTruthy();
+    expect(within(panel).getByRole("heading", { name: "just looking?" })).toBeTruthy();
+    expect(within(panel).getByRole("button", { name: "try the demo" }).classList.contains("larper-os-button-primary")).toBe(true);
     expect(container.textContent?.toLowerCase()).not.toContain("password:");
+  });
+
+  it("uses the sign-in panel labels while redeeming the same demo ticket", async () => {
+    demoTicket.mockResolvedValue("ticket-1");
+    render(<DemoPanel signUpMode="restricted" />);
+    fireEvent.click(screen.getByRole("button", { name: "try the demo" }));
+    expect((screen.getByRole("button", { name: "starting the demo…" }) as HTMLButtonElement).disabled).toBe(true);
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/"));
+    expect(signIn.ticket).toHaveBeenCalledWith({ ticket: "ticket-1" });
   });
 });
 
