@@ -786,6 +786,13 @@ describe("padding helpers", () => {
 describe("compass and tilt", () => {
   const compass = () => screen.queryByRole("button", { name: "Reset view: north up" });
 
+  it("backs the OS red needle with the opaque OS window colour", async () => {
+    render(<MapLibreQuestMap {...props()} />);
+    await toggleButton();
+    expect(screen.getByTestId("compass-needle").querySelector("path")?.getAttribute("fill")).toBe("var(--larper-os-red)");
+    expect(compass()?.classList).toContain("bg-[var(--larper-os-window)]");
+  });
+
   it("caps the tilt, so the map never turns into sky", async () => {
     render(<MapLibreQuestMap {...props()} />);
     await toggleButton();

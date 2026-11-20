@@ -1,11 +1,9 @@
 .larper-quest-screen {
   --paper: var(--larper-os-window);
-  --paper-deep: var(--larper-os-paper);
   --paper-edge: var(--larper-os-ink);
   --ink: var(--larper-os-ink);
   --ink-soft: #3a2432;
   --ink-label: #3a2432;
-  --ink-faint: #5c5552;
   --rule: var(--larper-os-ink);
   --oxblood: var(--larper-os-red);
   --moss: #285736;
@@ -37,6 +35,27 @@
 .larper-quest-map-controls:not(:empty) { margin-inline-start: auto; padding-block: 4px; }
 .larper-quest-brand { font: 400 28px/1 var(--larper-os-font-pixel), system-ui, sans-serif; }
 .larper-quest-menu-link { display: grid; min-height: 44px; min-width: 44px; place-items: center; padding-inline: 8px; font: 400 24px/1 var(--larper-os-font-pixel), system-ui, sans-serif; }
+
+.larper-demo-notice-surface {
+  background: var(--larper-os-window);
+  color: var(--larper-os-ink);
+  border: 1px solid var(--larper-os-ink);
+  border-radius: var(--larper-os-radius-tag);
+  box-shadow: var(--larper-os-shadow-raised);
+}
+.larper-demo-notice :is(.larper-demo-notice-label, .larper-demo-notice-retry) {
+  font: 400 20px/1.15 var(--larper-os-font-pixel), system-ui, sans-serif;
+  text-transform: lowercase;
+}
+.larper-demo-notice button:focus-visible { outline-offset: -2px; }
+.larper-demo-notice-retry, .larper-place-hours-link {
+  color: var(--larper-os-red);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+.larper-demo-notice-retry:disabled, .larper-place-hours {
+  color: var(--larper-os-disabled-ink);
+}
 
 .larper-quest-dock {
   position: absolute;

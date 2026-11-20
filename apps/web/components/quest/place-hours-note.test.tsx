@@ -32,10 +32,13 @@ describe("PlaceHoursNote: unverified", () => {
     expect(site.getAttribute("target")).toBe("_blank");
     expect(site.getAttribute("rel")).toBe("noreferrer");
     expect(site.classList).toContain("hit-target");
+    expect(site.classList).toContain("larper-place-hours-link");
     const call = screen.getByRole("link", { name: "call" });
     expect(call.getAttribute("href")).toBe("tel:2125550142");
     expect(call.getAttribute("target")).toBeNull();
     expect(call.classList).toContain("hit-target");
+    expect(call.classList).toContain("larper-place-hours-link");
+    expect(screen.getByTestId("place-hours").classList).toContain("larper-place-hours");
   });
 
   it("is just the text when there's neither", () => {

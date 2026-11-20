@@ -342,9 +342,9 @@ describe("QuestSheet on a phone: full", () => {
     }
   });
 
-  it("draws the small print in the label ink", () => {
+  it("draws the small print in the OS label ink", () => {
     sheet("offered");
-    expect(screen.getByText(/hours unverified, check before you go/).closest("[data-testid=place-hours]")!.classList).toContain("text-ink-label");
+    expect(screen.getByText(/hours unverified, check before you go/).closest("[data-testid=place-hours]")!.classList).toContain("larper-place-hours");
   });
 
   it("links 'Check hours' to a maps search for the place, with the other links", () => {

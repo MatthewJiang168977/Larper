@@ -7,7 +7,7 @@ import { telUrl, webUrl } from "@/lib/web-url";
 export const STALE_DAYS = 180;
 
 const OSM_COPYRIGHT = "https://www.openstreetmap.org/copyright";
-const LINK = "hit-target underline underline-offset-4";
+const LINK = "hit-target larper-place-hours-link";
 
 const SOURCES: Record<HoursSource, string> = {
   osm: "OpenStreetMap",
@@ -60,7 +60,7 @@ export function PlaceHoursNote({
   const safe = readHours(hours);
   const confirmations = readConfirmations(openConfirmations);
   return (
-    <div className="mt-4 space-y-1 text-sm text-ink-label" data-testid="place-hours">
+    <div className="larper-place-hours mt-4 space-y-1 text-sm" data-testid="place-hours">
       {safe.status === "known" ? <Known hours={safe} now={now} /> : <Unverified website={website} phone={phone} />}
       {confirmations && (
         <p>
