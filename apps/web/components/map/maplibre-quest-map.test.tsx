@@ -1,7 +1,9 @@
 import { act, configure, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { StyleSpecification } from "maplibre-gl";
 import type { DeckItem, QuestView } from "@/lib/api";
 import { haloDiameterPx } from "./accuracy-halo";
+import LarperOsQuestMap from "./larper-os-quest-map";
 import MapLibreQuestMap, { inView, leadCamera, MAX_PITCH, resetCamera, sheetPadding, viewCamera } from "./maplibre-quest-map";
 import type { QuestMapProps } from "./quest-map";
 
@@ -41,6 +43,8 @@ const fake = vi.hoisted(() => {
     layers: Set<string> = new Set(["buildings-3d", "buildings-2d"]);
     getLayer = vi.fn((id: string) => (this.layers.has(id) ? { id } : undefined));
     setLayoutProperty = vi.fn();
+    setPaintProperty = vi.fn();
+    setLight = vi.fn();
     onceListeners = new Map<string, (() => void)[]>();
     once(event: string, fn: () => void) {
       this.onceListeners.set(event, [...(this.onceListeners.get(event) ?? []), fn]);
@@ -50,8 +54,8 @@ const fake = vi.hoisted(() => {
       this.onceListeners.delete(event);
       fns.forEach((fn) => fn());
     }
-    opts: { container: HTMLElement; maxPitch?: number; bearing?: number; pitch?: number };
-    constructor(opts: { container: HTMLElement; maxPitch?: number; bearing?: number; pitch?: number }) {
+    opts: { container: HTMLElement; style: StyleSpecification; maxPitch?: number; bearing?: number; pitch?: number };
+    constructor(opts: FakeMap["opts"]) {
       this.opts = opts;
       this.container = opts.container;
       state.maps.push(this);
@@ -68,6 +72,8 @@ const fake = vi.hoisted(() => {
     }
     off(event: string, fn: () => void) {
       this.listeners.get(event)?.delete(fn);
+      const pending = this.onceListeners.get(event);
+      if (pending) this.onceListeners.set(event, pending.filter((entry) => entry !== fn));
     }
     fire(event: string) {
       this.listeners.get(event)?.forEach((fn) => fn());
@@ -166,6 +172,75 @@ const youAreHere = () =>
 beforeEach(() => {
   fake.maps.length = 0;
   fake.markers.length = 0;
+});
+
+describe("live map palette", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.setSystemTime(new Date("2026-06-22T00:30:30Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it.each([false, true])("switches at sunset without moving the map (reduced motion: %s)", async (reducedMotion) => {
+    vi.stubGlobal("matchMedia", vi.fn((media: string) => ({
+      media,
+      matches: reducedMotion && media === "(prefers-reduced-motion: reduce)",
+    })));
+    const { container } = render(<LarperOsQuestMap {...props()} />);
+    await act(async () => { await vi.dynamicImportSettled(); });
+    const instance = map();
+    const pin = screen.getByRole("button", { name: "Cafe Uno" });
+    const toggle = screen.getByRole("button", { name: "Switch to flat 2D view" });
+    fireEvent.click(toggle);
+    pin.focus();
+    expect(instance.setLayoutProperty).toHaveBeenCalledWith("buildings-3d", "visibility", "none");
+    instance.setLayoutProperty.mockClear();
+    instance.flyTo.mockClear();
+    instance.easeTo.mockClear();
+    instance.jumpTo.mockClear();
+    expect(container.querySelector("[data-map-palette='day']")).toBeTruthy();
+
+    act(() => { vi.advanceTimersByTime(29_999); });
+    expect(instance.setPaintProperty).not.toHaveBeenCalled();
+    act(() => { vi.advanceTimersByTime(1); });
+
+    expect(instance.opts.style.transition).toEqual({ duration: 0, delay: 0 });
+    expect(instance.setPaintProperty).toHaveBeenCalledWith("paper", "background-color", "#251e29");
+    expect(instance.setLight).toHaveBeenCalledWith(expect.objectContaining({ color: "#b9e3e6" }));
+    expect(container.querySelector("[data-map-palette='night']")).toBeTruthy();
+    expect(fake.maps).toEqual([instance]);
+    expect(instance.remove).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Cafe Uno" })).toBe(pin);
+    expect(pin.dataset.selected).toBe("true");
+    expect(document.activeElement).toBe(pin);
+    expect(toggle.getAttribute("aria-label")).toBe("Switch to 3D view");
+    expect(instance.setLayoutProperty).not.toHaveBeenCalled();
+    expect(instance.flyTo).not.toHaveBeenCalled();
+    expect(instance.easeTo).not.toHaveBeenCalled();
+    expect(instance.jumpTo).not.toHaveBeenCalled();
+  });
+
+  it("catches up on tab return and waits for style layers", async () => {
+    const { unmount } = render(<LarperOsQuestMap {...props()} />);
+    await act(async () => { await vi.dynamicImportSettled(); });
+    const instance = map();
+    instance.layers.clear();
+
+    vi.setSystemTime(new Date("2026-06-22T02:00:00Z"));
+    fireEvent(document, new Event("visibilitychange"));
+    expect(instance.setPaintProperty).not.toHaveBeenCalled();
+
+    instance.layers.add("buildings-3d");
+    act(() => { instance.fireOnce("style.load"); });
+    expect(instance.setPaintProperty).toHaveBeenCalledWith("paper", "background-color", "#251e29");
+
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });
 
 describe("map markers", () => {

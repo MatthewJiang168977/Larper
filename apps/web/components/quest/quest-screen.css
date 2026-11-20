@@ -110,6 +110,11 @@
 .larper-quest-map-controls > div { position: static; }
 .larper-quest-map-controls button { background: var(--larper-os-window); border: 1px solid var(--larper-os-ink); border-radius: 6px; box-shadow: var(--larper-os-shadow-raised); backdrop-filter: none; color: var(--larper-os-ink); font-family: var(--larper-os-font-body), system-ui, sans-serif; }
 .larper-quest-screen .maplibregl-ctrl-attrib { background: var(--larper-os-window); color: var(--larper-os-ink); font-family: var(--larper-os-font-body), system-ui, sans-serif; }
+/* Pins and map buttons sit over tiles. Attribution links sit on a light panel. */
+.larper-quest-screen [data-map-palette="night"] button:focus-visible {
+  outline: 2px solid var(--larper-os-paper);
+  outline-offset: 2px;
+}
 
 @media (hover: hover) {
   .larper-quest-handle:hover, .larper-quest-links a:hover, .larper-quest-menu-link:hover, .larper-quest-lead:hover, .larper-quest-screen .pin-lead:hover { background: var(--larper-os-butter); }
