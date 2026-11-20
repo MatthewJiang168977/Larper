@@ -5,6 +5,8 @@ import { AnalyticsAuth } from "@/components/analytics-auth";
 import { CLERK_APPEARANCE } from "@/components/auth/clerk-appearance";
 import { WebAnalytics } from "@/components/web-analytics";
 import "./globals.css";
+import { larperOsClassName } from "./larper-os";
+import "@/components/auth/larper-os-clerk.css";
 
 const fraunces = Fraunces({
   variable: "--font-fraunces",
@@ -34,7 +36,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${fraunces.variable} ${jetbrains.variable} h-full antialiased`}>
-      <body className="flex min-h-full flex-col">
+      <body className={`${larperOsClassName} flex min-h-full flex-col`}>
         <ClerkProvider appearance={CLERK_APPEARANCE}>
           <AnalyticsAuth />
           {children}

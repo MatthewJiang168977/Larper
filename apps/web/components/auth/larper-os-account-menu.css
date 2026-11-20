@@ -72,3 +72,28 @@
     transition: none;
   }
 }
+
+.larper-os-demo-account {
+  position: relative;
+}
+
+.larper-os-demo-account > summary {
+  list-style: none;
+}
+
+.larper-os-demo-account > summary::-webkit-details-marker {
+  display: none;
+}
+
+.larper-os-demo-account-panel {
+  position: absolute;
+  z-index: 1;
+  inset-block-start: calc(100% + 4px);
+  inset-inline-end: 0;
+  width: max-content;
+  padding: 6px;
+  background: var(--larper-os-window);
+  border: 1px solid var(--larper-os-ink);
+  border-radius: var(--larper-os-radius-window);
+  box-shadow: var(--larper-os-shadow-raised);
+}
