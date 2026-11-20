@@ -2,6 +2,18 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import PrivacyPage from "./page";
 
+vi.mock("@/app/larper-os", () => ({ larperOsClassName: "larper-os" }));
+
+it("shows one Privacy heading in the journal-style OS shell", () => {
+  render(<PrivacyPage />);
+  expect(screen.getByText("larper os")).toBeTruthy();
+  const window = screen.getByRole("region", { name: "Privacy" });
+  const headings = screen.getAllByRole("heading", { level: 1 });
+  expect(headings.map((heading) => heading.textContent)).toEqual(["Privacy"]);
+  expect(window.contains(headings[0])).toBe(true);
+  expect(screen.getByRole("link", { name: "← Larper" }).getAttribute("href")).toBe("/");
+});
+
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
     <a href={href} {...rest}>

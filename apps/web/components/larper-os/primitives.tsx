@@ -12,19 +12,22 @@ export function OSMenuBar({ children }: { children?: ReactNode }) {
   );
 }
 
-export function OSWindow({ title, children, footer }: {
-  title: string;
+export function OSWindow({ title, titleAs: Title = "span", children, footer }: {
+  title?: string;
+  titleAs?: "span" | "h1";
   children: ReactNode;
   footer?: ReactNode;
 }) {
   const titleId = useId();
   return (
-    <section className="larper-os-window" aria-labelledby={titleId}>
-      <div className="larper-os-titlebar">
-        <span className="larper-os-grille" aria-hidden="true" />
-        <span id={titleId}>{title}</span>
-        <span className="larper-os-grille" aria-hidden="true" />
-      </div>
+    <section className="larper-os-window" aria-labelledby={title ? titleId : undefined}>
+      {title && (
+        <div className="larper-os-titlebar">
+          <span className="larper-os-grille" aria-hidden="true" />
+          <Title id={titleId}>{title}</Title>
+          <span className="larper-os-grille" aria-hidden="true" />
+        </div>
+      )}
       <div className="larper-os-body">{children}</div>
       {footer && <footer className="larper-os-footer">{footer}</footer>}
     </section>

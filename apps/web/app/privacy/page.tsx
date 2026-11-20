@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { LarperOsPageShell } from "@/components/larper-os/page-shell";
 
 export const metadata: Metadata = { title: "Privacy · Larper" };
 
@@ -84,54 +85,55 @@ const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
 export default function PrivacyPage() {
   return (
-    <main className="mx-auto w-full max-w-xl flex-1 px-4 py-8">
-      <Link href="/" className="hit-target font-mono text-xs uppercase tracking-wider text-ink-soft underline-offset-4 hover:underline">
-        ← Larper
-      </Link>
-      <h1 className="mt-4 text-4xl font-semibold tracking-tight">Privacy</h1>
-      <p className="mt-3 text-ink-soft">
-        Larper uses your location to find quests near you. That stays with Larper: none of the services below get your
-        coordinates, addresses, or the names of the places you&apos;re sent to.
-      </p>
-      <p className="mt-3 text-ink-soft">Three services help us see whether Larper works:</p>
+    <LarperOsPageShell title="Privacy" wide>
+      <div className="larper-os-privacy">
+        <Link href="/" className="larper-os-page-link justify-self-start">
+          ← Larper
+        </Link>
+        <p>
+          Larper uses your location to find quests near you. That stays with Larper: none of the services below get your
+          coordinates, addresses, or the names of the places you&apos;re sent to.
+        </p>
+        <p>Three services help us see whether Larper works:</p>
 
-      <div className="mt-6 divide-y divide-rule border-y border-rule">
-        {SERVICES.map((s) => (
-          // An id without spaces: aria-labelledby reads a space as a list of ids.
-          <section key={s.name} aria-labelledby={`svc-${slug(s.name)}`} className="py-5">
-            <h2 id={`svc-${slug(s.name)}`} className="text-xl font-medium">
-              {s.name}
-            </h2>
-            <p className="mt-1 text-ink-soft">{s.what}</p>
-            <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">
-              {s.collects.map((c) => (
-                <li key={c}>{c}</li>
-              ))}
-            </ul>
-          </section>
-        ))}
+        <div className="larper-os-privacy-groups">
+          {SERVICES.map((s) => (
+            // An id without spaces: aria-labelledby reads a space as a list of ids.
+            <section key={s.name} aria-labelledby={`svc-${slug(s.name)}`}>
+              <h2 id={`svc-${slug(s.name)}`}>
+                {s.name}
+              </h2>
+              <p className="mt-1">{s.what}</p>
+              <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">
+                {s.collects.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+
+        <h2 className="mt-2">Your data</h2>
+        <p>You can take your data with you, or delete it, from the journal. Some options are switched on step by step, and the journal shows only the ones that are available.</p>
+        <div className="larper-os-privacy-groups">
+          {YOUR_DATA.map((s) => (
+            <section key={s.title} aria-labelledby={`data-${slug(s.title)}`}>
+              <h3 id={`data-${slug(s.title)}`}>
+                {s.title}
+              </h3>
+              <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">
+                {s.points.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+
+        <p className="text-sm">
+          Signing in uses Clerk, which sets the cookies that keep you signed in. Nothing here is sold or used for ads.
+        </p>
       </div>
-
-      <h2 className="mt-8 text-2xl font-medium">Your data</h2>
-      <p className="mt-2 text-ink-soft">You can take your data with you, or delete it, from the journal. Some options are switched on step by step, and the journal shows only the ones that are available.</p>
-      <div className="mt-4 divide-y divide-rule border-y border-rule">
-        {YOUR_DATA.map((s) => (
-          <section key={s.title} aria-labelledby={`data-${slug(s.title)}`} className="py-5">
-            <h3 id={`data-${slug(s.title)}`} className="text-lg font-medium">
-              {s.title}
-            </h3>
-            <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">
-              {s.points.map((c) => (
-                <li key={c}>{c}</li>
-              ))}
-            </ul>
-          </section>
-        ))}
-      </div>
-
-      <p className="mt-6 text-sm text-ink-soft">
-        Signing in uses Clerk, which sets the cookies that keep you signed in. Nothing here is sold or used for ads.
-      </p>
-    </main>
+    </LarperOsPageShell>
   );
 }

@@ -570,11 +570,11 @@ export default function MapLibreQuestMap({
         onClick={resetView}
         aria-label="Reset view: north up"
         title="Reset view: north up"
-        className="flex h-11 w-11 items-center justify-center rounded-full border border-paper-edge bg-paper/90 text-ink shadow-sm backdrop-blur"
+        className="flex h-11 w-11 items-center justify-center rounded-full border border-[var(--larper-os-ink)] bg-[var(--larper-os-window)] text-[var(--larper-os-ink)] shadow-sm"
       >
         {/* A needle pointing north on the map, so it turns against the bearing. */}
         <svg viewBox="0 0 24 24" aria-hidden="true" className="h-6 w-6" style={{ transform: `rotate(${-bearing}deg)` }} data-testid="compass-needle">
-          <path d="M12 3 L16 12 L12 10.5 L8 12 Z" fill="var(--oxblood)" />
+          <path d="M12 3 L16 12 L12 10.5 L8 12 Z" fill="var(--larper-os-red)" />
           <path d="M12 21 L8 12 L12 13.5 L16 12 Z" fill="currentColor" opacity="0.35" />
         </svg>
       </button>

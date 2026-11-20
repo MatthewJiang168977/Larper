@@ -6,10 +6,11 @@ import { describe, expect, it } from "vitest";
 // doesn't lay out or apply :focus-visible, so these read globals.css as text.
 const WEB = join(__dirname, "..");
 const css = readFileSync(join(WEB, "app/globals.css"), "utf8");
+const osCss = readFileSync(join(WEB, "app/larper-os.css"), "utf8");
 
-const token = (name: string) => {
-  const m = css.match(new RegExp(`--${name}:\\s*(#[0-9a-f]{6})`, "i"));
-  if (!m) throw new Error(`no --${name} in globals.css`);
+const token = (name: string, stylesheet = css) => {
+  const m = stylesheet.match(new RegExp(`--${name}:\\s*(#[0-9a-f]{6})`, "i"));
+  if (!m) throw new Error(`missing token --${name}`);
   return m[1];
 };
 const rule = (selector: string) => {
@@ -41,20 +42,26 @@ function sources(dir: string): string[] {
 }
 
 describe("text contrast", () => {
-  it("--ink-label passes AA for small text on paper; --ink-faint doesn't, so it's not for text", () => {
+  it("--ink-label passes AA for small text on paper", () => {
     expect(token("ink-label")).toBe("#6b6455");
     expect(contrast(token("ink-label"), token("paper"))).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(token("ink-faint"), token("paper"))).toBeLessThan(4.5);
+  });
+
+  it("keeps OS chip text, links and the compass needle legible on their opaque OS surface", () => {
+    const surface = token("larper-os-window", osCss);
+    for (const name of ["larper-os-ink", "larper-os-red", "larper-os-disabled-ink"]) {
+      expect(contrast(token(name, osCss), surface)).toBeGreaterThanOrEqual(4.5);
+    }
   });
 
   it("field labels are drawn in --ink-label", () => {
     expect(rule(".field-label")).toContain("color: var(--ink-label)");
   });
 
-  it("no text anywhere uses --ink-faint (borders and rules only)", () => {
+  it("does not use any of the removed Scrapbook tokens or utility aliases", () => {
     const offenders = sources(WEB).flatMap((f) => {
       const text = readFileSync(f, "utf8");
-      const hits = [...text.matchAll(/text-ink-faint|(?<![-\w])color:\s*var\(--ink-faint\)/g)];
+      const hits = [...text.matchAll(/--(?:color-)?(?:paper-deep|ink-faint|oxblood-soft|water)(?![-\w])|(?<![-\w])(?:font-serif|\w+-(?:paper-deep|ink-faint|oxblood-soft|water))(?![-\w])/g)];
       return hits.map(() => f.slice(WEB.length + 1));
     });
     expect(offenders).toEqual([]);

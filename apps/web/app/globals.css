@@ -4,35 +4,26 @@
    Light only on purpose. It's a paper notebook, and the map style is drawn for paper. */
 :root {
   --paper: #f2ead8;
-  --paper-deep: #e7dcc3;
   --paper-edge: #d9ccaf;
   --ink: #2b2925;
   --ink-soft: #5d574c;
   /* Small text (labels, captions): 4.9:1 on --paper, AA at 11px. */
   --ink-label: #6b6455;
-  /* Rules and borders only, never text: 3.1:1 on --paper. */
-  --ink-faint: #8c8473;
   --rule: #cdbf9f;
   --oxblood: #7b2d26;
-  --oxblood-soft: #a2554b;
   --moss: #56623a;
-  --water: #b8c2bd;
   color-scheme: light;
 }
 
 @theme inline {
   --color-paper: var(--paper);
-  --color-paper-deep: var(--paper-deep);
   --color-paper-edge: var(--paper-edge);
   --color-ink: var(--ink);
   --color-ink-soft: var(--ink-soft);
   --color-ink-label: var(--ink-label);
-  --color-ink-faint: var(--ink-faint);
   --color-rule: var(--rule);
   --color-oxblood: var(--oxblood);
-  --color-oxblood-soft: var(--oxblood-soft);
   --color-moss: var(--moss);
-  --font-serif: var(--font-fraunces);
   --font-mono: var(--font-jetbrains);
 }
 

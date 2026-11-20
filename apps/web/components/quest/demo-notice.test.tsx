@@ -47,6 +47,13 @@ describe("DemoNotice: one line", () => {
     expect(notice.textContent).not.toMatch(/demo/i);
   });
 
+  it("uses the OS surface for the chip and details", () => {
+    renderNotice(washSq("denied"), { retrying: true });
+    const region = screen.getByRole("region", { name: "Demo area" });
+    expect(region.classList.contains("larper-demo-notice")).toBe(true);
+    expect(region.querySelectorAll(".larper-demo-notice-surface")).toHaveLength(2);
+  });
+
   it("shows a retry in progress", () => {
     renderNotice(midtown("waiting"), { retrying: true });
     expect((screen.getByRole("button", { name: "Looking…" }) as HTMLButtonElement).disabled).toBe(true);
