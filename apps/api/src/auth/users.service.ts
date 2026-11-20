@@ -18,7 +18,9 @@ export class UsersService {
     // Null unless PRIVACY_DELETES=all (clerk-user-check.ts).
     @Optional() @Inject(CLERK_USER_CHECK) private readonly clerkCheck: ClerkUserCheck | null = null,
     // The app's one cache (CacheModule, global). Optional for tests that build this directly.
-    @Optional() private readonly cache: CacheService | null = null,
+    // The explicit token matters: `CacheService | null` is emitted as `Object` in the decorator
+    // metadata, which Nest can't resolve, and @Optional() would then quietly inject null.
+    @Optional() @Inject(CacheService) private readonly cache: CacheService | null = null,
   ) {}
 
   // Returns our user id for a Clerk user, creating the row on first sight.

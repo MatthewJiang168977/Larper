@@ -1,8 +1,10 @@
 import { Logger, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import type { Pool } from 'pg';
-import type { CacheService } from '../cache/cache.service';
+import { Test } from '@nestjs/testing';
+import { CacheService } from '../cache/cache.service';
+import { PG } from '../db/db.module';
 import { ClerkApiError } from '../demo/clerk-api';
-import { clerkUserCheck, clerkUserCheckFromEnv } from './clerk-user-check';
+import { CLERK_USER_CHECK, clerkUserCheck, clerkUserCheckFromEnv } from './clerk-user-check';
 import { ACCOUNT_GONE, GONE_TTL_MS, UsersService } from './users.service';
 
 // UsersService.ensure with PRIVACY_DELETES=all: a new row only for a Clerk user that
@@ -60,6 +62,25 @@ describe('UsersService.ensure with the Clerk check', () => {
     const cache = { forgetUser } as unknown as CacheService;
     await new UsersService(fakePool().pool, async () => true, cache).ensure(ID);
     expect(forgetUser).not.toHaveBeenCalled();
+  });
+
+  it('gets the shared CacheService through Nest DI, so a recheck purge clears decks in the real app', async () => {
+    // Built by Nest, as in the app: a parameter typed `CacheService | null` with no explicit
+    // token is emitted as Object and silently injected as null, so the constructor-level tests
+    // above can't catch a missing token. This one resolves it the way the app does.
+    const forgetUser = jest.fn(async () => undefined);
+    const { pool } = fakePool();
+    const check = jest.fn<Promise<boolean>, [string]>().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        UsersService,
+        { provide: PG, useValue: pool },
+        { provide: CLERK_USER_CHECK, useValue: check },
+        { provide: CacheService, useValue: { forgetUser } },
+      ],
+    }).compile();
+    await expect(moduleRef.get(UsersService).ensure(ID)).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(forgetUser.mock.calls).toEqual([['100']]);
   });
 
   it('keeps a new row when the recheck itself fails (a brand-new sign-up), logging no id', async () => {
