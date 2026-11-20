@@ -424,7 +424,7 @@ describe("Journal", () => {
       expect(screen.queryByRole("button", { name: "try again" })).toBeNull();
     });
 
-    it("a 401 from DELETE /me means the account is already gone: same path as deleted", async () => {
+    it("an account_gone 401 from DELETE /me follows the same path as deleted", async () => {
       answerDelete = () => Promise.reject(new ApiError("this account no longer exists", 401, "http", "account_gone"));
       render(<JournalPage />);
       await settle();
@@ -436,7 +436,7 @@ describe("Journal", () => {
       expect(replace).toHaveBeenCalledWith("/");
     });
 
-    it("a 401 on try again also finishes the sign-out and goes to the landing page", async () => {
+    it("an account_gone 401 on try again finishes the sign-out and goes to the landing page", async () => {
       const responses: Array<() => Promise<unknown>> = [
         () => Promise.resolve({ clerkUser: "failed" }),
         () => Promise.reject(new ApiError("this account no longer exists", 401, "http", "account_gone")),
@@ -451,6 +451,18 @@ describe("Journal", () => {
       expect(signOut).toHaveBeenCalledOnce();
       expect(replace).toHaveBeenCalledWith("/");
       expect(screen.getByText("your sign-in is deleted too.")).toBeTruthy();
+    });
+
+    it("a bare 401 from DELETE /me shows the signed-out error and does not sign out", async () => {
+      answerDelete = () => Promise.reject(new ApiError("unauthorized", 401));
+      render(<JournalPage />);
+      await settle();
+      deleteData("account");
+      await settle();
+      expect(api).toHaveBeenCalledWith("/me", { method: "DELETE" });
+      expect(screen.getByRole("alert").textContent).toBe("you've been signed out. sign in again to carry on.");
+      expect(signOut).not.toHaveBeenCalled();
+      expect(replace).not.toHaveBeenCalled();
     });
 
     it("a 401 from DELETE /me/history stays the usual error and does not sign out", async () => {
