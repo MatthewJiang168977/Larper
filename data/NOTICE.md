@@ -3,8 +3,8 @@
 ## Overture places (`*.parquet`)
 
 `extract_overture.py` writes Overture Maps Places data here, for example
-`nyc.parquet`. The parquet files are gitignored and never committed, but the same rows
-are loaded into Larper's database and shown in the app.
+`nyc.parquet`. The parquet files are gitignored and never committed, but rows from
+these extracts are loaded into Larper's database and shown in the app.
 
 - Source: [Overture Maps Foundation](https://overturemaps.org/), Places theme, the
   release named in `extract_overture.py` (`RELEASE`).

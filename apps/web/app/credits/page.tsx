@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Credits · Larper" };
 
 type Credit = { name: string; href: string; what: string; license: { name: string; href: string }[] };
 
-// Keep in step with components/map/journal-style.ts (tiles), data/NOTICE.md (places),
+// Keep in step with components/map/journal-style.ts (tiles, label fonts), data/NOTICE.md (places),
 // docs/decisions/opening-hours-sources.md (hours), app/larper-os.ts and app/layout.tsx (fonts).
 const GROUPS: { title: string; credits: Credit[] }[] = [
   {
@@ -29,6 +29,12 @@ const GROUPS: { title: string; credits: Credit[] }[] = [
         href: "https://openfreemap.org/",
         what: "Serves the map tiles and the fonts for map labels, free and without a key.",
         license: [{ name: "MIT", href: "https://github.com/hyperknot/openfreemap/blob/main/LICENSE.md" }],
+      },
+      {
+        name: "Noto Sans",
+        href: "https://fonts.google.com/noto/specimen/Noto+Sans",
+        what: "The street and place labels on the map, served by OpenFreeMap.",
+        license: [{ name: "SIL Open Font License 1.1", href: "https://openfontlicense.org/" }],
       },
       {
         name: "MapLibre GL JS",
@@ -66,7 +72,7 @@ const GROUPS: { title: string; credits: Credit[] }[] = [
       {
         name: "Jersey 20, Fraunces and JetBrains Mono",
         href: "https://fonts.google.com/",
-        what: "Headings, display type and figures, through Google Fonts.",
+        what: "Headings, display type and figures. From Google Fonts, served by Larper itself.",
         license: [{ name: "SIL Open Font License 1.1", href: "https://openfontlicense.org/" }],
       },
     ],
@@ -87,25 +93,24 @@ export default function CreditsPage() {
         {GROUPS.map((g) => (
           <section key={g.title} aria-labelledby={`credits-${slug(g.title)}`} className="larper-os-privacy">
             <h2 id={`credits-${slug(g.title)}`}>{g.title}</h2>
-            <ul className="larper-os-privacy-groups list-none">
+            <ul className="larper-os-privacy-groups larper-os-credits" role="list">
               {g.credits.map((c) => (
                 <li key={c.name}>
                   <h3>
-                    <a href={c.href} className="underline underline-offset-2">
+                    <a href={c.href} className="larper-os-credit-link">
                       {c.name}
                     </a>
                   </h3>
                   <p className="mt-1 text-sm">{c.what}</p>
-                  <p className="mt-1 text-sm">
-                    {c.license.map((l, i) => (
-                      <span key={l.name}>
-                        {i > 0 && " · "}
-                        <a href={l.href} className="underline underline-offset-2">
+                  <ul className="larper-os-credit-licences text-sm" role="list" aria-label={`${c.name} licences`}>
+                    {c.license.map((l) => (
+                      <li key={l.name}>
+                        <a href={l.href} className="larper-os-credit-link">
                           {l.name}
                         </a>
-                      </span>
+                      </li>
                     ))}
-                  </p>
+                  </ul>
                 </li>
               ))}
             </ul>

@@ -49,6 +49,18 @@ describe("Credits", () => {
     expect(type.textContent).toContain("SIL Open Font License 1.1");
   });
 
+  it("gives every credit link its own tap target, licences as a list", () => {
+    render(<CreditsPage />);
+    const external = screen.getAllByRole("link").filter((a) => !(a.getAttribute("href") ?? "").startsWith("/"));
+    for (const a of external) expect(a.className).toContain("larper-os-credit-link");
+    expect(screen.getByRole("list", { name: "Overture Maps Foundation licences" }).querySelectorAll("li").length).toBe(4);
+  });
+
+  it("credits the map's label font", () => {
+    render(<CreditsPage />);
+    expect(screen.getByRole("region", { name: "Map" }).textContent).toContain("Noto Sans");
+  });
+
   it("opens every external credit over https", () => {
     render(<CreditsPage />);
     for (const a of screen.getAllByRole("link")) {
