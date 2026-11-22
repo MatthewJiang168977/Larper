@@ -32,6 +32,7 @@ type Row struct {
 	SourceURL *string // nil for "seen on the door"
 	CheckedAt time.Time
 	Schedule  json.RawMessage // the normalized v1 schedule, as hours.Schedule marshals it
+	CSVName   string          // the name column as exported, if the file has one; checked against the database
 }
 
 // Raw is what goes in the raw column: the text as typed. For "seen on the door" a second line
@@ -199,7 +200,9 @@ func parseCSVAt(r io.Reader, now time.Time) ([]Row, []Problem) {
 			}
 		}
 		if len(probs) == n0 {
-			rows = append(rows, Row{Line: line, PlaceID: id, Hours: oh, SourceURL: srcURL, CheckedAt: checked, Schedule: raw})
+			// The exporter prefixes a name that could run as a spreadsheet formula with '.
+			name := strings.TrimPrefix(get(rec, "name"), "'")
+			rows = append(rows, Row{Line: line, PlaceID: id, Hours: oh, SourceURL: srcURL, CheckedAt: checked, Schedule: raw, CSVName: name})
 		}
 	}
 	if len(probs) > 0 {
@@ -214,6 +217,8 @@ type Store interface {
 	// regular schedule is already on file (true = the write would update it). A place missing
 	// from the map does not exist.
 	ExistingSchedules(ctx context.Context, placeIDs []int64) (map[int64]bool, error)
+	// PlaceNames returns the database name of each of the given places that exists.
+	PlaceNames(ctx context.Context, placeIDs []int64) (map[int64]string, error)
 	// Upsert writes all rows in one transaction: every row lands or none does.
 	Upsert(ctx context.Context, rows []Row) error
 }
@@ -221,7 +226,17 @@ type Store interface {
 // Action is what applying a row does.
 type Action struct {
 	Row    Row
-	Update bool // false: insert
+	Update bool   // false: insert
+	Name   string // the place's name in the database, printed in the dry run
+}
+
+// sameName compares names the way a person would: case, spacing and curly quotes aside.
+func sameName(a, b string) bool {
+	norm := func(s string) string {
+		s = strings.NewReplacer("’", "'", "‘", "'", "“", `"`, "”", `"`).Replace(s)
+		return strings.Join(strings.Fields(strings.ToLower(s)), " ")
+	}
+	return norm(a) == norm(b)
 }
 
 // Plan refuses places that do not exist (every one is reported) and says what each row does.
@@ -234,6 +249,10 @@ func Plan(ctx context.Context, st Store, rows []Row) ([]Action, []Problem, error
 	if err != nil {
 		return nil, nil, err
 	}
+	names, err := st.PlaceNames(ctx, ids)
+	if err != nil {
+		return nil, nil, err
+	}
 	var acts []Action
 	var probs []Problem
 	for _, r := range rows {
@@ -242,7 +261,13 @@ func Plan(ctx context.Context, st Store, rows []Row) ([]Action, []Problem, error
 			probs = append(probs, Problem{r.Line, fmt.Sprintf("place %d does not exist", r.PlaceID)})
 			continue
 		}
-		acts = append(acts, Action{Row: r, Update: upd})
+		// A mistyped place_id that happens to exist would put verified hours on the wrong
+		// venue: when the file still has the exported name, it must match.
+		if r.CSVName != "" && !sameName(r.CSVName, names[r.PlaceID]) {
+			probs = append(probs, Problem{r.Line, fmt.Sprintf("place %d is %q in the database, but this row says %q: check the place_id", r.PlaceID, names[r.PlaceID], r.CSVName)})
+			continue
+		}
+		acts = append(acts, Action{Row: r, Update: upd, Name: names[r.PlaceID]})
 	}
 	if len(probs) > 0 {
 		return nil, probs, nil

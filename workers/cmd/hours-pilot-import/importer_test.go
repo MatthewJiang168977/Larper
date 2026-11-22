@@ -160,8 +160,19 @@ func TestParseCSVCheckedDateUsesNewYorkCalendar(t *testing.T) {
 }
 
 type fakeStore struct {
-	places  map[int64]bool // id -> has a manual schedule already
+	places  map[int64]bool   // id -> has a manual schedule already
+	names   map[int64]string // id -> name in the database
 	written []Row
+}
+
+func (f *fakeStore) PlaceNames(_ context.Context, ids []int64) (map[int64]string, error) {
+	out := map[int64]string{}
+	for _, id := range ids {
+		if _, ok := f.places[id]; ok {
+			out[id] = f.names[id]
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeStore) ExistingSchedules(_ context.Context, ids []int64) (map[int64]bool, error) {
@@ -189,7 +200,7 @@ func TestPlanRefusesUnknownPlacesAndSeparatesInsertFromUpdate(t *testing.T) {
 	if len(probs) > 0 {
 		t.Fatal(probs)
 	}
-	st := &fakeStore{places: map[int64]bool{10: false, 11: true}}
+	st := &fakeStore{places: map[int64]bool{10: false, 11: true}, names: map[int64]string{10: "A", 11: "B"}}
 	acts, probs, err := Plan(context.Background(), st, rows)
 	if err != nil {
 		t.Fatal(err)
@@ -204,6 +215,46 @@ func TestPlanRefusesUnknownPlacesAndSeparatesInsertFromUpdate(t *testing.T) {
 	acts, probs, err = Plan(context.Background(), st, rows[:2])
 	if err != nil || len(probs) != 0 || len(acts) != 2 || acts[0].Update || !acts[1].Update {
 		t.Fatalf("acts %+v probs %v err %v", acts, probs, err)
+	}
+	if acts[0].Name != "A" || acts[1].Name != "B" {
+		t.Fatalf("names %q %q", acts[0].Name, acts[1].Name)
+	}
+}
+
+// A mistyped place_id that exists would put verified hours on the wrong venue: the exported
+// name must still match the database (case, spacing, curly quotes and the exporter's formula
+// guard aside), and the dry run shows the database name.
+func TestPlanRefusesARowWhoseNameIsAnotherPlace(t *testing.T) {
+	rows, probs := parse(t, strings.Join([]string{
+		`10,EV,joe’s  PIZZA,,,,Mo-Fr 09:00-17:00,seen on the door,2026-11-18`,
+		`11,EV,'=Bar Nine,,,,Mo-Fr 09:00-17:00,seen on the door,2026-11-18`,
+		`12,EV,Blue Door Cafe,,,,Mo-Fr 09:00-17:00,seen on the door,2026-11-18`,
+		`13,EV,,,,,Mo-Fr 09:00-17:00,seen on the door,2026-11-18`,
+		"",
+	}, "\r\n"))
+	if len(probs) > 0 {
+		t.Fatal(probs)
+	}
+	st := &fakeStore{
+		places: map[int64]bool{10: false, 11: false, 12: false, 13: false},
+		names:  map[int64]string{10: "Joe's Pizza", 11: "=Bar Nine", 12: "Red Door Cafe", 13: "Anything"},
+	}
+	acts, probs, err := Plan(context.Background(), st, rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acts != nil || len(probs) != 1 || probs[0].Line != 4 || !strings.Contains(probs[0].Msg, `"Red Door Cafe" in the database`) {
+		t.Fatalf("acts %v probs %v", acts, probs)
+	}
+	// Without the wrong row: same name in other spelling passes, and a blank name is not checked.
+	acts, probs, err = Plan(context.Background(), st, []Row{rows[0], rows[1], rows[3]})
+	if err != nil || len(probs) != 0 || len(acts) != 3 || acts[0].Name != "Joe's Pizza" {
+		t.Fatalf("acts %+v probs %v err %v", acts, probs, err)
+	}
+	var out strings.Builder
+	printPlan(&out, acts)
+	if !strings.Contains(out.String(), `place 10 "Joe's Pizza"`) {
+		t.Fatalf("dry run does not name the place:\n%s", out.String())
 	}
 }
 
