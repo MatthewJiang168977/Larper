@@ -46,7 +46,7 @@ spec:
             {{- with .Values.api.questGate }}
             # The quest trust gate (apps/api/src/quests/eligibility.ts). Unset keeps the code's
             # defaults (0.7, evening rule off); a bad value fails the API at startup.
-            {{- if .minConfidence }}
+            {{- if not (kindIs "invalid" .minConfidence) }}
             - { name: QUEST_MIN_CONFIDENCE, value: {{ .minConfidence | toString | quote }} }
             {{- end }}
             {{- if not (kindIs "invalid" .eveningUnknownHours) }}
