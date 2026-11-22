@@ -219,6 +219,52 @@ deletes your sign-in. You can sign up again later with the same email as a new a
 Copies in backups expire on the schedule below." Do not promise removal by hand or within
 a number of days.
 
+### Clerk deletions that fail, and deletions made in Clerk (D8)
+
+**Proposed 2026-11-22, needs the owner's decision: it keeps a Clerk id after
+`DELETE /me` while the Clerk deletion is still owed, which D7 ruled out.** Found by the
+2026-11-22 review:
+
+- When the Clerk call fails, Larper's data is gone but the Clerk user (email, name) is
+  not, and nothing recorded that. If the user closed the tab, they stayed in Clerk for
+  good, and no one could find them, because the log holds no id. If they came back,
+  `ensure()` quietly made a new, empty account.
+- A user who deletes their account in Clerk itself (the profile's "Delete account", or
+  the owner in the dashboard) left all their Larper data behind, with no way to sign in
+  and remove it. Larper had no `user.deleted` webhook.
+
+The change (migration 0021):
+
+- **Owed Clerk deletions are recorded.** When the Clerk call in `DELETE /me` fails, the
+  API writes the Clerk id to `clerk_deletions_pending` and still answers
+  `"clerkUser": "failed"`.
+  - A background pass in the API retries due rows every minute, one replica at a time
+    (advisory lock). It backs off from 2 minutes to at most 6 hours.
+  - On success it purges any row recreated for that id and removes the record through
+    `clerk_deletion_done()`. The API role still has no DELETE grant.
+  - Logs carry counts and HTTP statuses only.
+- **No new account while it is owed.** `ensure()` answers 401 `account_gone` for a
+  listed Clerk id, before calling Clerk and without creating a row. The user's repeat of
+  `DELETE /me` therefore ends as "already deleted", and the retry finishes the job.
+  This replaces "Retry" above.
+- **`POST /webhooks/clerk`.**
+  - It is verified with the Svix signature and is off (404) until
+    `CLERK_WEBHOOK_SIGNING_SECRET` is set (Helm: `privacy.clerkWebhook.secretName`).
+  - On `user.deleted` it purges the Larper account for that Clerk id and clears any owed
+    record. It ignores the demo account, whose data belongs to the nightly reset.
+  - It is idempotent. A failure is a 500, so Clerk retries.
+- **What is kept, and for how long.** Only the Clerk id, only while Clerk still has the
+  user, and only so the deletion can be finished. It goes when Clerk confirms. The
+  alternative, keeping nothing, is what D7 chose, and it leaves undeletable Clerk users
+  and recreated accounts behind.
+- **Owner steps (live changes):**
+  - In Clerk, add a webhook endpoint for `https://<api host>/webhooks/clerk` with the
+    `user.deleted` event.
+  - Create the Secret, then set `privacy.clerkWebhook.secretName`.
+  - Or, instead of the webhook (or as well as it), turn off "Allow users to delete their
+    accounts" in Clerk, so the only way to delete is `DELETE /me`.
+  - Apply 0021 before the new API pods start.
+
 ## What happens to deleted data in backups
 
 Copies of deleted rows can persist until the stores' normal cleanup runs.

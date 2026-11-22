@@ -9,6 +9,7 @@ import {
   type ClerkUserDeleter,
 } from './clerk-user-deleter';
 import { DataDeletionService } from './data-deletion';
+import type { PendingClerkDeletions } from './pending-clerk-deletions';
 
 // The Clerk half of DELETE /me, with mocks only: no request ever leaves this file.
 const COUNTS = { quests: 0, checkInAttempts: 0, hoursAnswers: 0, savedPlaces: 0, events: 0, tasteProfile: true, account: true };
@@ -18,7 +19,7 @@ const USER = { id: '7', clerkId: 'user_abc123' };
 const RECREATED_LOOKUP = /^SELECT id::text AS id FROM users WHERE clerk_id/;
 const deletes = (query: jest.Mock) => query.mock.calls.filter((c) => !RECREATED_LOOKUP.test(c[0]));
 
-function service(deleter: ClerkUserDeleter | null, opts: { fail?: boolean; recreated?: string[] } = {}) {
+function service(deleter: ClerkUserDeleter | null, opts: { fail?: boolean; recreated?: string[]; recordFails?: boolean } = {}) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const query = jest.fn<Promise<{ rows: any[] }>, [string, unknown[]?]>(async (sql: string) => {
     if (opts.fail) throw new Error('db down');
@@ -26,8 +27,13 @@ function service(deleter: ClerkUserDeleter | null, opts: { fail?: boolean; recre
     return { rows: [{ r: COUNTS }] };
   });
   const forgetUser = jest.fn(async () => undefined);
-  const svc = new DataDeletionService({ query } as unknown as Pool, { forgetUser } as unknown as CacheService, deleter);
-  return { svc, query, forgetUser };
+  const record = jest.fn<Promise<void>, [string]>(async () => {
+    if (opts.recordFails) throw new Error('db down for user_abc123');
+  });
+  const done = jest.fn<Promise<void>, [string]>(async () => undefined);
+  const pending = { record, done } as unknown as PendingClerkDeletions;
+  const svc = new DataDeletionService({ query } as unknown as Pool, { forgetUser } as unknown as CacheService, deleter, pending);
+  return { svc, query, forgetUser, record, done };
 }
 
 describe('the Clerk deleter', () => {
@@ -138,8 +144,8 @@ describe('DataDeletionService', () => {
   });
 
   it.each([
-    [new ClerkApiError(503, 'DELETE /users/user_abc123'), 'Clerk user deletion failed (HTTP 503)'],
-    [new Error('failed for user_abc123\nresponse body'), 'Clerk user deletion failed'],
+    [new ClerkApiError(503, 'DELETE /users/user_abc123'), 'Clerk user deletion failed (HTTP 503); recorded for retry'],
+    [new Error('failed for user_abc123\nresponse body'), 'Clerk user deletion failed; recorded for retry'],
   ])('reports Clerk failure with a single sanitized log message', async (error, message) => {
     const log = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     const deleter = jest.fn(async () => {
@@ -151,7 +157,37 @@ describe('DataDeletionService', () => {
     expect(log.mock.calls).toEqual([[message]]);
   });
 
-  it('after a Clerk failure the user repeats DELETE /me: the empty row is recreated, purged again, and Clerk retried', async () => {
+  it('a Clerk failure records the deletion as owed (retried in the background, and ensure() refuses the id)', async () => {
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const { svc, record, done } = service(jest.fn(async () => {
+      throw new ClerkApiError(503, 'x');
+    }));
+    await expect(svc.deleteAccount(USER)).resolves.toEqual({ deleted: COUNTS, clerkUser: 'failed' });
+    expect(record.mock.calls).toEqual([[USER.clerkId]]);
+    expect(done).not.toHaveBeenCalled();
+  });
+
+  it('if recording the owed deletion fails too, it still reports failed and logs no id', async () => {
+    const log = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const { svc } = service(jest.fn(async () => {
+      throw new ClerkApiError(503, 'x');
+    }), { recordFails: true });
+    await expect(svc.deleteAccount(USER)).resolves.toEqual({ deleted: COUNTS, clerkUser: 'failed' });
+    expect(log.mock.calls).toEqual([
+      ['Clerk user deletion failed (HTTP 503); recorded for retry'],
+      ['recording a failed Clerk deletion failed (Error)'],
+    ]);
+  });
+
+  it('a Clerk success clears any owed deletion left by an earlier attempt', async () => {
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    const { svc, done, record } = service(jest.fn(async () => undefined));
+    await svc.deleteAccount(USER);
+    expect(done.mock.calls).toEqual([[USER.clerkId]]);
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it('a repeated DELETE /me after a Clerk failure (a request already past ensure()) purges again and retries Clerk', async () => {
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     const deleter = jest
       .fn<Promise<void>, [string]>()

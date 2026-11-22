@@ -83,6 +83,12 @@ privacy:
   clerkSecret:
     name: ""
     key: secretKey
+  # The Clerk webhook's signing secret (whsec_...), from Clerk's dashboard: Webhooks, an
+  # endpoint for https://<api host>/webhooks/clerk with the user.deleted event. Unset, the
+  # route is a 404. Creating the Secret and the Clerk endpoint are live changes.
+  clerkWebhook:
+    secretName: ""
+    key: signingSecret
 
 ingress:
   className: traefik

@@ -60,6 +60,11 @@ spec:
             - name: CLERK_SECRET_KEY
               valueFrom: { secretKeyRef: { name: {{ .Values.privacy.clerkSecret.name | quote }}, key: {{ required "privacy.clerkSecret.key is required with privacy.deletes=all" .Values.privacy.clerkSecret.key | quote }} } }
             {{- end }}
+            {{- with .Values.privacy.clerkWebhook.secretName }}
+            # POST /webhooks/clerk: user.deleted in Clerk deletes the Larper account (0005, D8).
+            - name: CLERK_WEBHOOK_SIGNING_SECRET
+              valueFrom: { secretKeyRef: { name: {{ . | quote }}, key: {{ required "privacy.clerkWebhook.key is required with privacy.clerkWebhook.secretName" $.Values.privacy.clerkWebhook.key | quote }} } }
+            {{- end }}
             {{- if .Values.api.cpuProfiling }}
             # GET :9464/debug/cpu-profile?seconds=30 (metrics port, never routed publicly).
             - { name: CPU_PROFILING, value: "1" }

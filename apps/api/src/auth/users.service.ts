@@ -31,6 +31,14 @@ export class UsersService {
     const existing = await this.pg.query<{ id: string }>('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
     if (existing.rows.length) return existing.rows[0].id;
 
+    // A Clerk user whose deletion is still owed (DELETE /me went through but Clerk failed;
+    // migration 0021) never gets a new account: their data was deleted on request, and the
+    // background retry will remove the sign-in.
+    if (this.clerkCheck && !isDemoUser(clerkId)) {
+      const owed = await this.pg.query('SELECT 1 FROM clerk_deletions_pending WHERE clerk_id = $1', [clerkId]);
+      if (owed.rows.length) throw accountGone();
+    }
+
     // The demo user always has a row (and is never deleted); it never triggers the call.
     if (this.clerkCheck && !isDemoUser(clerkId)) {
       let exists: boolean;

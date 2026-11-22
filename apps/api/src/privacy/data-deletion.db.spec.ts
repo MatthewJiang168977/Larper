@@ -8,6 +8,7 @@ import { assertDisposableDatabase } from '../db/test-guard';
 import type { TagsService } from '../profile/tags.service';
 import type { AreasService } from '../quests/areas.service';
 import { QuestsService, SCRUB_ORIGINS_SQL } from '../quests/quests.service';
+import { PendingClerkDeletions } from './pending-clerk-deletions';
 import { DataDeletionService } from './data-deletion';
 import { DataExportService } from './data-export';
 
@@ -37,7 +38,8 @@ describeDb('export and delete my data (real database)', () => {
     const cache = { forgetUser: async (id: string) => void forgot.push(id) } as unknown as CacheService;
     const tags = { ready: async () => undefined, tagOf: (slot: number) => (slot === 0 ? 'cafe' : undefined) } as unknown as TagsService;
     // A stub Clerk deleter: no test here may reach the real Clerk API.
-    deletion = new DataDeletionService(pool, cache, async () => undefined);
+    const noClerk = async () => undefined;
+    deletion = new DataDeletionService(pool, cache, noClerk, new PendingClerkDeletions(pool, cache, noClerk));
     exporter = new DataExportService(pool, tags);
     quests = new QuestsService(pool, cache, tags, {} as AreasService);
   });
