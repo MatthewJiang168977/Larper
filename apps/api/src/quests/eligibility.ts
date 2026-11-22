@@ -64,7 +64,7 @@ export function meetsConfidence(confidence: number, min: number = MIN_CONFIDENCE
 // (> a school of it), so a place that is itself a college stays blocked and its museum doesn't.
 export const BLOCKED_CATEGORY_GROUPS = {
   // health_care is the whole tree: hospitals, clinics, dental, pharmacies' care side,
-  // mental health, cannabis clinics... A retail pharmacy sits under shopping and is not blocked.
+  // mental health, cannabis clinics...
   // Retail pharmacies and drugstores too (shopping > ... > pharmacy, drugstore): the
   // fragrance tag's "apothecary" keyword pulled chain pharmacies into decks. Medical spas
   // are clinics that sell treatments.

@@ -63,8 +63,10 @@ describe('QuestsController: was it open?', () => {
   beforeAll(async () => {
     ({ app, url } = await limitTestApp(new FailOpenStorage(new ThrottlerStorageService())));
   });
+  const before = process.env.DEMO_CLERK_USER_ID;
   afterAll(() => {
-    delete process.env.DEMO_CLERK_USER_ID;
+    if (before === undefined) delete process.env.DEMO_CLERK_USER_ID;
+    else process.env.DEMO_CLERK_USER_ID = before;
     return app.close();
   });
 
