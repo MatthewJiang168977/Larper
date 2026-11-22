@@ -24,7 +24,11 @@ export function LarperLanding({ actions, preview = false }: { actions: ReactNode
               </ul>
             </OSQuestPanel>
             <div className="larper-landing-actions">{actions}</div>
-            <Link href="/privacy" className="larper-landing-privacy">privacy</Link>
+            <nav aria-label="about larper" className="larper-landing-about">
+              <Link href="/privacy" className="larper-landing-privacy">privacy</Link>
+              <Link href="/terms" className="larper-landing-privacy">terms</Link>
+              <Link href="/credits" className="larper-landing-privacy">credits</Link>
+            </nav>
           </OSWindow>
         </div>
       </div>

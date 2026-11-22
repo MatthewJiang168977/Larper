@@ -47,8 +47,15 @@
 .larper-landing-actions > * { flex: 1 1 auto; }
 .larper-landing-demo-button { width: 100%; }
 
-.larper-landing-privacy {
+.larper-landing-about {
   justify-self: center;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+}
+
+.larper-landing-privacy {
   display: grid;
   min-width: var(--larper-os-tap-min);
   min-height: var(--larper-os-tap-min);
