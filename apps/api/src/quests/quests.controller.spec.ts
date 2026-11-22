@@ -55,3 +55,28 @@ describe('QuestsController: Not today and its reasons', () => {
     }
   });
 });
+
+describe('QuestsController: was it open?', () => {
+  let app: INestApplication;
+  let url: string;
+
+  beforeAll(async () => {
+    ({ app, url } = await limitTestApp(new FailOpenStorage(new ThrottlerStorageService())));
+  });
+  afterAll(() => {
+    delete process.env.DEMO_CLERK_USER_ID;
+    return app.close();
+  });
+
+  it('refuses the shared demo account with 403 demo_account, before the service', async () => {
+    const who = `demo-${Date.now()}`;
+    process.env.DEMO_CLERK_USER_ID = `test_${who}`;
+    const res = await fetch(`${url}/quests/7/was-open`, {
+      method: 'POST',
+      headers: { 'x-test-user': who, 'x-forwarded-for': '198.51.100.250', 'content-type': 'application/json' },
+      body: JSON.stringify({ answer: 'yes' }),
+    });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ code: 'demo_account' });
+  });
+});

@@ -166,8 +166,11 @@ export async function loadPlaceHours(pg: Pool, placeIds: readonly string[], now:
      FROM place_hours_facts
      WHERE place_id = ANY($1::bigint[]) AND kind = 'observation' AND was_open IS TRUE
        AND fetched_at > $3::timestamptz - make_interval(days => $4)
+       -- Never the shared demo account (one "person" for every visitor; its answers
+       -- outlive the nightly reset).
+       AND user_id IS DISTINCT FROM (SELECT id FROM users WHERE clerk_id = $5)
      GROUP BY place_id`,
-    [placeIds, MIN_HOURS_CONFIDENCE, now, CONFIRMATION_WINDOW_DAYS],
+    [placeIds, MIN_HOURS_CONFIDENCE, now, CONFIRMATION_WINDOW_DAYS, process.env.DEMO_CLERK_USER_ID?.trim() || null],
   );
 
   const chosen = chooseSchedules(rows.filter((r) => r.k === 'schedule') as ScheduleFact[]);

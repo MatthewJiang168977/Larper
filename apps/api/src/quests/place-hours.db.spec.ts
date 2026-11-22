@@ -306,6 +306,29 @@ describeDb('opening hours (real database)', () => {
       expect(JSON.stringify(r)).not.toContain('2026-07-14'); // nothing of the check-ins is in the response
     });
 
+    it('the shared demo account never counts as one of the people', async () => {
+      const at = spot();
+      const p = await place(at, 'Demo Counted Cafe');
+      const demoClerk = `test_hours_demo_${Date.now()}`;
+      const { rows } = await owner.query<{ id: string }>(`INSERT INTO users (clerk_id) VALUES ($1) RETURNING id::text`, [demoClerk]);
+      userIds.push(rows[0].id);
+      await observation(p, rows[0].id, true, '2026-07-14T12:00:00Z');
+      await observation(p, await user(), true, '2026-07-13T12:00:00Z');
+      await observation(p, await user(), true, '2026-07-12T12:00:00Z');
+      const before = process.env.DEMO_CLERK_USER_ID;
+      process.env.DEMO_CLERK_USER_ID = demoClerk;
+      try {
+        const r = await service().today(await user(), at.lat, at.lng, RADIUS, false, NOW);
+        expect(hoursOf(r, p).openConfirmations).toBeNull(); // two real people, plus the demo: not 3
+      } finally {
+        if (before === undefined) delete process.env.DEMO_CLERK_USER_ID;
+        else process.env.DEMO_CLERK_USER_ID = before;
+      }
+      // Without a demo account configured, all three count as before.
+      const r = await service().today(await user(), at.lat, at.lng, RADIUS, false, NOW);
+      expect(hoursOf(r, p).openConfirmations).toEqual({ count: 3, last: 'this_week' });
+    });
+
     it('the 180-day edge is relative to now, and nothing within it from before is counted twice', async () => {
       const at = spot();
       const p = await place(at, 'Window Cafe');

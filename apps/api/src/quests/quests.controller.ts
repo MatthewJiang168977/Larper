@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, ForbiddenException, Controller, Get, HttpCode, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { AuthUser, ClerkAuthGuard, CurrentUser } from '../auth/auth.guard';
 import { isDemoUser } from '../demo/demo-account';
@@ -14,6 +14,12 @@ const MAX_RADIUS_M = 3000;
 // Accept, skip and check-in share a handler but not their counters: each action has its own.
 const byAction = (ctx: Parameters<typeof actionOf>[0], userId: string, name: string) =>
   userKey(ctx, userId, name, actionOf(ctx));
+
+export const DEMO_WAS_OPEN_REFUSAL = {
+  statusCode: 403,
+  code: 'demo_account',
+  message: 'The shared demo account cannot confirm opening hours.',
+};
 
 @Controller('quests')
 @UseGuards(ClerkAuthGuard, UserLimitGuard)
@@ -80,6 +86,9 @@ export class QuestsController {
     if (!/^\d+$/.test(id)) throw new BadRequestException('bad quest id');
     const answer = body?.answer;
     if (!isWasOpenAnswer(answer)) throw new BadRequestException(`answer must be one of ${WAS_OPEN_ANSWERS.join(', ')}`);
+    // The shared demo account is one "person" for every visitor: its answers would count
+    // as a confirmation from someone, and survive the nightly reset. The web never asks it.
+    if (isDemoUser(user.clerkId)) throw new ForbiddenException(DEMO_WAS_OPEN_REFUSAL);
     return this.quests.wasOpen(user.id, id, answer);
   }
 

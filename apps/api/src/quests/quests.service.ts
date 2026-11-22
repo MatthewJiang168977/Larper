@@ -42,7 +42,7 @@ const OFFER_STALE_METERS = 5000;
 const DAY_TIME_ZONE = 'America/New_York'; // when "today" ends (doneToday); the evening rule's clock too (eligibility.ts)
 // Bumped from v3 when the trust gate (eligibility.ts) began filtering before ranking:
 // decks cached by older pods hold places the gate now refuses.
-const DECK_CACHE_VERSION = 'v4';
+const DECK_CACHE_VERSION = 'v5'; // v5: facilities and restricted_retail blocked (eligibility.ts)
 /** Where a quest was offered is only needed while the offer is open (the stale-offer check). */
 export const SCRUB_ORIGINS_SQL = `UPDATE quests SET origin = NULL WHERE origin IS NOT NULL AND status IN ('expired', 'completed', 'skipped')`;
 const PRUNE_ATTEMPTS_EVERY_MS = 6 * 3600_000; // retention is 90 days; this only bounds the overshoot

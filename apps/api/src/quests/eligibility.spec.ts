@@ -67,6 +67,9 @@ describe('the category blocklist', () => {
     medical: [
       ['health_care', 'outpatient_care_facility', 'dental_clinic'],
       ['health_care', 'hospital'],
+      ['shopping', 'specialty_store', 'pharmacy_and_drug_store', 'pharmacy'],
+      ['shopping', 'specialty_store', 'pharmacy_and_drug_store', 'drugstore'],
+      ['lifestyle_services', 'wellness_service', 'spa', 'medical_spa'],
     ],
     adult: [
       ['arts_and_entertainment', 'nightlife_venue', 'strip_club'],
@@ -115,7 +118,29 @@ describe('the category blocklist', () => {
       ['arts_and_entertainment', 'gaming_venue', 'betting_center'],
       ['arts_and_entertainment', 'gaming_venue', 'bingo_hall'],
     ],
+    // Hierarchies as they occur in the 2026-09 extract.
+    facilities: [
+      ['lifestyle_services', 'wellness_service', 'public_bath_house'],
+      ['community_and_government', 'public_facility', 'public_restroom'],
+      ['travel_and_transportation', 'parking'],
+      ['travel_and_transportation', 'vehicle_service', 'automotive_service', 'towing_service'],
+      ['travel_and_transportation', 'vehicle_service', 'automotive_service', 'automotive_repair'],
+    ],
+    restricted_retail: [
+      ['shopping', 'food_and_beverage_store', 'tobacco_shop'],
+      ['shopping', 'specialty_store', 'smoke_and_vape_store'],
+      ['shopping', 'specialty_store', 'smoke_and_vape_store', 'cannabis_dispensary'],
+      ['shopping', 'second_hand_store', 'pawn_shop'],
+      ['services_and_business', 'legal_service', 'bail_bonds_service'],
+    ],
   };
+
+  it('still allows real bathhouses and spas, thrift shops and the rest of their parents', () => {
+    expect(isBlockedCategory(['lifestyle_services', 'wellness_service', 'spa'])).toBe(false); // Brooklyn Banya, Russian and Turkish Baths
+    expect(isBlockedCategory(['lifestyle_services', 'wellness_service', 'sauna'])).toBe(false);
+    expect(isBlockedCategory(['shopping', 'second_hand_store', 'second_hand_clothing_store'])).toBe(false);
+    expect(isBlockedCategory(['shopping', 'specialty_store', 'cosmetics_and_fragrance_store'])).toBe(false);
+  });
 
   it.each(Object.entries(hierarchies) as [BlockedGroup, string[][]][])('blocks %s', (group, list) => {
     for (const h of list) {
