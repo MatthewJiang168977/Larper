@@ -200,8 +200,11 @@ func parseCSVAt(r io.Reader, now time.Time) ([]Row, []Problem) {
 			}
 		}
 		if len(probs) == n0 {
-			// The exporter prefixes a name that could run as a spreadsheet formula with '.
-			name := strings.TrimPrefix(get(rec, "name"), "'")
+			// Only when the file has a name column: get() reads column 0 for a missing one.
+			name := ""
+			if i, ok := col["name"]; ok && i < len(rec) {
+				name = strings.TrimSpace(rec[i])
+			}
 			rows = append(rows, Row{Line: line, PlaceID: id, Hours: oh, SourceURL: srcURL, CheckedAt: checked, Schedule: raw, CSVName: name})
 		}
 	}
@@ -231,9 +234,15 @@ type Action struct {
 }
 
 // sameName compares names the way a person would: case, spacing and curly quotes aside.
+//
+// One leading ' is ignored on both sides. The exporter adds one before a name that a
+// spreadsheet would run as a formula (=, +, -, @), a spreadsheet may drop one when the file is
+// saved, and real names start with one ('wichcraft, 'ino): stripping it from both sides
+// matches all of these and never a different place by more than that apostrophe.
 func sameName(a, b string) bool {
 	norm := func(s string) string {
 		s = strings.NewReplacer("’", "'", "‘", "'", "“", `"`, "”", `"`).Replace(s)
+		s = strings.TrimPrefix(strings.TrimSpace(s), "'")
 		return strings.Join(strings.Fields(strings.ToLower(s)), " ")
 	}
 	return norm(a) == norm(b)

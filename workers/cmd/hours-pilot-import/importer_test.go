@@ -258,6 +258,32 @@ func TestPlanRefusesARowWhoseNameIsAnotherPlace(t *testing.T) {
 	}
 }
 
+// Names that really start with ' ('ino, 'wichcraft) are exported unchanged, and a spreadsheet may
+// drop the apostrophe on save: both spellings match. A file without a name column checks nothing.
+func TestPlanNameCheckLeadingApostropheAndNoNameColumn(t *testing.T) {
+	rows, probs := parse(t, strings.Join([]string{
+		`10,EV,'ino,,,,Mo-Fr 09:00-17:00,seen on the door,2026-11-18`,
+		`11,EV,wichcraft,,,,Mo-Fr 09:00-17:00,seen on the door,2026-11-18`,
+		"",
+	}, "\r\n"))
+	if len(probs) > 0 {
+		t.Fatal(probs)
+	}
+	st := &fakeStore{places: map[int64]bool{10: false, 11: false}, names: map[int64]string{10: "'ino", 11: "'wichcraft"}}
+	if acts, probs, err := Plan(context.Background(), st, rows); err != nil || len(probs) != 0 || len(acts) != 2 {
+		t.Fatalf("acts %+v probs %v err %v", acts, probs, err)
+	}
+
+	noName := "place_id,opening_hours,source,date_checked\r\n10,Mo-Fr 09:00-17:00,seen on the door,2026-11-18\r\n"
+	rows, probs = parseCSVAt(strings.NewReader(noName), fixtureNow)
+	if len(probs) > 0 || len(rows) != 1 || rows[0].CSVName != "" {
+		t.Fatalf("rows %+v probs %v", rows, probs)
+	}
+	if acts, probs, err := Plan(context.Background(), st, rows); err != nil || len(probs) != 0 || len(acts) != 1 || acts[0].Name != "'ino" {
+		t.Fatalf("acts %+v probs %v err %v", acts, probs, err)
+	}
+}
+
 // The jsonb the importer writes is hours.Schedule's own marshalling, which the TS reader
 // (apps/api/src/hours/schedule.ts validateSchedule) accepts. This pins a few cases in a golden
 // file that apps/api/src/hours-pilot/importer-schedules.spec.ts feeds to the TS reader.
