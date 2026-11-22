@@ -45,6 +45,21 @@ describe('UsersService.ensure with the Clerk check', () => {
     expect(users[ID]).toBeUndefined();
   });
 
+  it('a row inserted just as DELETE /me recorded the deletion as owed is purged, and the request refused', async () => {
+    // Our first look saw nothing owed and Clerk still had the user; DELETE /me's Clerk call
+    // then failed and it recorded the id (and ran its purge) before our insert landed.
+    const owed: string[] = [];
+    const { pool, users, query } = fakePool({}, owed);
+    const check = jest.fn(async () => {
+      owed.push(ID);
+      return true;
+    });
+    const err = await new UsersService(pool, check).ensure(ID).catch((e: unknown) => e);
+    expect((err as UnauthorizedException).getResponse()).toMatchObject({ code: ACCOUNT_GONE });
+    expect(users[ID]).toBeUndefined();
+    expect(query.mock.calls.some(([sql]) => sql.startsWith('SELECT delete_my_account'))).toBe(true);
+  });
+
   it('an existing row is returned as before, owed or not (the plain lookup comes first)', async () => {
     const { pool } = fakePool({ [ID]: '42' }, [ID]);
     await expect(new UsersService(pool, jest.fn(async () => true)).ensure(ID)).resolves.toBe('42');

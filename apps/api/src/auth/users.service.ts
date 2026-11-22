@@ -81,6 +81,14 @@ export class UsersService {
   // and the request is refused. If Clerk can't say, the row stays (the user most likely
   // exists; this is a brand-new sign-up) and the log names no one.
   private async confirmCreated(check: ClerkUserCheck, clerkId: string, id: string): Promise<void> {
+    // DELETE /me may have recorded this Clerk id as owed after our first look (its Clerk
+    // call failed while we were inserting): a row made now must not survive that.
+    const owed = await this.pg.query('SELECT 1 FROM clerk_deletions_pending WHERE clerk_id = $1', [clerkId]);
+    if (owed.rows.length) {
+      await this.pg.query('SELECT delete_my_account($1)', [id]);
+      await this.cache?.forgetUser(id);
+      throw accountGone();
+    }
     let exists: boolean;
     try {
       exists = await check(clerkId);

@@ -91,7 +91,13 @@ export class DataDeletionService {
         await this.pending.record(user.clerkId);
       } catch (recordErr) {
         this.log.error(`recording a failed Clerk deletion failed (${(recordErr as Error).constructor.name})`);
+        return { deleted: rows[0].r, clerkUser: 'failed' };
       }
+      // While the Clerk call was in flight, a request on the same session could still pass
+      // ensure() (nothing was owed yet, Clerk still had the user) and make a fresh row.
+      // Now that the deletion is recorded no new row can appear (ensure() refuses owed ids,
+      // also after its insert), so purge any that did.
+      await this.purgeRecreatedOnly(user.clerkId);
       return { deleted: rows[0].r, clerkUser: 'failed' };
     }
 
@@ -101,6 +107,14 @@ export class DataDeletionService {
     // Clerk before inserting): one more purge here leaves nothing that names the user.
     await this.purgeRecreated(user.clerkId);
     return { deleted: rows[0].r, clerkUser: 'deleted' };
+  }
+
+  private async purgeRecreatedOnly(clerkId: string): Promise<void> {
+    try {
+      await purgeClerkId(this.pg, this.cache, clerkId);
+    } catch (err) {
+      this.log.error(`purge of a row recreated during account deletion failed (${(err as Error).constructor.name})`);
+    }
   }
 
   private async purgeRecreated(clerkId: string): Promise<void> {

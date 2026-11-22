@@ -36,7 +36,6 @@ export class PendingClerkDeletions implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('PendingClerkDeletions');
   private timer: NodeJS.Timeout | null = null;
   private running = false;
-  private lastStatus: number | undefined;
 
   constructor(
     @Inject(PG) private readonly pg: Pool,
@@ -89,11 +88,15 @@ export class PendingClerkDeletions implements OnModuleInit, OnModuleDestroy {
     this.running = true;
     let settled = 0;
     let failed = 0;
+    let lastStatus: number | undefined;
     const client = await this.pg.connect().catch(() => null);
     if (!client) {
       this.running = false;
       return 0;
     }
+    // A connection whose unlock may not have happened must not go back to the pool still
+    // holding the lock (every replica would skip retries until it died): destroy it.
+    let broken: Error | undefined;
     try {
       const lock = await client.query<{ ok: boolean }>('SELECT pg_try_advisory_lock($1) AS ok', [RETRY_LOCK_KEY]);
       if (!lock.rows[0]?.ok) return 0;
@@ -103,35 +106,39 @@ export class PendingClerkDeletions implements OnModuleInit, OnModuleDestroy {
            WHERE next_attempt_at <= now() ORDER BY next_attempt_at LIMIT $1`,
           [BATCH],
         );
+        // One row's trouble never holds up the rest: each is settled or backed off alone.
         for (const { clerkId } of rows) {
           try {
             await del(clerkId);
           } catch (err) {
-            if (err instanceof InvalidClerkUserIdError) {
-              // The table's CHECK makes this unreachable; never retry it in a loop.
-              this.log.error('a pending Clerk deletion has an invalid id');
-            }
+            if (err instanceof InvalidClerkUserIdError) this.log.error('a pending Clerk deletion has an invalid id');
+            lastStatus = err instanceof ClerkApiError ? err.status : undefined;
             failed++;
-            await this.record(clerkId);
-            if (err instanceof ClerkApiError) this.lastStatus = err.status;
+            await this.record(clerkId).catch((e: Error) => this.log.error(`pending Clerk deletions: backing off failed (${e.constructor.name})`));
             continue;
           }
-          await purgeClerkId(this.pg, this.cache, clerkId);
-          await this.done(clerkId);
-          settled++;
+          try {
+            await purgeClerkId(this.pg, this.cache, clerkId);
+            await this.done(clerkId);
+            settled++;
+          } catch (err) {
+            // Clerk has it gone; the row stays due and the next pass finishes (Clerk 404 counts as deleted).
+            this.log.error(`pending Clerk deletions: clearing a settled one failed (${(err as Error).constructor.name})`);
+          }
         }
       } finally {
         await client.query('SELECT pg_advisory_unlock($1)', [RETRY_LOCK_KEY]);
       }
     } catch (err) {
-      this.log.error(`pending Clerk deletions: retry pass failed (${(err as Error).constructor.name})`);
+      broken = err as Error;
+      this.log.error(`pending Clerk deletions: retry pass failed (${broken.constructor.name})`);
     } finally {
-      client.release();
+      client.release(broken);
       this.running = false;
     }
     if (settled) this.log.log(`pending Clerk deletions: ${settled} settled`);
     if (failed) {
-      const status = this.lastStatus === undefined ? '' : ` (last HTTP ${this.lastStatus})`;
+      const status = lastStatus === undefined ? '' : ` (last HTTP ${lastStatus})`;
       this.log.warn(`pending Clerk deletions: ${failed} still failing${status}`);
     }
     return settled;

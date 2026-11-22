@@ -134,11 +134,25 @@ describe('DataDeletionService', () => {
     expect(log.mock.calls).toEqual([['purge of a row recreated during account deletion failed (Error)']]);
   });
 
-  it('skips the recreated-row purge when Clerk failed (the user repeats DELETE /me instead)', async () => {
+  it('when Clerk failed, records the deletion first and then purges a row recreated while Clerk was called', async () => {
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const { svc, query, record, forgetUser } = service(jest.fn(async () => {
+      throw new ClerkApiError(503, 'x');
+    }), { recreated: ['9'] });
+    await expect(svc.deleteAccount(USER)).resolves.toEqual({ deleted: COUNTS, clerkUser: 'failed' });
+    expect(record).toHaveBeenCalledTimes(1);
+    expect(record.mock.invocationCallOrder[0]).toBeLessThan(
+      query.mock.invocationCallOrder[query.mock.calls.findIndex((c) => RECREATED_LOOKUP.test(c[0]))],
+    );
+    expect(deletes(query).map((c) => c[1])).toEqual([['7'], ['9']]);
+    expect(forgetUser.mock.calls).toEqual([['7'], ['9']]);
+  });
+
+  it('does not purge when the deletion could not even be recorded (no guard against a new row, so the user repeats it)', async () => {
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     const { svc, query } = service(jest.fn(async () => {
       throw new ClerkApiError(503, 'x');
-    }));
+    }), { recordFails: true });
     await svc.deleteAccount(USER);
     expect(query.mock.calls.some((c) => RECREATED_LOOKUP.test(c[0]))).toBe(false);
   });

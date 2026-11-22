@@ -253,6 +253,14 @@ The change (migration 0021):
   - On `user.deleted` it purges the Larper account for that Clerk id and clears any owed
     record. It ignores the demo account, whose data belongs to the nightly reset.
   - It is idempotent. A failure is a 500, so Clerk retries.
+- **A row recreated while Clerk was being called** (a request on the same session that
+  passed `ensure()` before anything was owed) is purged right after the deletion is
+  recorded. `ensure()` also checks again after its own insert, so a row cannot outlive the
+  record.
+- **Only with `PRIVACY_DELETES=all`.** The retry and the refusal need the Clerk deleter
+  and check. If `all` is turned off, owed rows stay but are neither retried nor
+  enforced, so finish or clear them first. The webhook works on its own secret, but with
+  `all` off a stale session could recreate a row after it, so run it with `all`.
 - **What is kept, and for how long.** Only the Clerk id, only while Clerk still has the
   user, and only so the deletion can be finished. It goes when Clerk confirms. The
   alternative, keeping nothing, is what D7 chose, and it leaves undeletable Clerk users

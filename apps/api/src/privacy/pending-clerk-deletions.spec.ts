@@ -78,6 +78,19 @@ describe('PendingClerkDeletions', () => {
     expect(logText()).not.toMatch(/user_ok|user_bad|\b9\b/);
   });
 
+  it('one row failing to clear does not stop the rest of the batch', async () => {
+    const { pool, cache } = setup({ due: ['user_a1', 'user_b2'] });
+    const realQuery = (pool.query as jest.Mock).getMockImplementation()!;
+    (pool.query as jest.Mock).mockImplementation(async (q: string, p: unknown[] = []) => {
+      if (q.startsWith('SELECT clerk_deletion_done') && p[0] === 'user_a1') throw new Error('db hiccup');
+      return realQuery(q, p);
+    });
+    const del = jest.fn(async () => undefined);
+    await expect(new PendingClerkDeletions(pool, cache, del).retryDue()).resolves.toBe(1);
+    expect(del.mock.calls).toEqual([['user_a1'], ['user_b2']]);
+    expect(logText()).toContain('clearing a settled one failed (Error)');
+  });
+
   it('skips the pass when another replica holds the lock', async () => {
     const { pool, sql, cache, release } = setup({ due: ['user_a1'], locked: true });
     const del = jest.fn(async () => undefined);
@@ -96,8 +109,18 @@ describe('PendingClerkDeletions', () => {
       }),
       release: jest.fn(),
     });
+    const release = jest.fn();
+    (pool.connect as jest.Mock).mockReset().mockResolvedValueOnce({
+      query: jest.fn(async (q: string) => {
+        if (q.includes('pg_try_advisory_lock')) return { rows: [{ ok: true }] };
+        throw new Error('db down user_a1');
+      }),
+      release,
+    });
     await expect(new PendingClerkDeletions(pool, cache, jest.fn(async () => undefined)).retryDue()).resolves.toBe(0);
     expect(logText()).toContain('retry pass failed (Error)');
+    // The connection may still hold the lock: it is destroyed, not returned to the pool.
+    expect(release.mock.calls[0][0]).toBeInstanceOf(Error);
     expect(logText()).not.toContain('user_a1');
   });
 });
