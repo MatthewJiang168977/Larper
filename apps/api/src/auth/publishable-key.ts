@@ -1,4 +1,4 @@
-// A Clerk publishable key is "pk_test_" + base64("<frontend-api-host>$"). The host
+// A Clerk publishable key has a pk_test_ or pk_live_ prefix and base64("<frontend-api-host>$"). The host
 // serves the instance's public signing keys, so the API can verify session tokens
 // without ever holding the Clerk secret key.
 export function frontendApiFromPublishableKey(key: string): string {

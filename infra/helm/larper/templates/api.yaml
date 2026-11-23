@@ -36,6 +36,10 @@ spec:
             - { name: REDIS_URL, value: "redis://redis:6379" }
             - { name: KAFKA_BROKERS, value: "redpanda:9092" }
             - { name: CLERK_PUBLISHABLE_KEY, value: {{ .Values.clerk.publishableKey | quote }} }
+            {{- with .Values.clerk.publishableKeyOverrideSecret }}
+            - name: CLERK_PUBLISHABLE_KEY_OVERRIDE
+              valueFrom: { secretKeyRef: { name: {{ . | quote }}, key: publishableKey, optional: true } }
+            {{- end }}
             - { name: CLERK_AUTHORIZED_PARTIES, value: {{ .Values.clerk.authorizedParties | quote }} }
             - { name: RATE_LIMIT_ENABLED, value: {{ ternary "1" "0" .Values.api.rateLimit.enabled | quote }} }
             - { name: CLIENT_IP_SOURCE, value: {{ .Values.api.rateLimit.clientIp | quote }} }
@@ -77,7 +81,7 @@ spec:
             {{- with .Values.privacy.clerkWebhook.secretName }}
             # POST /webhooks/clerk: user.deleted in Clerk deletes the Larper account (0005, D8).
             - name: CLERK_WEBHOOK_SIGNING_SECRET
-              valueFrom: { secretKeyRef: { name: {{ . | quote }}, key: {{ required "privacy.clerkWebhook.key is required with privacy.clerkWebhook.secretName" $.Values.privacy.clerkWebhook.key | quote }} } }
+              valueFrom: { secretKeyRef: { name: {{ . | quote }}, key: {{ required "privacy.clerkWebhook.key is required with privacy.clerkWebhook.secretName" $.Values.privacy.clerkWebhook.key | quote }}, optional: {{ $.Values.privacy.clerkWebhook.optional }} } }
             {{- end }}
             {{- if .Values.api.cpuProfiling }}
             # GET :9464/debug/cpu-profile?seconds=30 (metrics port, never routed publicly).
