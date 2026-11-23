@@ -98,7 +98,7 @@ None of these affects Phase 1. The owner decided the first two, and the rules on
 
 Written 2026-11-22 for pickup in mid-December, once users have about **3 check-ins each**.
 Checked against `main` on 2026-11-22. The decisions above stand; where v1 differs from the
-full plan it says so, and **three of its choices are the owner's to confirm** (marked ⚑).
+full plan it says so, and three of its choices were confirmed by the owner on 2026-11-22 (marked ⚑).
 
 ### What v1 is
 
@@ -117,12 +117,12 @@ no share button. A zero-check-in user still sees their colors, so the page is ne
 
 ### How v1 differs from the full plan
 
-- ⚑ **Computed on read, no `profile_stats`, no consumer.** One query per profile view over
+- ⚑ **Decided: computed on read, no `profile_stats`, no consumer.** One query per profile view over
   a user's own quests (a few dozen rows), which is open question 1's own alternative. This
   skips phase 2 entirely: no new table, no worker, no rebuild, no lag metric, no chaos run.
   Phase 2's consumer is still the plan for percentiles and archetypes; v1's read model
   would be replaced by it, not migrated.
-- ⚑ **Tag families are a committed map, not a column.** A tag-to-family map in
+- ⚑ **Decided: tag families are a committed map, not a column.** A tag-to-family map in
   `apps/api/src/profile/` (generated from the comment headers in `taxonomy.yaml`), with a
   test that fails if a taxonomy tag has no family. That skips `0023_tag_families` and the
   `syncTags` change. If families should live in Postgres later, add the column then.
@@ -131,7 +131,7 @@ no share button. A zero-check-in user still sees their colors, so the page is ne
   one active card per user). It takes the next free number: **0022 if nothing lands first**,
   and the numbers above shift up by one. It must grant to the API's role and update
   `apps/api/src/db/roles.db.spec.ts`, as every M9 migration does.
-- ⚑ **The card is a snapshot** (open question 4's recommendation): `payload` is built when
+- ⚑ **Decided: the card is a snapshot** (open question 4's recommendation): `payload` is built when
   the card is created from a whitelist of fields, so a later check-in can't leak into an
   old link. Creating a new card revokes the old one.
 - **The share page is a normal web route** (`/share/:token`). The web app is on Vercel now,
