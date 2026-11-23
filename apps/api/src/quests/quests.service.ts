@@ -22,6 +22,7 @@ import { type Schedule, stateAt } from '../hours/schedule';
 import {
   applyStaticGate,
   BLOCKED_CATEGORIES,
+  CATEGORY_EXCEPTION_IDS,
   GateConfig,
   gateConfigFromEnv,
   isEveningInNyc,
@@ -42,7 +43,7 @@ const OFFER_STALE_METERS = 5000;
 const DAY_TIME_ZONE = 'America/New_York'; // when "today" ends (doneToday); the evening rule's clock too (eligibility.ts)
 // Bumped from v3 when the trust gate (eligibility.ts) began filtering before ranking:
 // decks cached by older pods hold places the gate now refuses.
-const DECK_CACHE_VERSION = 'v5'; // v5: facilities and restricted_retail blocked (eligibility.ts)
+const DECK_CACHE_VERSION = 'v6'; // Category exceptions and the liquor-store/shooting-range exclusions.
 /** Where a quest was offered is only needed while the offer is open (the stale-offer check). */
 export const SCRUB_ORIGINS_SQL = `UPDATE quests SET origin = NULL WHERE origin IS NOT NULL AND status IN ('expired', 'completed', 'skipped')`;
 const PRUNE_ATTEMPTS_EVERY_MS = 6 * 3600_000; // retention is 90 days; this only bounds the overshoot
@@ -499,8 +500,9 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     // filtered confidence and categories too, so its LIMIT isn't spent on them; this is
     // the rules' source of truth, and the dedupe only happens here).
     const candidates: Candidate[] = applyStaticGate(rows, this.gate.minConfidence).map((row) => {
-      const c: Candidate & { categories?: string[] } = { ...row };
-      delete c.categories; // only the gate needs it; keep it out of the cached deck
+      const c: Candidate & { categories?: string[]; overtureId?: string } = { ...row };
+      delete c.categories;
+      delete c.overtureId;
       return c;
     });
     const weightOf = (tag: string) => {
@@ -562,8 +564,8 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     lat: number,
     lng: number,
     radiusM: number,
-  ): Promise<(Candidate & { categories: string[] })[]> {
-    const { rows } = await this.pg.query<Candidate & { categories: string[] }>(
+  ): Promise<(Candidate & { categories: string[]; overtureId: string })[]> {
+    const { rows } = await this.pg.query<Candidate & { categories: string[]; overtureId: string }>(
       `WITH o AS (SELECT ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography AS g),
        top AS (
          SELECT p.id, coalesce(1 - (p.tag_vec <=> t.vec), 0)::float8 AS taste
@@ -573,11 +575,12 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
          WHERE ST_DWithin(p.geom, o.g, $4)
            AND p.location_suspect IS NULL -- its address says it's elsewhere (migration 0015)
            AND p.confidence >= $5::real
-           AND NOT EXISTS (SELECT FROM unnest(p.categories) c WHERE lower(c) = ANY($6::text[]))
+           AND (p.overture_id = ANY($7::text[]) OR
+                NOT EXISTS (SELECT FROM unnest(p.categories) c WHERE lower(c) = ANY($6::text[])))
          ORDER BY taste DESC, p.id
          LIMIT ${MAX_CANDIDATES}
        )
-       SELECT p.id::text, p.name,
+       SELECT p.id::text, p.name, p.overture_id AS "overtureId",
               ST_Y(p.geom::geometry) AS lat, ST_X(p.geom::geometry) AS lng,
               p.categories[array_length(p.categories, 1)] AS category, p.categories, p.tags,
               top.taste,
@@ -589,7 +592,7 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
        JOIN places p ON p.id = top.id
        CROSS JOIN o
        ORDER BY top.taste DESC, top.id`,
-      [userId, lng, lat, radiusM, this.gate.minConfidence, BLOCKED_CATEGORIES],
+      [userId, lng, lat, radiusM, this.gate.minConfidence, BLOCKED_CATEGORIES, CATEGORY_EXCEPTION_IDS],
     );
     return rows;
   }

@@ -9,7 +9,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { Pool } from 'pg';
-import { BLOCKED_CATEGORIES, MIN_CONFIDENCE } from '../quests/eligibility';
+import { BLOCKED_CATEGORIES, CATEGORY_EXCEPTION_IDS, MIN_CONFIDENCE } from '../quests/eligibility';
 import { defaultOutputPath, parseFocusAreas, PilotPlace, rankPilotCandidates, toCsv } from './candidates';
 
 type Row = Omit<PilotPlace, 'address'>;
@@ -22,7 +22,7 @@ type Row = Omit<PilotPlace, 'address'>;
 // once, under the first area in the file.
 export const CANDIDATES_SQL = `
   SELECT DISTINCT ON (p.id)
-         p.id::text AS id, p.name, ST_Y(p.geom::geometry) AS lat, ST_X(p.geom::geometry) AS lng,
+         p.id::text AS id, p.name, p.overture_id AS "overtureId", ST_Y(p.geom::geometry) AS lat, ST_X(p.geom::geometry) AS lng,
          p.categories, p.categories[array_length(p.categories, 1)] AS category, p.tags,
          p.confidence::float8 AS confidence, p.chain_locations AS "chainLocations",
          p.website, p.phone, a.name AS neighborhood,
@@ -32,7 +32,8 @@ export const CANDIDATES_SQL = `
   JOIN places p ON ST_Intersects(p.geom::geometry, ST_SetSRID(ST_GeomFromGeoJSON(a.gj), 4326))
   WHERE p.location_suspect IS NULL
     AND p.confidence >= $3::real
-    AND NOT EXISTS (SELECT FROM unnest(p.categories) c WHERE lower(c) = ANY($4::text[]))
+    AND (p.overture_id = ANY($5::text[]) OR
+         NOT EXISTS (SELECT FROM unnest(p.categories) c WHERE lower(c) = ANY($4::text[])))
   ORDER BY p.id, a.ord`;
 
 function arg(name: string): string | undefined {
@@ -60,6 +61,7 @@ async function main(): Promise<void> {
       areas.map((a) => a.geometry),
       MIN_CONFIDENCE,
       BLOCKED_CATEGORIES,
+      CATEGORY_EXCEPTION_IDS,
     ]));
     await client.query('ROLLBACK');
   } finally {

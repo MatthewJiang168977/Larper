@@ -1,5 +1,6 @@
 import {
   applyStaticGate,
+  CATEGORY_EXCEPTION_IDS,
   BLOCKED_CATEGORIES,
   BLOCKED_CATEGORY_GROUPS,
   blockedGroup,
@@ -365,7 +366,7 @@ describe('dedupe', () => {
 });
 
 describe('applyStaticGate', () => {
-  const base = { name: 'Place', lat: 40.73, lng: -73.99, categories: ['food_and_drink', 'cafe'] };
+  const base = { name: 'Place', lat: 40.73, lng: -73.99, categories: ['food_and_drink', 'cafe'], overtureId: 'ordinary' };
   it('applies confidence, categories and dedupe together', () => {
     const out = applyStaticGate(
       [
@@ -378,6 +379,20 @@ describe('applyStaticGate', () => {
       0.7,
     );
     expect(out.map((p) => p.id)).toEqual(['1', '5']);
+  });
+
+  it('allows only the listed places through their category blocks and still checks confidence', () => {
+    const exceptions = CATEGORY_EXCEPTION_IDS.map((overtureId, index) => ({
+      ...base, overtureId, id: String(index + 1), name: `Exception ${index}`,
+      confidence: 0.99, categories: [index === 2 ? 'public_bath_house' : 'pharmacy'],
+    }));
+    expect(applyStaticGate(exceptions)).toEqual(exceptions);
+    expect(applyStaticGate([{ ...exceptions[0], overtureId: 'different-id' }])).toEqual([]);
+    expect(applyStaticGate([{ ...exceptions[0], confidence: 0.5 }])).toEqual([]);
+  });
+
+  it.each(['liquor_store', 'shooting_range'])('excludes %s from the deck', (category) => {
+    expect(applyStaticGate([{ ...base, id: '1', confidence: 0.99, categories: [category] }])).toEqual([]);
   });
 });
 

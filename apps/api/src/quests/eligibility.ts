@@ -153,7 +153,7 @@ export const BLOCKED_CATEGORY_GROUPS = {
   // Age-restricted or a bad first impression, and none of them a quest: tobacco, smoke and
   // vape shops and dispensaries (the candy tag's keyword matched "Candy & Smoke Shop"),
   // pawn shops (filed as second-hand, so offered as thrift) and bail bonds.
-  restricted_retail: ['tobacco_shop', 'smoke_and_vape_store', 'cannabis_dispensary', 'pawn_shop', 'bail_bonds_service'],
+  restricted_retail: ['tobacco_shop', 'smoke_and_vape_store', 'cannabis_dispensary', 'pawn_shop', 'bail_bonds_service', 'liquor_store', 'shooting_range'],
 } as const;
 
 export type BlockedGroup = keyof typeof BLOCKED_CATEGORY_GROUPS;
@@ -166,6 +166,15 @@ const BLOCKED_BY_NAME = new Map<string, BlockedGroup>(
 
 /** The same names, lowercase: the one list the candidates query is given (no second copy to drift). */
 export const BLOCKED_CATEGORIES: readonly string[] = [...BLOCKED_BY_NAME.keys()];
+
+// Stable source IDs from data/nyc.parquet; local bigint IDs vary between imports.
+// These venues override only the category rule.
+export const CATEGORY_EXCEPTION_IDS: readonly string[] = [
+  'a34c2d08-e912-4cb7-87a2-975da0bec848', // C.O. Bigelow Chemists
+  'e20895ef-44ff-47f6-82e0-e020ea156250', // Dichter Pharmacy & Soda Shop
+  '70d5bf1f-edda-455a-bad1-dc88f85e6d94', // Bill Rainey Park
+];
+const CATEGORY_EXCEPTIONS = new Set(CATEGORY_EXCEPTION_IDS);
 
 /** The group that blocks this hierarchy, or null if nothing in it is blocked. */
 export function blockedGroup(categories: readonly string[] | null | undefined): BlockedGroup | null {
@@ -243,11 +252,15 @@ export function dedupe<T extends DedupeItem>(items: readonly T[], radiusM = DUPL
 
 export interface GateItem extends DedupeItem {
   categories: readonly string[];
+  overtureId: string;
 }
 
 /** a), b), then c): what rank() runs on the candidates before scoring them. */
 export function applyStaticGate<T extends GateItem>(items: readonly T[], minConfidence: number = MIN_CONFIDENCE): T[] {
-  return dedupe(items.filter((p) => meetsConfidence(p.confidence, minConfidence) && !isBlockedCategory(p.categories)));
+  return dedupe(items.filter((p) =>
+    meetsConfidence(p.confidence, minConfidence) &&
+    (CATEGORY_EXCEPTIONS.has(p.overtureId) || !isBlockedCategory(p.categories)),
+  ));
 }
 
 // --- d) unknown hours in the evening ----------------------------------------------
