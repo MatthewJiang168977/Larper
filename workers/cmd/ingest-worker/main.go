@@ -88,15 +88,18 @@ func main() {
 	}
 
 	log.Info("waiting for jobs", "queue", queueName, "backend", backend, "release", cfg.release, "lease", cfg.lease.String())
+	// A database restart retries quietly (Warn) and reaches Sentry only if it lasts two
+	// minutes (platform.Outage). Job failures keep their own backoff (queue.Backoff).
+	claimOutage := &platform.Outage{Name: "claim", After: 2 * time.Minute, Min: 5 * time.Second, Max: 30 * time.Second}
 	for ctx.Err() == nil {
 		job, err := q.Claim(ctx, queueName, cfg.lease)
 		if err != nil {
 			if ctx.Err() == nil {
-				log.Error("claim", "err", err)
-				sleep(ctx, 5*time.Second)
+				sleep(ctx, claimOutage.Fail(log, err))
 			}
 			continue
 		}
+		claimOutage.OK(log)
 		if job == nil {
 			sleep(ctx, cfg.idlePoll)
 			continue
@@ -110,16 +113,18 @@ func main() {
 
 // dispatch moves new jobs from the ledger into SQS (the outbox step).
 func dispatch(ctx context.Context, log *slog.Logger, q *queue.SQS) {
+	outage := &platform.Outage{Name: "dispatch", After: 2 * time.Minute, Min: 5 * time.Second, Max: 30 * time.Second}
 	for ctx.Err() == nil {
 		n, err := q.Dispatch(ctx, queueName)
 		switch {
 		case ctx.Err() != nil:
 		case err != nil:
-			log.Error("dispatch", "err", err)
-			sleep(ctx, 5*time.Second)
+			sleep(ctx, outage.Fail(log, err))
 		case n > 0:
+			outage.OK(log)
 			log.Info("dispatched", "jobs", n)
 		default:
+			outage.OK(log)
 			sleep(ctx, time.Second)
 		}
 	}
