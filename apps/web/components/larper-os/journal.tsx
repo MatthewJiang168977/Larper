@@ -4,6 +4,7 @@ import { larperOsClassName } from "@/app/larper-os";
 import { humanize } from "@/components/quest/why-lines";
 import type { JournalEntry } from "@/lib/api";
 import { LegalLinks } from "./legal-links";
+import { OSNavigation } from "./navigation";
 import { OSButton, OSMenuBar, OSQuestPanel, OSWindow } from "./primitives";
 import "./journal.css";
 
@@ -21,13 +22,14 @@ const journalDate = new Intl.DateTimeFormat("en-US", {
 });
 const errorTitle = "couldn't open the journal";
 
-export function JournalView({ entries, error, retry, previewControls, mapHref = "/", hideMapLink = false, dataPanel }: {
+export function JournalView({ entries, error, retry, previewControls, mapHref = "/", hideMapLink = false, accountControl, dataPanel }: {
   entries: JournalEntry[] | null;
   error: string | null;
   retry: () => void;
   previewControls?: ReactNode;
   mapHref?: string;
   hideMapLink?: boolean;
+  accountControl?: ReactNode;
   /** The "your data" section (export and delete), under the list. */
   dataPanel?: ReactNode;
 }) {
@@ -36,7 +38,9 @@ export function JournalView({ entries, error, retry, previewControls, mapHref = 
 
   return (
     <main className={`${larperOsClassName} larper-journal`}>
-      <OSMenuBar>{previewControls}</OSMenuBar>
+      <OSMenuBar navigation={<OSNavigation page="journal" mapHref={mapHref} hideMapLink={hideMapLink} account={accountControl} />}>
+        {previewControls}
+      </OSMenuBar>
       <div className="larper-journal-stage">
         <OSWindow title="quest journal" footer={footer}>
           <div className="larper-journal-heading">

@@ -3,6 +3,7 @@
 import { useAuth, useClerk } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { AccountMenu } from "@/components/auth/account-menu";
 import { AccountDeletionComplete, SignInRemovalFailed, YourData, NO_PRIVACY, privacyFrom, type AccountKind, type ClerkRemoval } from "@/components/larper-os/your-data";
 import { RequireSignIn } from "@/components/require-sign-in";
 import { JournalView } from "@/components/larper-os/journal";
@@ -144,6 +145,7 @@ function Journal({ onAccountDeleted }: { onAccountDeleted: (clerkUser: ClerkRemo
       error={error}
       retry={reloadQuests}
       hideMapLink={accountDeletePending}
+      accountControl={!accountDeletePending && <AccountMenu demo={account !== "user"} />}
       dataPanel={
         <YourData
           account={account}

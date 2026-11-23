@@ -119,8 +119,8 @@ export const larperOsAuthAppearance = {
 export function larperOsAccountMenuAppearance(osClassName: string) {
   return {
     elements: {
-      // Give the 28 px avatar the same 44 px hit area as the other map controls.
-      userButtonTrigger: "hit-target",
+      userButtonTrigger: "larper-os-menu-item larper-os-clerk-account-trigger",
+      userButtonBox: "larper-os-clerk-account-avatar",
       userButtonPopoverRootBox: "larper-os-account-menu-root",
       // The popover can render in a portal. Carry the OS tokens and fonts with it.
       userButtonPopoverCard: `${osClassName} larper-os-account-menu`,

@@ -1,13 +1,14 @@
 "use client";
 
 import { SignOutButton } from "@clerk/nextjs";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { OSButton } from "@/components/larper-os/primitives";
 import "./larper-os-account-menu.css";
 
 export function DemoAccountMenu() {
-  const menu = useRef<HTMLDetailsElement>(null);
-  const trigger = useRef<HTMLElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const panelId = useId();
   const [open, setOpen] = useState(false);
 
   // A press anywhere outside closes it. Not on any blur: Safari and Firefox on macOS don't
@@ -16,37 +17,45 @@ export function DemoAccountMenu() {
   useEffect(() => {
     if (!open) return;
     const away = (event: PointerEvent) => {
-      if (menu.current && !menu.current.contains(event.target as Node)) menu.current.open = false;
+      if (menu.current && !menu.current.contains(event.target as Node)) setOpen(false);
     };
     document.addEventListener("pointerdown", away);
     return () => document.removeEventListener("pointerdown", away);
   }, [open]);
 
   return (
-    <details
+    <div
       ref={menu}
       className="larper-os-demo-account"
-      onToggle={(event) => setOpen(event.currentTarget.open)}
       onBlur={(event) => {
         // Keyboard: tabbing out of the menu closes it. A blur with no related target is
         // left to the pointerdown handler above.
         const to = event.relatedTarget;
-        if (to && !event.currentTarget.contains(to)) event.currentTarget.open = false;
+        if (to && !event.currentTarget.contains(to)) setOpen(false);
       }}
       onKeyDown={(event) => {
-        if (event.key !== "Escape" || !event.currentTarget.open) return;
+        if (event.key !== "Escape" || !open) return;
         event.preventDefault();
         event.stopPropagation();
-        event.currentTarget.open = false;
+        setOpen(false);
         trigger.current?.focus();
       }}
     >
-      <summary className="larper-os-button" ref={trigger}>account</summary>
-      <div className="larper-os-demo-account-panel">
+      <button
+        type="button"
+        className="larper-os-menu-item"
+        ref={trigger}
+        aria-controls={panelId}
+        aria-expanded={open}
+        onClick={() => setOpen((wasOpen) => !wasOpen)}
+      >
+        account <span className="larper-os-account-caret" aria-hidden="true">▾</span>
+      </button>
+      <div id={panelId} className="larper-os-demo-account-panel" hidden={!open}>
         <SignOutButton>
           <OSButton>sign out</OSButton>
         </SignOutButton>
       </div>
-    </details>
+    </div>
   );
 }
