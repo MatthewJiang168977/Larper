@@ -89,6 +89,7 @@ const fake = vi.hoisted(() => {
     setLngLat() {
       return this;
     }
+    setOffset = vi.fn();
     addTo(map: FakeMap) {
       map.container.appendChild(this.el);
       return this;
@@ -281,29 +282,22 @@ describe("map markers", () => {
     expect(screen.getByRole("button", { name: "Bar Dos" }).classList).toContain("hit-target");
   });
 
-  it("where hit areas overlap, a tap goes to the nearest pin, not the one drawn on top", async () => {
+  it("spreads coincident pins, selects each directly and lets them return to their anchors on zoom", async () => {
     const onSelect = vi.fn();
     render(<MapLibreQuestMap {...props({ onSelect })} />);
-    const top = await screen.findByRole("button", { name: "Cafe Uno" }); // the quest, added last
-    const lower = screen.getByRole("button", { name: "Bar Dos" });
-    // Centres 20 px apart: their 44 px hit areas overlap between x = 88 and 132.
-    const at = (el: HTMLElement, cx: number, cy: number, size: number) =>
-      vi.spyOn(el, "getBoundingClientRect").mockReturnValue(new DOMRect(cx - size / 2, cy - size / 2, size, size));
-    at(lower, 100, 200, 26);
-    at(top, 120, 200, 38);
-
-    // In the overlap, nearer the lower pin: the browser hands the click to the top one.
-    fireEvent.click(top, { clientX: 104, clientY: 202, detail: 1 });
+    const flag = await screen.findByRole("button", { name: "Cafe Uno" });
+    const lead = screen.getByRole("button", { name: "Bar Dos" });
+    const leadMarker = fake.markers.find(({ el }) => el.contains(lead))!;
+    const flagMarker = fake.markers.find(({ el }) => el.contains(flag))!;
+    expect(flagMarker.setOffset).not.toHaveBeenCalled();
+    expect(leadMarker.setOffset).toHaveBeenLastCalledWith([0, -56]);
+    fireEvent.click(lead, { clientX: 200, clientY: 244, detail: 1 });
     expect(onSelect).toHaveBeenLastCalledWith("p2");
-
-    fireEvent.click(top, { clientX: 117, clientY: 199, detail: 1 });
+    fireEvent.click(flag);
     expect(onSelect).toHaveBeenLastCalledWith("p1");
-
-    // Enter/Space on the focused pin: no position, so it selects itself.
-    fireEvent.click(top, { clientX: 0, clientY: 0, detail: 0 });
-    expect(onSelect).toHaveBeenLastCalledWith("p1");
-    fireEvent.click(lower, { clientX: 0, clientY: 0, detail: 0 });
-    expect(onSelect).toHaveBeenLastCalledWith("p2");
+    map().project.mockReturnValueOnce({ x: 200, y: 300 }).mockReturnValueOnce({ x: 300, y: 300 });
+    map().fire("move");
+    expect(leadMarker.setOffset).toHaveBeenLastCalledWith([0, 0]);
   });
 
   it("sizes the halo from the reading's accuracy, flat on the map, and re-measures on zoom", async () => {

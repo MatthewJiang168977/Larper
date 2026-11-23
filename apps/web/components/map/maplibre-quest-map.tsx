@@ -9,6 +9,7 @@ import { haloDiameterPx } from "./accuracy-halo";
 import { BUILDINGS_3D, buildingVisibility, journalStyle } from "./journal-style";
 import type { MapPhase } from "./map-daylight";
 import type { QuestMapProps } from "./quest-map";
+import { spreadPins } from "./spread-pins";
 
 const PITCH = 55;
 const MIN_FRAME_ZOOM = 14.8;
@@ -362,24 +363,8 @@ export default function MapLibreQuestMap({
     const lib = libRef.current;
     const map = mapRef.current;
     if (!ready || !lib || !map) return;
-    // Hit areas are 44 px, so close pins overlap and the one added later (the quest, or
-    // the scaled-up selected pin) would take every tap in the overlap. A tap picks the
-    // pin whose centre is nearest instead. A keyboard click has no position (detail 0,
-    // clientX/Y 0): it keeps the focused pin.
-    const nearestPin = (e: MouseEvent) => {
-      if (e.detail === 0 || (e.clientX === 0 && e.clientY === 0)) return null;
-      let best: { placeId: string; d: number } | null = null;
-      for (const m of markersRef.current) {
-        const r = m.pin.getBoundingClientRect();
-        const d = Math.hypot(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2));
-        if (!best || d < best.d) best = { placeId: m.placeId, d };
-      }
-      return best?.placeId ?? null;
-    };
     const add = (cls: string, content: string | Node, p: { id: string; name: string; lat: number; lng: number }) => {
-      const { root, pin } = pinElement(`${cls} hit-target`, content, p.name, (e) =>
-        onSelectRef.current(nearestPin(e) ?? p.id),
-      );
+      const { root, pin } = pinElement(`${cls} hit-target`, content, p.name, () => onSelectRef.current(p.id));
       pin.addEventListener("keydown", (e) => pinKey(e as KeyboardEvent, p.id));
       pin.addEventListener("focus", () => showFocused(p));
       pin.after(nameLabel(p.name));
@@ -391,8 +376,9 @@ export default function MapLibreQuestMap({
         root.appendChild(description);
         pin.setAttribute("aria-describedby", description.id);
       }
-      const marker = new lib.Marker({ element: root, anchor: "center" }).setLngLat([p.lng, p.lat]).addTo(map);
-      return { marker, pin, placeId: p.id };
+      const coordinates: [number, number] = [p.lng, p.lat];
+      const marker = new lib.Marker({ element: root, anchor: "center" }).setLngLat(coordinates).addTo(map);
+      return { marker, pin, placeId: p.id, coordinates, offset: [0, 0] as [number, number] };
     };
     // The pins are one Tab stop (the selected pin; the focus effect keeps the rest out of
     // the Tab order). Arrow keys go through them in the sheet's order, quest first, and
@@ -419,12 +405,32 @@ export default function MapLibreQuestMap({
         map.easeTo({ center: [p.lng, p.lat], padding, duration: 450, essential: false });
       }
     };
-    // Quest pin added last so it draws above any lead it overlaps.
     const markers = deck.map((d, i) => add("pin-lead", String(i + 1), d.place));
     if (quest) markers.push(add("pin-quest", flagIcon(), quest.place));
+    // Place the quest at its actual location first, then give each lead the nearest
+    // free spot. Offsets change with projection, while the camera uses real locations.
+    const ordered = quest ? [markers[markers.length - 1], ...markers.slice(0, -1)] : markers;
+    const layout = () => {
+      const projected = ordered.map(({ coordinates }) => map.project(coordinates));
+      spreadPins(projected).forEach((point, i) => {
+        const entry = ordered[i];
+        const x = point.x - projected[i].x;
+        const y = point.y - projected[i].y;
+        if (entry.offset[0] === x && entry.offset[1] === y) return;
+        entry.offset = [x, y];
+        entry.marker.setOffset(entry.offset);
+      });
+    };
     markersRef.current = markers;
-    pinOrderRef.current = quest ? [markers[markers.length - 1], ...markers.slice(0, -1)] : markers;
-    return () => markers.forEach((m) => m.marker.remove());
+    pinOrderRef.current = ordered;
+    layout();
+    map.on("move", layout);
+    map.on("resize", layout);
+    return () => {
+      map.off("move", layout);
+      map.off("resize", layout);
+      markers.forEach((m) => m.marker.remove());
+    };
   }, [ready, quest, deck, markerDescriptionId]);
 
   // Focus: highlight the pin and fly to it, leaving room for the sheet.

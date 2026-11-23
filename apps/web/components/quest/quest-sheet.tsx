@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { DeckItem, PlaceView, QuestView, Reasons, WasOpenAnswer } from "@/lib/api";
 import { formatDistance } from "@/lib/format";
 import { telUrl, webUrl } from "@/lib/web-url";
+import { readHours } from "@/lib/hours";
 import { DOCK_MIN_WIDTH_PX, DOCK_RESERVED_PX } from "./dock";
 import { fullHeight, offsetFor, resolveSnap, type Snap, snapForKey } from "./sheet-snap";
 import { PlaceHoursNote } from "./place-hours-note";
@@ -616,7 +617,7 @@ function Links({ place }: { place: PlaceView }) {
   // Only web addresses go into an href (these strings come from the API).
   const website = webUrl(place.website);
   const instagram = webUrl(place.instagram);
-  const tel = telUrl(place.phone);
+  const tel = readHours(place.hours).status === "known" ? telUrl(place.phone) : null;
   return (
     <>
       {/* Each link has a 44 px hit area; the gaps keep neighbours' areas apart, also
@@ -652,7 +653,6 @@ function Links({ place }: { place: PlaceView }) {
       <PlaceHoursNote
         hours={place.hours}
         openConfirmations={place.openConfirmations}
-        website={place.website}
         phone={place.phone}
       />
     </>
