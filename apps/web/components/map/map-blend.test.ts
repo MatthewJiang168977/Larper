@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LayerSpecification } from "maplibre-gl";
-import { mixColors, styleFor } from "./map-blend";
+import { contrast, legibleLabel, mixColors, styleFor } from "./map-blend";
 import { mapAppearanceAt } from "./map-daylight";
 import { larperOsPhaseStyles } from "./larper-os-style";
 
@@ -33,15 +33,25 @@ describe("phase blending", () => {
     expect(colour[6]).toBe(mixColors("#BBA3E8", "#6a5363", 0.5));
   });
 
-  it("switches labels and halos at the midpoint instead of blending them", () => {
-    const text = (t: number) => {
-      const L = styleFor(appearance(t)).layers;
-      return [paint(L, "street-names", "text-color"), paint(L, "street-names", "text-halo-color"),
-        paint(L, "neighbourhoods", "text-color"), paint(L, "water-names", "text-halo-color")];
-    };
-    expect(text(0.49)).toEqual(["#2A1236", "#F2A58F", "#2A1236", "#F2A58F"]);
-    expect(text(0.5)).toEqual(["#f9efe4", "#251e29", "#f9efe4", "#251e29"]);
-    expect(text(0.99)).toEqual(text(0.5));
+  it("picks each label color for the ground it is on instead of blending it", () => {
+    const label = (t: number) => paint(styleFor(appearance(t)).layers, "street-names", "text-color");
+    expect(label(0.05)).toBe("#2A1236"); // dusk's dark label while the land is still dusk-bright
+    expect(label(0.95)).toBe("#f9efe4"); // night's light label once the land is dark
+    // Only ever dusk's label, night's label, or one of them pushed toward black or white.
+    for (let t = 0.01; t < 1; t += 0.01) {
+      expect(label(t)).toMatch(/^#[0-9a-f]{6}$/i);
+    }
+  });
+
+  it("pushes a label toward black or white when neither palette's label reads on the mid-tone", () => {
+    const pushed = legibleLabel(["#2A1236", "#f9efe4"], "#8b6260");
+    expect(contrast(pushed, "#8b6260")).toBeGreaterThanOrEqual(4.5);
+    expect(legibleLabel(["#2A1236", "#f9efe4"], "#f2a58f")).toBe("#2A1236"); // no push needed
+  });
+
+  it("blends halos with the land they match", () => {
+    const halo = paint(styleFor(appearance(0.5)).layers, "street-names", "text-halo-color");
+    expect(halo).toBe(mixColors("#F2A58F", "#251e29", 0.5));
   });
 
   it("makes buildings solid only in the night palette", () => {

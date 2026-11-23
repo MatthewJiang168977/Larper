@@ -1,23 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { LayerSpecification, StyleSpecification } from "maplibre-gl";
 import { larperOsPhaseStyles } from "./larper-os-style";
-import { styleFor } from "./map-blend";
-import type { MapPhase } from "./map-daylight";
+import { contrast, luminance, styleFor } from "./map-blend";
+import { type MapPhase, mapAppearanceAt } from "./map-daylight";
 
 // WCAG 1.4.11: the parts of the map a person reads streets from must stand 3:1 against the
 // land around them. Pale roads on pale land get an outline (the casing) that carries it,
 // and so do pale buildings (the 2D footprints' edge: extrusions have none, and are shaded
 // by the light). Map text keeps its 4.5:1.
-
-export function luminance(hex: string): number {
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
-  const f = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
-}
-export const contrast = (a: string, b: string) => {
-  const [x, y] = [luminance(a), luminance(b)].sort((m, n) => n - m);
-  return (x + 0.05) / (y + 0.05);
-};
 
 const paint = (layers: LayerSpecification[], id: string, prop: string) => {
   const layer = layers.find((l) => l.id === id);
@@ -96,13 +86,36 @@ describe("map contrast: structure", () => {
     expect(luminance(c.coast)).toBeGreaterThan(luminance(c.water));
   });
 
-  it("labels stay legible against the blended land at the moment they switch (t just under and over 0.5)", () => {
+  const blendedLabels = (a: Parameters<typeof styleFor>[0]) => {
+    const L = styleFor(a).layers;
+    const c = colorsOf(styleFor(a));
+    return {
+      streets: contrast(c.label, c.land),
+      neighbourhoods: contrast(paint(L, "neighbourhoods", "text-color"), c.land),
+      water: contrast(paint(L, "water-names", "text-color"), c.water),
+    };
+  };
+
+  it("no point of any blend has a label under 4.5:1 against its blended land or water", () => {
     const next: Record<MapPhase, MapPhase> = { dawn: "day", day: "golden", golden: "dusk", dusk: "night", night: "dawn" };
     for (const phase of phases) {
-      for (const t of [0.49, 0.5]) {
-        const c = colorsOf(styleFor({ phase, next: next[phase], t, altitude: 10, azimuth: 200 }));
-        // Mid-blend, the land is between two palettes: require at least 3:1 (large-text level).
-        expect(contrast(c.label, c.land), `${phase} -> ${next[phase]} at ${t}`).toBeGreaterThanOrEqual(3);
+      for (let t = 0; t <= 1; t += 0.01) {
+        const ratios = blendedLabels({ phase, next: next[phase], t, altitude: 10, azimuth: 200 });
+        for (const [kind, ratio] of Object.entries(ratios)) {
+          expect(ratio, `${phase} -> ${next[phase]} at t=${t.toFixed(2)} (${kind})`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    }
+  });
+
+  it("no minute-by-minute update on the solstices and both clock-change days goes under 4.5:1", () => {
+    for (const date of ["2026-06-21", "2026-12-21", "2026-03-08", "2026-11-01"]) {
+      const start = Date.parse(`${date}T05:00:00Z`);
+      for (let minute = 0; minute < 24 * 60; minute++) {
+        const a = mapAppearanceAt(new Date(start + minute * 60_000));
+        for (const [kind, ratio] of Object.entries(blendedLabels(a))) {
+          expect(ratio, `${date} +${minute} min (${kind})`).toBeGreaterThanOrEqual(4.5);
+        }
       }
     }
   });
