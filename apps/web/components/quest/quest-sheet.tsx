@@ -347,7 +347,7 @@ function NoteBlock({ note, onDismiss }: { note: SheetNote; onDismiss?: () => voi
           disabled={note.action.pending}
           className="hit-target shrink-0 self-center font-medium underline disabled:opacity-50"
         >
-          {note.action.pending ? "Checking…" : note.action.label}
+          {note.action.pending ? "checking…" : note.action.label}
         </button>
       )}
       {onDismiss && (
@@ -666,14 +666,14 @@ function PrimaryAction({ status, onAction, busy }: { status: QuestView["status"]
   if (status === "offered") {
     return (
       <button className={PRIMARY} disabled={busy} onClick={() => onAction("accept")}>
-        Accept quest
+        accept quest
       </button>
     );
   }
   if (status === "accepted") {
     return (
       <button className={PRIMARY} disabled={busy} onClick={() => onAction("complete")}>
-        I went
+        i went
       </button>
     );
   }
@@ -690,7 +690,7 @@ function SecondaryAction({
   busy: boolean;
 }) {
   if (status === "offered") {
-    return <button className={SECONDARY} disabled={busy} onClick={() => onAction("skip")}>Skip</button>;
+    return <button className={SECONDARY} disabled={busy} onClick={() => onAction("skip")}>skip</button>;
   }
   if (status === "accepted") {
     return <button className={SECONDARY} disabled={busy} onClick={() => onAction("not-today")}>not today</button>;

@@ -81,7 +81,8 @@ describe("sign-in and sign-up pages", () => {
     { Page: SignUpPage, title: "sign up", loading: "loading sign-up…" },
   ])("$title: says it is loading while Clerk starts, and links privacy, terms and credits", ({ Page, loading }) => {
     render(<Page />);
-    expect(screen.getAllByText(loading).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(loading)).toHaveLength(1);
+    expect(screen.getAllByRole("status")).toHaveLength(1);
     const about = screen.getByRole("navigation", { name: "about larper" });
     for (const page of ["privacy", "terms", "credits"]) {
       const link = screen.getByRole("link", { name: page });

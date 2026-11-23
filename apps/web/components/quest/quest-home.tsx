@@ -552,7 +552,7 @@ export function QuestScreen({ api, location, renderAccountControl, previewContro
 
       {/* Keyed by state: a new state is a new card, so an alert is announced as one. */}
       {!loc ? (
-        <StateCard key="Finding you…" ref={setCardEl} role="status" label="Finding you…" placeholder />
+        <StateCard key="finding you…" ref={setCardEl} role="status" label="finding you…" placeholder />
       ) : meError && !me ? (
         <StateCard
           key="couldn't load your journal"

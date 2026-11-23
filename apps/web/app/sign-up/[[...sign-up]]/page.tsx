@@ -9,11 +9,12 @@ export default function SignUpPage() {
   return (
     <LarperOsAuthShell title="sign up">
       {/* Clerk's form renders nothing until clerk-js has loaded, a few seconds on a slow
-          connection: say so instead of showing an empty window. */}
+          connection: say so instead of showing an empty window. This is the one loading
+          line; the Suspense around the form needs none of its own. */}
       <ClerkLoading>
         <p className="larper-os-auth-loading" role="status">loading sign-up…</p>
       </ClerkLoading>
-      <Suspense fallback={<p className="larper-os-auth-loading" role="status">loading sign-up…</p>}>
+      <Suspense fallback={null}>
         <SignUp appearance={larperOsAuthAppearance} />
       </Suspense>
     </LarperOsAuthShell>

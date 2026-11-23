@@ -213,7 +213,7 @@ describe("QuestHome: never stuck on 'Surveying…'", () => {
     location = null;
     render(<QuestHome />);
     await settle();
-    expect(screen.getByText("Finding you…")).toBeTruthy();
+    expect(screen.getByText("finding you…")).toBeTruthy();
     expect(todayCalls()).toBe(0);
   });
 

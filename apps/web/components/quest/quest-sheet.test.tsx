@@ -57,12 +57,12 @@ describe("QuestSheet on a phone: peek", () => {
     expect(within(peekPart()).getByRole("heading", { name: "Cafe Uno" })).toBeTruthy();
     expect(within(peekPart()).getByText(/ramen restaurant ·/)).toBeTruthy();
     expect(within(peekPart()).getByText(/about 1 min on foot/)).toBeTruthy();
-    expect(within(peekPart()).getByRole("button", { name: "Accept quest" })).toBeTruthy();
+    expect(within(peekPart()).getByRole("button", { name: "accept quest" })).toBeTruthy();
   });
 
   it("puts I went in peek once the quest is accepted", () => {
     sheet("accepted");
-    expect(within(peekPart()).getByRole("button", { name: "I went" })).toBeTruthy();
+    expect(within(peekPart()).getByRole("button", { name: "i went" })).toBeTruthy();
   });
 
   it("keeps everything else out of reach until expanded: no chips or links in peek", () => {
@@ -266,12 +266,12 @@ const phoneSecondary = (name: string) => within(peekPart()).getByRole("button", 
 describe("QuestSheet on a phone: Skip at peek", () => {
   it("puts one secondary Skip button beside Accept and none in full", () => {
     sheet("offered");
-    const skip = phoneSecondary("Skip");
-    expect(skip.parentElement).toBe(within(peekPart()).getByRole("button", { name: "Accept quest" }).parentElement);
+    const skip = phoneSecondary("skip");
+    expect(skip.parentElement).toBe(within(peekPart()).getByRole("button", { name: "accept quest" }).parentElement);
     const classes = skip.className.split(" ");
     expect(classes).toContain("larper-os-button");
     expect(classes).not.toContain("stamp-btn");
-    expect(within(rest()).queryByRole("button", { name: "Skip" })).toBeNull();
+    expect(within(rest()).queryByRole("button", { name: "skip" })).toBeNull();
   });
 
   it("says 'Not today' (not 'Abandon') on an accepted quest, and sets it aside rather than skipping", () => {
@@ -286,7 +286,7 @@ describe("QuestSheet on a phone: Skip at peek", () => {
   it("keeps Skip on an offered quest as a skip", () => {
     const onAction = vi.fn();
     sheet("offered", { onAction });
-    fireEvent.click(phoneSecondary("Skip"));
+    fireEvent.click(phoneSecondary("skip"));
     expect(onAction).toHaveBeenCalledWith("skip");
   });
 });
@@ -378,7 +378,7 @@ describe("QuestSheet on a phone: full", () => {
   it("shows a lead's note instead of quest actions, and no main action in its peek", () => {
     sheet("offered", { selectedId: "p2" });
     expect(screen.getByText("Lead 1")).toBeTruthy();
-    expect(within(peekPart()).queryByRole("button", { name: "Accept quest" })).toBeNull();
+    expect(within(peekPart()).queryByRole("button", { name: "accept quest" })).toBeNull();
     expect(rest().textContent).toContain("A backup nearby.");
   });
 
@@ -529,7 +529,7 @@ describe("QuestSheet: the check-in note", () => {
     expect(alert.textContent).toContain("You're 2.8 km away.");
     fireEvent.click(within(alert).getByRole("button", { name: "check again" }));
     expect(again).toHaveBeenCalled();
-    expect(within(peekPart()).getByRole("button", { name: "I went" })).toBeTruthy(); // same place as the action
+    expect(within(peekPart()).getByRole("button", { name: "i went" })).toBeTruthy(); // same place as the action
   });
 
   it("labels a simulated demo check-in plainly, as a status", () => {
@@ -553,7 +553,7 @@ describe("QuestSheet: the check-in note", () => {
   it("is dismissible and shows 'Checking…' while a check is under way", () => {
     const dismiss = vi.fn();
     withNote({ tone: "rejected", label: "Not checked in", text: "x", action: { label: "check again", onClick: vi.fn(), pending: true } }, dismiss);
-    expect(screen.getByRole("button", { name: "Checking…" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "checking…" })).toHaveProperty("disabled", true);
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(dismiss).toHaveBeenCalled();
   });
@@ -730,7 +730,7 @@ describe("QuestSheet at 200% text or zoom", () => {
     expect(peekPart().className).toContain("overflow-y-auto");
     // The name and the main action are in that scrolling part, not cut off below it.
     expect(within(peekPart()).getByRole("heading", { name: "Cafe Uno" })).toBeTruthy();
-    expect(within(peekPart()).getByRole("button", { name: "Accept quest" })).toBeTruthy();
+    expect(within(peekPart()).getByRole("button", { name: "accept quest" })).toBeTruthy();
     vi.unstubAllGlobals();
   });
 
@@ -765,7 +765,7 @@ describe("QuestSheet at 200% text or zoom", () => {
 
   it("puts the main action under the distance when there isn't room beside it", () => {
     sheet("offered");
-    const row = within(peekPart()).getByRole("button", { name: "Accept quest" }).parentElement!.parentElement!;
+    const row = within(peekPart()).getByRole("button", { name: "accept quest" }).parentElement!.parentElement!;
     expect(row.className.split(" ")).toContain("flex-wrap");
     expect(within(row).getByText(/about 1 min on foot/).className).toContain("min-w-[8rem]");
   });
