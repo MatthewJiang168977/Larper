@@ -74,9 +74,11 @@ describe("Privacy: your data", () => {
     const a = section("Delete my account");
     expect(a).toMatch(/your taste profile and your Larper account/);
     expect(a).toMatch(/Also deletes your sign-in, then signs you out/);
-    expect(a).toMatch(/you stay signed in to try again/);
+    expect(a).toMatch(/Larper keeps trying to remove the sign-in until it's gone/);
+    expect(a).toMatch(/holds only your sign-in's ID, so it can finish, and deletes that as soon as the sign-in is gone/);
     expect(a).toMatch(/sign up again later, with the same email if you like\. That makes a new, empty account/);
-    expect(a).toMatch(/After deletion Larper writes nothing new that identifies you\. Records made before, such as server logs and event records, keep your account number until they expire on their usual schedule\./);
+    expect(a).toMatch(/Nothing else new that identifies you is written after deletion\. Records made before, such as server logs and event records, keep your account number until they expire on their usual schedule\./);
+    expect(a).not.toMatch(/stay signed in to try again/);
     expect(a).not.toMatch(/Nothing is kept/);
     expect(a).not.toMatch(/automatic|manual|by hand|you're signed out/i);
   });
@@ -88,6 +90,9 @@ describe("Privacy: your data", () => {
     expect(b).toMatch(/60-day cleanup rule for old objects/);
     expect(b).not.toMatch(/at (the very )?most|within 60 days/);
     expect(b).toMatch(/Restoring a backup could bring back data deleted/);
+    expect(b).toMatch(/Restored history can be deleted again from the journal/);
+    expect(b).toMatch(/a restored account isn't deleted again automatically/);
+    expect(b).not.toMatch(/You can delete it again/);
     expect(b).toMatch(/demo account can't be exported or deleted/);
   });
 

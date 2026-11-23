@@ -313,8 +313,9 @@ export function AccountDeletionComplete({ status, onRetry }: {
 }
 
 /**
- * The data is deleted but Clerk didn't remove the sign-in. They stay signed in; "try again"
- * repeats DELETE /me (the API recreates an empty row for the session, purges it and retries Clerk).
+ * The data is deleted but Clerk didn't remove the sign-in. The API records the removal as
+ * owed and retries it in the background (migration 0021), and refuses the session from now
+ * on, so "try again" ends as account_gone, which counts as removed.
  */
 export function SignInRemovalFailed({ onRemoved }: { onRemoved: () => void }) {
   const api = useApi();
@@ -357,7 +358,7 @@ export function SignInRemovalFailed({ onRemoved }: { onRemoved: () => void }) {
           <OSQuestPanel>
             <div className="larper-data">
               <h1 ref={ref} tabIndex={-1} className="larper-journal-name">your larper data is deleted.</h1>
-              <p>removing your sign-in didn&apos;t go through, so you&apos;re still signed in.</p>
+              <p>removing your sign-in didn&apos;t go through yet. larper keeps trying on its own until it&apos;s gone.</p>
               <div className="larper-data-actions">
                 <OSButton primary onClick={() => void retry()} disabled={trying} aria-busy={trying}>
                   {trying ? "trying…" : "try again"}

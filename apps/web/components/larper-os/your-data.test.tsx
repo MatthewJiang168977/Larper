@@ -468,7 +468,7 @@ describe("sign-in removal failed", () => {
     api.mockResolvedValueOnce({ deleted: {}, clerkUser: "failed" }).mockResolvedValueOnce({ deleted: {}, clerkUser: "deleted" });
     render(<SignInRemovalFailed onRemoved={onRemoved} />);
     expect(screen.getByRole("heading", { name: "your larper data is deleted." })).toBeTruthy();
-    expect(screen.getByText("removing your sign-in didn't go through, so you're still signed in.")).toBeTruthy();
+    expect(screen.getByText("removing your sign-in didn't go through yet. larper keeps trying on its own until it's gone.")).toBeTruthy();
 
     fireEvent.click(button("try again"));
     await settle();

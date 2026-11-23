@@ -403,7 +403,7 @@ describe("Journal", () => {
       expect(signOut).not.toHaveBeenCalled();
       expect(replace).not.toHaveBeenCalled();
       expect(screen.getByRole("heading", { name: "your larper data is deleted." })).toBeTruthy();
-      expect(screen.getByText("removing your sign-in didn't go through, so you're still signed in.")).toBeTruthy();
+      expect(screen.getByText("removing your sign-in didn't go through yet. larper keeps trying on its own until it's gone.")).toBeTruthy();
       expect(screen.queryByText("Tasty Noodles")).toBeNull();
       expect(screen.queryByText("you're signed out.")).toBeNull();
       const deletes = () => api.mock.calls.filter(([path, init]) => path === "/me" && init?.method === "DELETE").length;
