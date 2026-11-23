@@ -159,7 +159,7 @@ describeDb('the trust gate (real database)', () => {
     expect(offered(r)).toEqual(['Alpha Cafe', 'Green Park', 'Library Branch', 'Twin Cafe Best']);
   });
 
-  it('decks are cached under the v4 key, so decks cached before the gate are not served', async () => {
+  it('decks are cached under the v5 key, so decks cached before the current gate rules are not served', async () => {
     const keys: string[] = [];
     const spy = {
       getOrSet: async (k: string, _t: number, fn: () => Promise<unknown>) => {
@@ -168,7 +168,7 @@ describeDb('the trust gate (real database)', () => {
       },
     };
     await service(undefined, spy).today(await user(), HERE.lat, HERE.lng, RADIUS);
-    expect(keys.filter((k) => k.startsWith('deck:'))).toEqual([expect.stringMatching(/^deck:v4:/)]);
+    expect(keys.filter((k) => k.startsWith('deck:'))).toEqual([expect.stringMatching(/^deck:v5:/)]);
   });
 
   describe('unknown hours in the evening (QUEST_GATE_EVENING_UNKNOWN_HOURS)', () => {

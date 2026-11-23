@@ -64,8 +64,11 @@ export function meetsConfidence(confidence: number, min: number = MIN_CONFIDENCE
 // (> a school of it), so a place that is itself a college stays blocked and its museum doesn't.
 export const BLOCKED_CATEGORY_GROUPS = {
   // health_care is the whole tree: hospitals, clinics, dental, pharmacies' care side,
-  // mental health, cannabis clinics... A retail pharmacy sits under shopping and is not blocked.
-  medical: ['health_care', 'hospital', 'medical_research_institute'],
+  // mental health, cannabis clinics...
+  // Retail pharmacies and drugstores too (shopping > ... > pharmacy, drugstore): the
+  // fragrance tag's "apothecary" keyword pulled chain pharmacies into decks. Medical spas
+  // are clinics that sell treatments.
+  medical: ['health_care', 'hospital', 'medical_research_institute', 'pharmacy_and_drug_store', 'pharmacy', 'drugstore', 'medical_spa'],
   // Nightlife and shops that sell sex.
   adult: ['adult_entertainment_venue', 'strip_club', 'adult_store'],
   // Every Overture worship type is a child of place_of_worship; the list is the type and
@@ -142,6 +145,15 @@ export const BLOCKED_CATEGORY_GROUPS = {
   // arts_and_entertainment > gaming_venue parent, which also holds arcades and escape rooms,
   // and not lottery_vendor, which is mostly newsstands and candy shops that sell tickets.
   gambling: ['casino', 'betting_center', 'bingo_hall'],
+  // Not destinations: restrooms and park field houses (every public_bath_house in the
+  // 2026-09 extract, 64 at confidence >= 0.7, 58 of them named "Public Restroom"; real
+  // banyas and bathhouses are filed as spa), parking, towing and car repair (the late-night
+  // tag's "24 hour" keyword and waterfront's "pier" pulled in impound lots and tow yards).
+  facilities: ['public_bath_house', 'public_restroom', 'parking', 'towing_service', 'automotive_service'],
+  // Age-restricted or a bad first impression, and none of them a quest: tobacco, smoke and
+  // vape shops and dispensaries (the candy tag's keyword matched "Candy & Smoke Shop"),
+  // pawn shops (filed as second-hand, so offered as thrift) and bail bonds.
+  restricted_retail: ['tobacco_shop', 'smoke_and_vape_store', 'cannabis_dispensary', 'pawn_shop', 'bail_bonds_service'],
 } as const;
 
 export type BlockedGroup = keyof typeof BLOCKED_CATEGORY_GROUPS;
