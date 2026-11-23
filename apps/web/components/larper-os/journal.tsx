@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { larperOsClassName } from "@/app/larper-os";
 import { humanize } from "@/components/quest/why-lines";
 import type { JournalEntry } from "@/lib/api";
+import { LegalLinks } from "./legal-links";
 import { OSButton, OSMenuBar, OSQuestPanel, OSWindow } from "./primitives";
 import "./journal.css";
 
@@ -99,6 +100,7 @@ export function JournalView({ entries, error, retry, previewControls, mapHref = 
             </Link>
           )}
         </OSWindow>
+        <LegalLinks />
       </div>
     </main>
   );

@@ -8,8 +8,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "The most niche thing to do near you.",
     start_url: "/",
     display: "standalone",
-    background_color: "#f2ead8",
-    theme_color: "#f2ead8",
+    background_color: "#f6d5d5",
+    theme_color: "#f6d5d5",
     icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml" }],
   };
 }

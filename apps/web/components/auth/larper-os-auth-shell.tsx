@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { larperOsClassName } from "@/app/larper-os";
+import { LegalLinks } from "@/components/larper-os/legal-links";
 import { OSMenuBar, OSWindow } from "@/components/larper-os/primitives";
 import "@/components/larper-os/landing.css";
 import "./larper-os-auth.css";
@@ -14,6 +15,7 @@ export function LarperOsAuthShell({ title, children }: {
       <div className="larper-landing-stage">
         <div className="larper-os-auth-window">
           <OSWindow title={title}>{children}</OSWindow>
+          <LegalLinks />
         </div>
       </div>
     </main>

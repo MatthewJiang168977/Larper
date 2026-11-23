@@ -30,7 +30,7 @@ const atUrl = (p: { lat: number; lng: number }) => new URL(`/?at=${p.lat},${p.ln
 const demoAreaUrl = () => atUrl(DEMO_SPOT);
 // Where "nothing here" and "outside New York City" send a real account: Midtown is dense
 // and loaded, so it always has quests.
-const seeMidtown = { text: "See Midtown's quests", onClick: () => window.location.assign(atUrl(DEMO_MIDTOWN)) };
+const seeMidtown = { text: "see Midtown's quests", onClick: () => window.location.assign(atUrl(DEMO_MIDTOWN)) };
 // Already there (the demo account's fallback, or ?at= Midtown): no point offering it.
 export const isMidtown = (p: { lat: number; lng: number }) =>
   Math.abs(p.lat - DEMO_MIDTOWN.lat) < 0.005 && Math.abs(p.lng - DEMO_MIDTOWN.lng) < 0.005;
@@ -56,13 +56,13 @@ export function userButtonAppearance(user: Parameters<typeof avatarInitialsAppea
   return initials ? { elements: { ...USER_BUTTON_APPEARANCE.elements, ...initials.elements } } : USER_BUTTON_APPEARANCE;
 }
 
-// After "Not today", one optional tap says why. Only "Not my thing" counts against the
+// After "not today", one optional tap says why. Only "not my thing" counts against the
 // place's kind of spot (the usual skip penalty); the rest are just recorded.
 export const SKIP_REASONS: { reason: SkipReason; label: string }[] = [
-  { reason: "not_my_thing", label: "Not my thing" },
-  { reason: "too_far", label: "Too far" },
-  { reason: "not_today", label: "Not today" },
-  { reason: "closed", label: "Closed" },
+  { reason: "not_my_thing", label: "not my thing" },
+  { reason: "too_far", label: "too far" },
+  { reason: "not_today", label: "not today" },
+  { reason: "closed", label: "closed" },
 ];
 
 // WebGL map: client only, and loaded after the shell so first paint isn't blocked on it.
@@ -128,7 +128,7 @@ export function QuestScreen({ api, location, renderAccountControl, previewContro
   const [fixing, setFixing] = useState(false);
   // The last check-in's result, shown in the sheet beside "I went".
   const [checkIn, setCheckIn] = useState<SheetNote | null>(null);
-  // The quest just set aside with "Not today", while its reasons are on offer.
+  // The quest just set aside with "not today", while its reasons are on offer.
   const [setAside, setSetAside] = useState<string | null>(null);
   // What the bottom sheet or card covers, so fly-to keeps pins in view.
   const [covered, setCovered] = useState<Covered>({ bottom: 280, right: 0 });
@@ -139,7 +139,7 @@ export function QuestScreen({ api, location, renderAccountControl, previewContro
   // The sheet is open (full): on a phone it then covers the map's bottom edge.
   const [sheetOpen, setSheetOpen] = useState(false);
   const onSnapChange = useCallback((s: Snap) => setSheetOpen(s === "full"), []);
-  // After "Not today", focus goes to the first reason, so the question is heard and
+  // After "not today", focus goes to the first reason, so the question is heard and
   // answerable where it appeared (the button pressed may be gone by then).
   const firstReasonRef = useRef<HTMLButtonElement>(null);
   const [reloads, setReloads] = useState(0);
@@ -370,7 +370,7 @@ export function QuestScreen({ api, location, renderAccountControl, previewContro
           tone: "rejected",
           label: "Not checked in",
           text: describeError(e),
-          action: { label: "Check again", onClick: () => act("complete") },
+          action: { label: "check again", onClick: () => act("complete") },
         });
       } else {
         setActionError({ text: describeError(e), retry: null });
@@ -441,9 +441,9 @@ export function QuestScreen({ api, location, renderAccountControl, previewContro
 
   // A failed refresh while a deck is already on screen: keep the deck, say so above it.
   const banner = actionError
-    ? { text: actionError.text, retry: actionError.retry, label: "Try again", pending: busy }
+    ? { text: actionError.text, retry: actionError.retry, label: "try again", pending: busy }
     : today && todayError
-      ? { text: describeError(todayError), retry: reload, label: "Retry", pending: loading }
+      ? { text: describeError(todayError), retry: reload, label: "retry", pending: loading }
       : null;
 
   return (
@@ -536,7 +536,7 @@ export function QuestScreen({ api, location, renderAccountControl, previewContro
             <p className="flex-1">{banner.text}</p>
             {banner.retry && (
               <button onClick={banner.retry} disabled={banner.pending} className="font-medium underline disabled:opacity-50">
-                {banner.pending ? "Retrying…" : banner.label}
+                {banner.pending ? "retrying…" : banner.label}
               </button>
             )}
             <button
@@ -552,43 +552,43 @@ export function QuestScreen({ api, location, renderAccountControl, previewContro
 
       {/* Keyed by state: a new state is a new card, so an alert is announced as one. */}
       {!loc ? (
-        <StateCard key="Finding you…" ref={setCardEl} role="status" label="Finding you…" placeholder />
+        <StateCard key="finding you…" ref={setCardEl} role="status" label="finding you…" placeholder />
       ) : meError && !me ? (
         <StateCard
-          key="Couldn't load your journal"
+          key="couldn't load your journal"
           ref={setCardEl}
           role="alert"
-          label="Couldn't load your journal"
+          label="couldn't load your journal"
           body={describeError(meError)}
-          action={{ text: "Retry", onClick: retryMe }}
+          action={{ text: "retry", onClick: retryMe }}
         />
       ) : !today && todayError ? (
         <StateCard
-          key="Couldn't load your quest"
+          key="couldn't load your quest"
           ref={setCardEl}
           role="alert"
-          label="Couldn't load your quest"
+          label="couldn't load your quest"
           body={describeError(todayError)}
-          action={{ text: loading ? "Retrying…" : "Retry", onClick: reload, disabled: loading }}
+          action={{ text: loading ? "retrying…" : "retry", onClick: reload, disabled: loading }}
         />
       ) : !today ? (
-        <StateCard key="Loading your quest…" ref={setCardEl} role="status" label="Loading your quest…" placeholder />
+        <StateCard key="loading your quest…" ref={setCardEl} role="status" label="loading your quest…" placeholder />
       ) : surveying && !today.deck.length && quest?.status !== "completed" ? (
         surveyOverdue ? (
           <StateCard
-            key="Taking longer than usual"
+            key="taking longer than usual"
             ref={setCardEl}
             role="status"
-            label="Taking longer than usual"
+            label="taking longer than usual"
             body="This area is still being surveyed. Check again in a bit, or try somewhere else."
-            action={{ text: "Check again", onClick: keepSurveying }}
+            action={{ text: "check again", onClick: keepSurveying }}
           />
         ) : (
           <StateCard
-            key="Uncharted territory"
+            key="uncharted territory"
             ref={setCardEl}
             role="status"
-            label="Uncharted territory"
+            label="uncharted territory"
             body="Nobody's mapped this area yet. Surveying it now; your quest appears here in a minute or so."
           />
         )
@@ -596,19 +596,19 @@ export function QuestScreen({ api, location, renderAccountControl, previewContro
         // Nothing loaded here, and the API won't load it: Larper covers one city.
         me?.demo ? (
           <StateCard
-            key="Outside the demo area"
+            key="outside the demo area"
             ref={setCardEl}
             role="status"
-            label="Outside the demo area"
+            label="outside the demo area"
             body="This demo covers New York City. Try it from Washington Square instead."
-            action={{ text: "Go to the demo area", onClick: () => window.location.assign(demoAreaUrl()) }}
+            action={{ text: "go to the demo area", onClick: () => window.location.assign(demoAreaUrl()) }}
           />
         ) : (
           <StateCard
-            key="Outside New York City"
+            key="outside New York City"
             ref={setCardEl}
             role="status"
-            label="Outside New York City"
+            label="outside New York City"
             body="Larper covers New York City so far. You can look around Midtown in the meantime."
             action={seeMidtown}
           />
@@ -635,10 +635,10 @@ export function QuestScreen({ api, location, renderAccountControl, previewContro
         // Nothing here. Asking again gives the same answer (a failed survey is retried
         // within the hour), so the action goes where there is something: Midtown.
         <StateCard
-          key="Uncharted"
+          key="uncharted"
           ref={setCardEl}
           role="status"
-          label="Uncharted"
+          label="uncharted"
           body={
             today.surveying?.failed.length
               ? "Couldn't survey this area just now. Larper tries again within the hour."

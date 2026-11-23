@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { LegalLinks } from "./legal-links";
 import type { ReactNode } from "react";
 import { larperOsClassName } from "@/app/larper-os";
 import { OSMenuBar, OSQuestPanel, OSWindow } from "./primitives";
@@ -24,11 +24,7 @@ export function LarperLanding({ actions, preview = false }: { actions: ReactNode
               </ul>
             </OSQuestPanel>
             <div className="larper-landing-actions">{actions}</div>
-            <nav aria-label="about larper" className="larper-landing-about">
-              <Link href="/privacy" className="larper-landing-about-link">privacy</Link>
-              <Link href="/terms" className="larper-landing-about-link">terms</Link>
-              <Link href="/credits" className="larper-landing-about-link">credits</Link>
-            </nav>
+            <LegalLinks />
           </OSWindow>
         </div>
       </div>

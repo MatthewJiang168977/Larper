@@ -1,4 +1,4 @@
-import { SignIn } from "@clerk/nextjs";
+import { ClerkLoading, SignIn } from "@clerk/nextjs";
 import { Suspense } from "react";
 import { signInAppearance } from "@/components/auth/demo-account";
 import { LarperOsAuthShell } from "@/components/auth/larper-os-auth-shell";
@@ -9,7 +9,13 @@ import { DemoPanel } from "@/components/auth/try-demo";
 export default function SignInPage() {
   return (
     <LarperOsAuthShell title="sign in">
-      <Suspense fallback={<p className="larper-os-auth-loading" role="status">loading sign-in…</p>}>
+      {/* Clerk's form renders nothing until clerk-js has loaded, a few seconds on a slow
+          connection: say so instead of showing an empty window. This is the one loading
+          line; the Suspense around the form needs none of its own. */}
+      <ClerkLoading>
+        <p className="larper-os-auth-loading" role="status">loading sign-in…</p>
+      </ClerkLoading>
+      <Suspense fallback={null}>
         <SignIn appearance={signInAppearance(process.env.NEXT_PUBLIC_SIGNUP_MODE)} />
       </Suspense>
       <DemoPanel signUpMode={process.env.NEXT_PUBLIC_SIGNUP_MODE} />

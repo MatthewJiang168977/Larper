@@ -27,7 +27,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#f2ead8",
+  themeColor: "#f6d5d5", // Larper OS pink (--larper-os-pink), the page behind every window
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",

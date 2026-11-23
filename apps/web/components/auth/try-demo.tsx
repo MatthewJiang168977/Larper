@@ -1,6 +1,6 @@
 "use client";
 
-// "Try the demo": a one-time sign-in token for the shared account (./demo-account.ts).
+// "try the demo": a one-time sign-in token for the shared account (./demo-account.ts).
 import { useSignIn } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -24,7 +24,7 @@ export function demoError(e: unknown): string {
 export function TryDemoButton({
   className,
   redirectTo = "/",
-  labels = { idle: "Try the demo", busy: "Starting the demo…" },
+  labels = { idle: "try the demo", busy: "starting the demo…" },
 }: {
   className?: string;
   redirectTo?: string;

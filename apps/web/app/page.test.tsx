@@ -16,7 +16,7 @@ vi.mock("@clerk/nextjs", () => ({
 }));
 vi.mock("@/app/larper-os", () => ({ larperOsClassName: "larper-os" }));
 vi.mock("@/components/auth/try-demo", () => ({
-  TryDemoButton: ({ className }: { className: string }) => <button className={className}>Try the demo</button>,
+  TryDemoButton: ({ className }: { className: string }) => <button className={className}>try the demo</button>,
 }));
 vi.mock("@/components/quest/quest-home", () => ({ QuestHome: () => questHome() }));
 vi.mock("@/components/track-landing", () => ({ TrackLanding: () => <span data-testid="track-landing" /> }));
@@ -54,8 +54,8 @@ it("shows a static loading shell until auth resolves and then renders the first 
 });
 
 it.each([
-  ["restricted", "Try the demo", "start a quest log"],
-  [undefined, "start a quest log", "Try the demo"],
+  ["restricted", "try the demo", "start a quest log"],
+  [undefined, "start a quest log", "try the demo"],
 ])("offers the right entry action in %s signup mode", (mode, primary, excluded) => {
   vi.stubEnv("NEXT_PUBLIC_SIGNUP_MODE", mode);
   render(<Home />);

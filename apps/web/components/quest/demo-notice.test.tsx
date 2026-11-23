@@ -27,8 +27,8 @@ describe("DemoNotice: one line", () => {
   it.each(["waiting", "denied", "unavailable"] as const)("%s: DEMO · MIDTOWN · Use my location", (reason) => {
     renderNotice(midtown(reason));
     const notice = screen.getByRole("region", { name: "Demo area" });
-    expect(toggle().textContent).toContain("Demo · Midtown");
-    expect(screen.getByRole("button", { name: "Use my location" })).toBeTruthy();
+    expect(toggle().textContent).toContain("demo · Midtown");
+    expect(screen.getByRole("button", { name: "use my location" })).toBeTruthy();
     // Not an alert, and nothing that reads as a failure on the line itself.
     expect(screen.queryByRole("alert")).toBeNull();
     expect(details(notice).hidden).toBe(true);
@@ -36,8 +36,8 @@ describe("DemoNotice: one line", () => {
 
   it.each(["no-gps", "outside"] as const)("%s: no location action, since asking again can't help", (reason) => {
     renderNotice(midtown(reason));
-    expect(toggle().textContent).toContain("Demo · Midtown");
-    expect(screen.queryByRole("button", { name: "Use my location" })).toBeNull();
+    expect(toggle().textContent).toContain("demo · Midtown");
+    expect(screen.queryByRole("button", { name: "use my location" })).toBeNull();
   });
 
   it("doesn't say 'demo' to a regular account", () => {
@@ -56,12 +56,12 @@ describe("DemoNotice: one line", () => {
 
   it("shows a retry in progress", () => {
     renderNotice(midtown("waiting"), { retrying: true });
-    expect((screen.getByRole("button", { name: "Looking…" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "looking…" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("asks the browser again from the line", () => {
     renderNotice(midtown("denied"));
-    fireEvent.click(screen.getByRole("button", { name: "Use my location" }));
+    fireEvent.click(screen.getByRole("button", { name: "use my location" }));
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 });
@@ -84,7 +84,7 @@ describe("DemoNotice: the details", () => {
     renderNotice(midtown("denied"));
     const notice = screen.getByRole("region", { name: "Demo area" });
     fireEvent.click(toggle());
-    const action = screen.getByRole("button", { name: "Use my location" });
+    const action = screen.getByRole("button", { name: "use my location" });
     expect(details(notice).contains(action)).toBe(true);
     fireEvent.click(action);
     expect(onRetry).toHaveBeenCalledTimes(1);
@@ -92,7 +92,7 @@ describe("DemoNotice: the details", () => {
     fireEvent.click(screen.getByRole("button", { expanded: true }));
     expect(toggleOf(notice).getAttribute("aria-expanded")).toBe("false");
     expect(details(notice).hidden).toBe(true);
-    expect(details(notice).contains(screen.getByRole("button", { name: "Use my location" }))).toBe(false);
+    expect(details(notice).contains(screen.getByRole("button", { name: "use my location" }))).toBe(false);
   });
 
   it("names a regular account's stand-in area without the word demo", () => {

@@ -43,9 +43,9 @@
   border-radius: var(--larper-os-radius-tag);
   box-shadow: var(--larper-os-shadow-raised);
 }
+/* No text-transform: the copy is lowercase already, and the place name keeps its capitals. */
 .larper-demo-notice :is(.larper-demo-notice-label, .larper-demo-notice-retry) {
   font: 400 20px/1.15 var(--larper-os-font-pixel), system-ui, sans-serif;
-  text-transform: lowercase;
 }
 .larper-demo-notice button:focus-visible { outline-offset: -2px; }
 .larper-demo-notice-retry, .larper-place-hours-link {
