@@ -221,7 +221,7 @@ flowchart LR
    user row is created on first sight.
 3. **Expire stale offers.** An offer older than 20 h, or more than 5 km from where it was made,
    becomes `expired`.
-4. **Cache-aside.** The deck key is `deck:v4:{user}:{tasteVersion}:{geohash6}:{radius}`. Ranking
+4. **Cache-aside.** The deck key is `deck:v4:{user}:{tasteVersion}:{geohash6}:{radius}c{minConfidence}`. Ranking
    runs from the **geohash6 cell center**, so a cached deck is exact for anyone in that cell.
    Because the key contains the taste profile's version, a taste update can never serve a stale
    deck, and nothing has to be deleted.

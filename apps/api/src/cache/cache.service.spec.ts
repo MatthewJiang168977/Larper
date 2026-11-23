@@ -38,7 +38,7 @@ describe('CacheService.forgetUser logging', () => {
 // getOrSet runs on every quest request; a deck key holds the user id, so neither the key nor
 // Redis's error text (which can quote it) may be logged.
 describe('CacheService.getOrSet logging', () => {
-  const KEY = 'deck:v4:90210:v1:dr5reg:1500:c0.7';
+  const KEY = 'deck:v4:90210:v1:dr5reg:1500c0.7';
   let cache: CacheService;
 
   beforeEach(() => {
