@@ -130,6 +130,7 @@ export function larperOsAccountMenuAppearance(osClassName: string) {
       userPreviewMainIdentifierText: "larper-os-account-menu-name",
       userPreviewSecondaryIdentifier: "larper-os-account-menu-email",
       userButtonPopoverActionButton: "larper-os-account-menu-action",
+      userButtonPopoverCustomItemButton: "larper-os-account-menu-action",
       userButtonPopoverActionButtonIconBox: "larper-os-account-menu-icon",
       userButtonPopoverFooter: "larper-os-account-menu-footer",
     },

@@ -22,11 +22,14 @@ import { JOB_QUEUE, PgJobQueue } from './jobs/job-queue';
 import { AreasService } from './quests/areas.service';
 import { QuestsService } from './quests/quests.service';
 import { ThrottleModule } from './throttle/throttle.module';
+import { WeeklyEmailPreferenceController, WeeklyEmailUnsubscribeController } from './weekly-email/weekly-email.controller';
+import { WEEKLY_EMAIL, WeeklyEmailService, weeklyEmailFromEnv } from './weekly-email/weekly-email.service';
 
 @Module({
   // Sentry: route names on traces, and unexpected errors (not 4xx) reported.
   imports: [SentryModule.forRoot(), DbModule, CacheModule, AuthModule, ThrottleModule, DemoModule],
-  controllers: [HealthController, ProfileController, QuestsController, SavedPlacesController, MeDataController, ClerkWebhookController],
+  controllers: [HealthController, ProfileController, QuestsController, SavedPlacesController, MeDataController,
+    ClerkWebhookController, WeeklyEmailPreferenceController, WeeklyEmailUnsubscribeController],
   providers: [
     { provide: APP_FILTER, useClass: SentryGlobalFilter },
     TagsService,
@@ -34,6 +37,8 @@ import { ThrottleModule } from './throttle/throttle.module';
     AreasService,
     DataExportService,
     DataDeletionService,
+    WeeklyEmailService,
+    { provide: WEEKLY_EMAIL, useFactory: () => weeklyEmailFromEnv(process.env) },
     PendingClerkDeletions,
     // Null unless CLERK_WEBHOOK_SIGNING_SECRET is set: then POST /webhooks/clerk handles
     // user.deleted (a bad value fails the API at startup).

@@ -59,6 +59,10 @@ api:
           - { type: Percent, value: 200, periodSeconds: 15 }
           - { type: Pods, value: 4, periodSeconds: 15 }
 
+weeklyEmail:
+  # Optional Secret. No messages sent unless WEEKLY_EMAIL_ENABLED is set to "1" there.
+  secretName: ""
+
 clerk:
   # Public by design (it ships to every browser). The API derives the JWKS URL from it,
   # so verifying tokens needs no Clerk secret (only demo.enabled and privacy.deletes=all
