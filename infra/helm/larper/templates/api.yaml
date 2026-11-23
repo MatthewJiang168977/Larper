@@ -43,6 +43,20 @@ spec:
             - { name: CORS_ORIGINS, value: {{ include "larper.corsOrigins" . | quote }} }
             - { name: CORS_MAX_AGE_S, value: {{ .Values.api.cors.maxAgeSeconds | quote }} }
             - { name: INGEST_REGION, value: {{ .Values.api.ingestRegion | quote }} }
+            {{- with .Values.api.questGate }}
+            # The quest trust gate (apps/api/src/quests/eligibility.ts). Unset keeps the code's
+            # defaults (0.7, evening rule off); a bad value fails the API at startup.
+            {{- if not (kindIs "invalid" .minConfidence) }}
+            - { name: QUEST_MIN_CONFIDENCE, value: {{ .minConfidence | toString | quote }} }
+            {{- end }}
+            {{- if not (kindIs "invalid" .eveningUnknownHours) }}
+            {{- $evening := toString .eveningUnknownHours }}
+            {{- /* YAML reads a bare on/off as true/false: accept both spellings. */}}
+            {{- $evening = ternary "on" $evening (eq $evening "true") }}
+            {{- $evening = ternary "off" $evening (eq $evening "false") }}
+            - { name: QUEST_GATE_EVENING_UNKNOWN_HOURS, value: {{ $evening | quote }} }
+            {{- end }}
+            {{- end }}
             {{- $deletes := include "larper.privacyDeletes" . }}
             {{- if .Values.demo.enabled }}
             # POST /demo/sign-in (apps/api/src/demo): sign-in tokens for the demo account.

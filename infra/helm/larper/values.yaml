@@ -35,6 +35,13 @@ api:
   # Where a visitor's location may trigger an area ingest (apps/api/src/quests/ingest-region.ts):
   # "xmin,ymin,xmax,ymax" in degrees (lng,lat,lng,lat). Empty: anywhere.
   ingestRegion: ""
+  # The quest trust gate (apps/api/src/quests/eligibility.ts; README, "On a miss, rank").
+  # Unset keeps the code defaults. minConfidence: 0.7 to 1. eveningUnknownHours: "on" offers,
+  # 6pm to 6am New York time, only places whose hours say open then. Turn it on only once
+  # the focus neighborhoods have hours on file, or evenings get no new quests.
+  questGate:
+    minConfidence: null
+    eveningUnknownHours: null
   cors:
     origins: ["http://localhost:3001"]
     # How long a browser may reuse a preflight's answer (Chrome caps it at 7200).
