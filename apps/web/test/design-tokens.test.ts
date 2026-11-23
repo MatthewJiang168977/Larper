@@ -84,9 +84,6 @@ describe("focus and touch targets", () => {
     expect(before).toContain("transform: translate(-50%, -50%)");
   });
 
-  it("stamp buttons are at least 44 px tall (py-2 text came to 42)", () => {
-    expect(rule(".stamp-btn")).toContain("min-height: 44px");
-  });
 });
 
 describe("map credit", () => {

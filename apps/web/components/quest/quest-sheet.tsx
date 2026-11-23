@@ -693,7 +693,7 @@ function SecondaryAction({
     return <button className={SECONDARY} disabled={busy} onClick={() => onAction("skip")}>Skip</button>;
   }
   if (status === "accepted") {
-    return <button className={SECONDARY} disabled={busy} onClick={() => onAction("not-today")}>Not today</button>;
+    return <button className={SECONDARY} disabled={busy} onClick={() => onAction("not-today")}>not today</button>;
   }
   return null;
 }

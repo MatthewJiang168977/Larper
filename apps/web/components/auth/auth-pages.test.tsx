@@ -4,11 +4,13 @@ import { describe, expect, it, vi } from "vitest";
 import { larperOsAuthAppearance } from "./clerk-appearance";
 import { signInAppearance } from "./demo-account";
 
-const { SignIn, SignUp } = vi.hoisted(() => ({
+const { SignIn, SignUp, ClerkLoading } = vi.hoisted(() => ({
   SignIn: () => <div data-testid="sign-in-form" />,
   SignUp: () => <div data-testid="sign-up-form" />,
+  // Shown while clerk-js loads: rendered here as if it were still loading.
+  ClerkLoading: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
-vi.mock("@clerk/nextjs", () => ({ SignIn, SignUp }));
+vi.mock("@clerk/nextjs", () => ({ SignIn, SignUp, ClerkLoading }));
 vi.mock("@/app/larper-os", () => ({ larperOsClassName: "larper-os" }));
 vi.mock("@/components/auth/try-demo", () => ({
   DemoPanel: ({ signUpMode }: { signUpMode?: string }) =>
@@ -71,6 +73,20 @@ describe("sign-in and sign-up pages", () => {
       expect(form.compareDocumentPosition(demo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     } finally {
       vi.unstubAllEnvs();
+    }
+  });
+
+  it.each([
+    { Page: SignInPage, title: "sign in", loading: "loading sign-in…" },
+    { Page: SignUpPage, title: "sign up", loading: "loading sign-up…" },
+  ])("$title: says it is loading while Clerk starts, and links privacy, terms and credits", ({ Page, loading }) => {
+    render(<Page />);
+    expect(screen.getAllByText(loading).length).toBeGreaterThan(0);
+    const about = screen.getByRole("navigation", { name: "about larper" });
+    for (const page of ["privacy", "terms", "credits"]) {
+      const link = screen.getByRole("link", { name: page });
+      expect(link.getAttribute("href")).toBe(`/${page}`);
+      expect(about.contains(link)).toBe(true);
     }
   });
 });

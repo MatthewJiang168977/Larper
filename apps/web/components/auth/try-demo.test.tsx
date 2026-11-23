@@ -44,7 +44,7 @@ describe("TryDemoButton", () => {
   it("redeems a ticket from the API, then finalizes and goes home", async () => {
     demoTicket.mockResolvedValue("ticket-1");
     render(<TryDemoButton />);
-    fireEvent.click(screen.getByRole("button", { name: "Try the demo" }));
+    fireEvent.click(screen.getByRole("button", { name: "try the demo" }));
     await waitFor(() => expect(push).toHaveBeenCalledWith("/"));
     expect(signIn.ticket).toHaveBeenCalledWith({ ticket: "ticket-1" });
     expect(signIn.finalize).toHaveBeenCalledTimes(1);
@@ -54,7 +54,7 @@ describe("TryDemoButton", () => {
     demoTicket.mockResolvedValue("ticket-1");
     push.mockImplementationOnce(() => expect(tracked.events).toEqual(["demo_clicked", "demo_signed_in"]));
     render(<TryDemoButton />);
-    fireEvent.click(screen.getByRole("button", { name: "Try the demo" }));
+    fireEvent.click(screen.getByRole("button", { name: "try the demo" }));
     await waitFor(() => expect(push).toHaveBeenCalled());
     // Not yet the demo account at the click (demo: false), then signed in as it.
     expect(tracked.demo).toEqual([false, true]);
@@ -63,7 +63,7 @@ describe("TryDemoButton", () => {
   it("records only the click when the demo doesn't start", async () => {
     demoTicket.mockRejectedValue(new ApiError("x", 503));
     render(<TryDemoButton />);
-    fireEvent.click(screen.getByRole("button", { name: "Try the demo" }));
+    fireEvent.click(screen.getByRole("button", { name: "try the demo" }));
     await screen.findByRole("alert");
     expect(tracked.events).toEqual(["demo_clicked"]);
   });
@@ -71,17 +71,17 @@ describe("TryDemoButton", () => {
   it("says why when the API refuses, and lets the visitor try again", async () => {
     demoTicket.mockRejectedValue(new ApiError("Too many requests.", 429, "http", "rate_limited", 42));
     render(<TryDemoButton />);
-    fireEvent.click(screen.getByRole("button", { name: "Try the demo" }));
+    fireEvent.click(screen.getByRole("button", { name: "try the demo" }));
     expect((await screen.findByRole("alert")).textContent).toContain("Try again in 42 s.");
     expect(signIn.ticket).not.toHaveBeenCalled();
-    expect((screen.getByRole("button", { name: "Try the demo" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "try the demo" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("doesn't finalize a sign-in that Clerk didn't complete", async () => {
     demoTicket.mockResolvedValue("ticket-2");
     signIn.ticket.mockResolvedValue({ error: { code: "ticket_invalid" } });
     render(<TryDemoButton />);
-    fireEvent.click(screen.getByRole("button", { name: "Try the demo" }));
+    fireEvent.click(screen.getByRole("button", { name: "try the demo" }));
     expect((await screen.findByRole("alert")).textContent).toContain("Couldn't start the demo.");
     expect(signIn.finalize).not.toHaveBeenCalled();
   });

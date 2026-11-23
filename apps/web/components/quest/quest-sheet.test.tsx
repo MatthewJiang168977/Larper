@@ -278,7 +278,7 @@ describe("QuestSheet on a phone: Skip at peek", () => {
     const onAction = vi.fn();
     sheet("accepted", { onAction });
     expect(screen.queryByText("Abandon")).toBeNull();
-    fireEvent.click(phoneSecondary("Not today"));
+    fireEvent.click(phoneSecondary("not today"));
     expect(onAction).toHaveBeenCalledWith("not-today");
     expect(onAction).not.toHaveBeenCalledWith("skip");
   });
@@ -524,10 +524,10 @@ describe("QuestSheet: the check-in note", () => {
 
   it("shows a rejection beside I went, as an alert, with Check again", () => {
     const again = vi.fn();
-    withNote({ tone: "rejected", label: "Not checked in", text: "You're 2.8 km away.", action: { label: "Check again", onClick: again } });
+    withNote({ tone: "rejected", label: "Not checked in", text: "You're 2.8 km away.", action: { label: "check again", onClick: again } });
     const alert = within(peekPart()).getByRole("alert");
     expect(alert.textContent).toContain("You're 2.8 km away.");
-    fireEvent.click(within(alert).getByRole("button", { name: "Check again" }));
+    fireEvent.click(within(alert).getByRole("button", { name: "check again" }));
     expect(again).toHaveBeenCalled();
     expect(within(peekPart()).getByRole("button", { name: "I went" })).toBeTruthy(); // same place as the action
   });
@@ -552,7 +552,7 @@ describe("QuestSheet: the check-in note", () => {
 
   it("is dismissible and shows 'Checking…' while a check is under way", () => {
     const dismiss = vi.fn();
-    withNote({ tone: "rejected", label: "Not checked in", text: "x", action: { label: "Check again", onClick: vi.fn(), pending: true } }, dismiss);
+    withNote({ tone: "rejected", label: "Not checked in", text: "x", action: { label: "check again", onClick: vi.fn(), pending: true } }, dismiss);
     expect(screen.getByRole("button", { name: "Checking…" })).toHaveProperty("disabled", true);
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(dismiss).toHaveBeenCalled();
@@ -639,7 +639,7 @@ describe("QuestSheet: done for today", () => {
     const peek = peekPart();
     expect(within(peek).getByText("Today's quest · done")).toBeTruthy();
     expect(within(peek).getByText("Done")).toBeTruthy();
-    expect(within(peek).queryByRole("button", { name: /I went|Accept quest|Skip|Not today/ })).toBeNull();
+    expect(within(peek).queryByRole("button", { name: /I went|Accept quest|Skip|Not today/i })).toBeNull();
     expect(peek.textContent).toContain("Done for today. Your next quest comes tomorrow.");
     expect(within(peek).getByRole("link", { name: "Open your journal" }).getAttribute("href")).toBe("/journal");
   });

@@ -61,7 +61,7 @@ export function DemoNotice({ loc, demo, onRetry, retrying }: Props) {
       disabled={retrying}
       className="hit-target larper-demo-notice-retry whitespace-nowrap px-1.5 py-1.5"
     >
-      {retrying ? "Looking…" : "Use my location"}
+      {retrying ? "looking…" : "use my location"}
     </button>
   );
 
@@ -74,7 +74,7 @@ export function DemoNotice({ loc, demo, onRetry, retrying }: Props) {
           aria-controls={detailsId}
           className="hit-target larper-demo-notice-label flex items-center gap-1 whitespace-nowrap py-1.5 pl-2 pr-1.5"
         >
-          {demo ? `Demo · ${spot}` : spot}
+          {demo ? `demo · ${spot}` : spot}
           <span aria-hidden>{open ? "▴" : "▾"}</span>
         </button>
         {/* Open, the action moves into the details, under the reason. */}
