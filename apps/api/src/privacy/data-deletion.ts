@@ -5,6 +5,7 @@ import { PG } from '../db/db.module';
 import { ClerkApiError } from '../demo/clerk-api';
 import { isDemoUser } from '../demo/demo-account';
 import { CLERK_USER_DELETER, InvalidClerkUserIdError, type ClerkUserDeleter } from './clerk-user-deleter';
+import { PendingClerkDeletions, purgeClerkId } from './pending-clerk-deletions';
 
 /** What went, per kind (the counts the delete_my_* functions return, migration 0020). */
 export interface DeletedCounts {
@@ -22,7 +23,8 @@ export interface AccountDeleted {
   deleted: DeletedCounts & { tasteProfile: boolean; account: boolean };
   /**
    * 'deleted': the Clerk user is gone too (a Clerk 404 counts). 'failed': Clerk refused or
-   * was unreachable; Larper's data is gone, and repeating the request retries Clerk.
+   * was unreachable; Larper's data is gone, the Clerk deletion is recorded as owed and
+   * retried in the background (migration 0021), and no new account can be made for it.
    */
   clerkUser: 'deleted' | 'failed';
 }
@@ -41,6 +43,7 @@ export class DataDeletionService {
     @Inject(PG) private readonly pg: Pool,
     private readonly cache: CacheService,
     @Inject(CLERK_USER_DELETER) private readonly clerkDelete: ClerkUserDeleter | null,
+    private readonly pending: PendingClerkDeletions,
   ) {}
 
   // The shared demo account is never deleted or cleared by a visitor: everyone who
@@ -81,7 +84,20 @@ export class DataDeletionService {
       }
       // Clerk errors can include the request path and the subject it names.
       const status = err instanceof ClerkApiError ? ` (HTTP ${err.status})` : '';
-      this.log.error(`Clerk user deletion failed${status}`);
+      this.log.error(`Clerk user deletion failed${status}; recorded for retry`);
+      // Owed from now on: retried in the background, and ensure() won't recreate the
+      // account. If even this write fails the user can still repeat the request.
+      try {
+        await this.pending.record(user.clerkId);
+      } catch (recordErr) {
+        this.log.error(`recording a failed Clerk deletion failed (${(recordErr as Error).constructor.name})`);
+        return { deleted: rows[0].r, clerkUser: 'failed' };
+      }
+      // While the Clerk call was in flight, a request on the same session could still pass
+      // ensure() (nothing was owed yet, Clerk still had the user) and make a fresh row.
+      // Now that the deletion is recorded no new row can appear (ensure() refuses owed ids,
+      // also after its insert), so purge any that did.
+      await this.purgeRecreatedOnly(user.clerkId);
       return { deleted: rows[0].r, clerkUser: 'failed' };
     }
 
@@ -93,13 +109,19 @@ export class DataDeletionService {
     return { deleted: rows[0].r, clerkUser: 'deleted' };
   }
 
+  private async purgeRecreatedOnly(clerkId: string): Promise<void> {
+    try {
+      await purgeClerkId(this.pg, this.cache, clerkId);
+    } catch (err) {
+      this.log.error(`purge of a row recreated during account deletion failed (${(err as Error).constructor.name})`);
+    }
+  }
+
   private async purgeRecreated(clerkId: string): Promise<void> {
     try {
-      const { rows } = await this.pg.query<{ id: string }>('SELECT id::text AS id FROM users WHERE clerk_id = $1', [clerkId]);
-      for (const { id } of rows) {
-        await this.pg.query('SELECT delete_my_account($1)', [id]);
-        await this.cache.forgetUser(id);
-      }
+      await purgeClerkId(this.pg, this.cache, clerkId);
+      // An earlier, failed attempt may have left it owed; Clerk has confirmed now.
+      await this.pending.done(clerkId);
     } catch (err) {
       // The account and the Clerk user are gone; only a row recreated in the window can be
       // left. Say so without naming anyone.
