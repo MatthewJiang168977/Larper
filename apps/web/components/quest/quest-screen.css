@@ -35,8 +35,10 @@
 .larper-quest-map-controls:not(:empty) { margin-inline-start: auto; padding-block: 4px; }
 .larper-quest-brand { font: 400 28px/1 var(--larper-os-font-pixel), system-ui, sans-serif; }
 .larper-quest-navigation .larper-quest-menu-link { display: grid; min-height: 44px; min-width: 44px; place-items: center; padding: 0 8px; font: 400 24px/1 var(--larper-os-font-pixel), system-ui, sans-serif; }
+.larper-quest-navigation a.larper-quest-menu-link { padding-inline-end: 4px; }
 
 .larper-quest-navigation button.larper-quest-menu-link {
+  padding-inline-start: 4px;
   background: transparent;
   border: 0;
   border-radius: 0;
