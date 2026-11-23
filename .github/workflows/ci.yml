@@ -154,6 +154,19 @@ jobs:
         env:
           TEST_DATABASE_URL: ${{ env.TEST_INGEST_DATABASE_URL }}
         run: go test -count=1 ./internal/...
+      # The taste worker's handler, as its own role: events for a deleted user or quest are
+      # skipped rather than retried or resurrected, and an event racing a history delete
+      # waits on the user lock (docs/decisions/0005-data-deletion.md). They skip without both
+      # URLs, which is why they never ran in CI before; a skip here fails the step.
+      - name: Taste worker database tests
+        working-directory: workers
+        env:
+          TEST_DATABASE_URL: ${{ env.TEST_TASTE_DATABASE_URL }}
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -count=1 -v ./cmd/taste-worker/ | tee taste.log
+          if grep -q -- '--- SKIP' taste.log; then echo "::error::taste-worker database tests skipped"; exit 1; fi
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:

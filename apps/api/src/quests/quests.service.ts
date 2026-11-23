@@ -42,7 +42,7 @@ const OFFER_STALE_METERS = 5000;
 const DAY_TIME_ZONE = 'America/New_York'; // when "today" ends (doneToday); the evening rule's clock too (eligibility.ts)
 // Bumped from v3 when the trust gate (eligibility.ts) began filtering before ranking:
 // decks cached by older pods hold places the gate now refuses.
-const DECK_CACHE_VERSION = 'v4';
+const DECK_CACHE_VERSION = 'v5'; // v5: facilities and restricted_retail blocked (eligibility.ts)
 /** Where a quest was offered is only needed while the offer is open (the stale-offer check). */
 export const SCRUB_ORIGINS_SQL = `UPDATE quests SET origin = NULL WHERE origin IS NOT NULL AND status IN ('expired', 'completed', 'skipped')`;
 const PRUNE_ATTEMPTS_EVERY_MS = 6 * 3600_000; // retention is 90 days; this only bounds the overshoot
@@ -159,7 +159,16 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     const taste = await this.loadTaste(userId);
     const rank = () => this.rank(userId, taste.vec, center.lat, center.lng, center.cell, radiusM, surveyed);
     const { value: ranked, hit } = surveyed
-      ? await this.cache.getOrSet(`deck:${DECK_CACHE_VERSION}:${userId}:${taste.version}:${center.cell}:${radiusM}`, DECK_TTL_S, rank)
+      ? // The confidence floor is in the key, so changing QUEST_MIN_CONFIDENCE never serves a
+        // deck ranked under the old floor. A blocklist change still needs DECK_CACHE_VERSION bumped.
+        // It shares the last segment with the radius ("1500c0.7"), never a segment of its own:
+        // CacheService.forgetUser matches deck:*:<id>:*, and Redis's * spans colons, so a
+        // segment after the radius would let user 1500's delete match everyone's 1500 m decks.
+        await this.cache.getOrSet(
+          `deck:${DECK_CACHE_VERSION}:${userId}:${taste.version}:${center.cell}:${radiusM}c${this.gate.minConfidence}`,
+          DECK_TTL_S,
+          rank,
+        )
       : { value: await rank(), hit: false };
 
     // The cached deck already holds only places that pass the gate's static rules (rank).

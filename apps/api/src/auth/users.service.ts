@@ -31,6 +31,14 @@ export class UsersService {
     const existing = await this.pg.query<{ id: string }>('SELECT id FROM users WHERE clerk_id = $1', [clerkId]);
     if (existing.rows.length) return existing.rows[0].id;
 
+    // A Clerk user whose deletion is still owed (DELETE /me went through but Clerk failed;
+    // migration 0021) never gets a new account: their data was deleted on request, and the
+    // background retry will remove the sign-in.
+    if (this.clerkCheck && !isDemoUser(clerkId)) {
+      const owed = await this.pg.query('SELECT 1 FROM clerk_deletions_pending WHERE clerk_id = $1', [clerkId]);
+      if (owed.rows.length) throw accountGone();
+    }
+
     // The demo user always has a row (and is never deleted); it never triggers the call.
     if (this.clerkCheck && !isDemoUser(clerkId)) {
       let exists: boolean;
@@ -73,6 +81,14 @@ export class UsersService {
   // and the request is refused. If Clerk can't say, the row stays (the user most likely
   // exists; this is a brand-new sign-up) and the log names no one.
   private async confirmCreated(check: ClerkUserCheck, clerkId: string, id: string): Promise<void> {
+    // DELETE /me may have recorded this Clerk id as owed after our first look (its Clerk
+    // call failed while we were inserting): a row made now must not survive that.
+    const owed = await this.pg.query('SELECT 1 FROM clerk_deletions_pending WHERE clerk_id = $1', [clerkId]);
+    if (owed.rows.length) {
+      await this.pg.query('SELECT delete_my_account($1)', [id]);
+      await this.cache?.forgetUser(id);
+      throw accountGone();
+    }
     let exists: boolean;
     try {
       exists = await check(clerkId);

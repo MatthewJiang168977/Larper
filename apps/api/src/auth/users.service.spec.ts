@@ -11,11 +11,12 @@ import { ACCOUNT_GONE, GONE_TTL_MS, UsersService } from './users.service';
 // still exists. Clerk is always a mock here; the pool is a fake with a users table.
 const ID = 'user_abc123';
 
-function fakePool(existing: Record<string, string> = {}) {
+function fakePool(existing: Record<string, string> = {}, owed: string[] = []) {
   const users = { ...existing };
   let next = 100;
   const query = jest.fn(async (sql: string, params: string[]) => {
     const [key] = params;
+    if (sql.includes('FROM clerk_deletions_pending')) return { rows: owed.includes(key) ? [{}] : [] };
     if (sql.startsWith('SELECT id FROM users')) return { rows: users[key] ? [{ id: users[key] }] : [] };
     if (sql.startsWith('SELECT delete_my_account')) {
       for (const [c, id] of Object.entries(users)) if (id === key) delete users[c];
@@ -32,6 +33,36 @@ describe('UsersService.ensure with the Clerk check', () => {
   afterEach(() => {
     jest.restoreAllMocks();
     delete process.env.DEMO_CLERK_USER_ID;
+  });
+
+  it('refuses (401 account_gone) a Clerk user whose deletion is still owed, without asking Clerk or creating a row', async () => {
+    const { pool, users } = fakePool({}, [ID]);
+    const check = jest.fn(async () => true);
+    const err = await new UsersService(pool, check).ensure(ID).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UnauthorizedException);
+    expect((err as UnauthorizedException).getResponse()).toMatchObject({ code: ACCOUNT_GONE });
+    expect(check).not.toHaveBeenCalled();
+    expect(users[ID]).toBeUndefined();
+  });
+
+  it('a row inserted just as DELETE /me recorded the deletion as owed is purged, and the request refused', async () => {
+    // Our first look saw nothing owed and Clerk still had the user; DELETE /me's Clerk call
+    // then failed and it recorded the id (and ran its purge) before our insert landed.
+    const owed: string[] = [];
+    const { pool, users, query } = fakePool({}, owed);
+    const check = jest.fn(async () => {
+      owed.push(ID);
+      return true;
+    });
+    const err = await new UsersService(pool, check).ensure(ID).catch((e: unknown) => e);
+    expect((err as UnauthorizedException).getResponse()).toMatchObject({ code: ACCOUNT_GONE });
+    expect(users[ID]).toBeUndefined();
+    expect(query.mock.calls.some(([sql]) => sql.startsWith('SELECT delete_my_account'))).toBe(true);
+  });
+
+  it('an existing row is returned as before, owed or not (the plain lookup comes first)', async () => {
+    const { pool } = fakePool({ [ID]: '42' }, [ID]);
+    await expect(new UsersService(pool, jest.fn(async () => true)).ensure(ID)).resolves.toBe('42');
   });
 
   it('creates an unknown user when Clerk has them (200)', async () => {
@@ -145,6 +176,7 @@ describe('UsersService.ensure with the Clerk check', () => {
     // Our insert does nothing (another pod won), and by our re-read the winner's recheck has
     // already purged that row: nothing is there.
     const query = jest.fn(async (sql: string) => {
+      if (sql.includes('FROM clerk_deletions_pending')) return { rows: [] }; // not owed
       if (sql.startsWith('WITH found AS')) return { rows: [] }; // the insert CTE lost the race: no row
       if (sql.startsWith('SELECT id FROM users')) return { rows: [] }; // first read, and the re-read: purged
       throw new Error(`unexpected query: ${sql}`);
@@ -154,6 +186,7 @@ describe('UsersService.ensure with the Clerk check', () => {
     // First read, the insert, then the re-read that found the winner's row already gone.
     expect(query.mock.calls.map(([sql]) => (sql as string).slice(0, 13))).toEqual([
       'SELECT id FRO',
+      'SELECT 1 FROM',
       'WITH found AS',
       'SELECT id FRO',
     ]);

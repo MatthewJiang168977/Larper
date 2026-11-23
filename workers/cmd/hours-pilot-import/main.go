@@ -104,12 +104,30 @@ func printPlan(w io.Writer, acts []Action) {
 		if a.Row.SourceURL != nil {
 			src = *a.Row.SourceURL
 		}
-		fmt.Fprintf(w, "line %d: %s place %d  checked %s  %q  %s\n", a.Row.Line, verb, a.Row.PlaceID, a.Row.CheckedAt.Format("2006-01-02"), a.Row.Hours, src)
+		fmt.Fprintf(w, "line %d: %s place %d %q  checked %s  %q  %s\n", a.Row.Line, verb, a.Row.PlaceID, a.Name, a.Row.CheckedAt.Format("2006-01-02"), a.Row.Hours, src)
 	}
 	fmt.Fprintf(w, "%d insert, %d update\n", ins, upd)
 }
 
 type pgStore struct{ conn *pgx.Conn }
+
+func (s *pgStore) PlaceNames(ctx context.Context, ids []int64) (map[int64]string, error) {
+	rs, err := s.conn.Query(ctx, `SELECT id, coalesce(name, '') FROM places WHERE id = ANY($1)`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rs.Close()
+	out := map[int64]string{}
+	for rs.Next() {
+		var id int64
+		var name string
+		if err := rs.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		out[id] = name
+	}
+	return out, rs.Err()
+}
 
 func (s *pgStore) ExistingSchedules(ctx context.Context, ids []int64) (map[int64]bool, error) {
 	rs, err := s.conn.Query(ctx, `

@@ -44,6 +44,7 @@ const EXPECTED: Record<Role, Record<string, string[]>> = {
     checkin_attempts: [I],
     saved_places: [S, I], // migration 0017: the want-to-go list; never updated or deleted by the API
     place_hours_facts: [S, I], // migration 0018: hours facts and check-in answers; the first answer stands, so no UPDATE or DELETE
+    clerk_deletions_pending: [S, I, U], // migration 0021: Clerk deletions still owed; a row goes through clerk_deletion_done()
   },
   larper_relay: {
     outbox: [S, U, D],
@@ -175,6 +176,7 @@ describeDb('per-service database roles (real database)', () => {
     // and deletes/exports one user's own data (0020). Quest writers and the taste
     // worker use a narrow locking function with no extra table grants.
     const grants = {
+      clerk_deletion_done: ['larper_api'],
       delete_my_account: ['larper_api'],
       delete_my_history: ['larper_api'],
       export_my_checkin_attempts: ['larper_api'],
@@ -191,7 +193,7 @@ describeDb('per-service database roles (real database)', () => {
        FROM pg_roles, unnest($2::text[]) AS fn WHERE rolname = ANY($1) ORDER BY fn, rolname`,
       [
         ROLES,
-        ['prune_checkin_attempts()', 'delete_my_history(bigint)', 'delete_my_account(bigint)', 'export_my_checkin_attempts(bigint)', 'lock_user_quest(bigint,bigint)'],
+        ['clerk_deletion_done(text)', 'prune_checkin_attempts()', 'delete_my_history(bigint)', 'delete_my_account(bigint)', 'export_my_checkin_attempts(bigint)', 'lock_user_quest(bigint,bigint)'],
       ],
     );
     expect(exec.rows.filter((r) => r.can).map(({ what, role, obj }) => ({ what, role, obj }))).toEqual(expected);
@@ -233,6 +235,7 @@ describeDb('per-service database roles (real database)', () => {
       await denied('larper_api', 'DELETE FROM saved_places');
       await denied('larper_api', 'UPDATE saved_places SET quest_id = quest_id');
       await denied('larper_api', 'DELETE FROM place_hours_facts'); // the first answer for a quest stands
+      await denied('larper_api', 'DELETE FROM clerk_deletions_pending'); // only through clerk_deletion_done()
       await denied('larper_api', 'UPDATE place_hours_facts SET was_open = NOT was_open');
       await denied('larper_ingest', `INSERT INTO place_hours_facts (place_id, kind, source, fetched_at, confidence) VALUES (1, 'observation', 'check-in', now(), 1)`); // no importer is approved yet
       await denied('larper_api', 'SELECT * FROM checkin_attempts'); // it writes attempts, never reads them

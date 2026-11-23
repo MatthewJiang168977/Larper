@@ -50,16 +50,20 @@ func main() {
 
 	log.Info("relaying", "batch", batchSize)
 	lastCleanup := time.Now()
+	// A Postgres or Redpanda restart retries quietly (Warn) and reaches Sentry only if it
+	// lasts two minutes (platform.Outage).
+	outage := &platform.Outage{Name: "relay batch", After: 2 * time.Minute}
 	for ctx.Err() == nil {
 		n, err := relayBatch(ctx, pool, kafka)
 		switch {
 		case errors.Is(err, context.Canceled):
 		case err != nil:
-			log.Error("relay batch failed; will retry", "err", err)
-			sleep(ctx, 2*time.Second)
+			sleep(ctx, outage.Fail(log, err))
 		case n > 0:
+			outage.OK(log)
 			log.Info("published", "events", n)
 		default:
+			outage.OK(log)
 			sleep(ctx, idlePoll)
 		}
 		if time.Since(lastCleanup) > cleanupPeriod {

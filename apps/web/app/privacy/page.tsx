@@ -61,15 +61,16 @@ const YOUR_DATA: { title: string; points: string[] }[] = [
     title: "Delete my account",
     points: [
       "Removes all of the above, plus your taste profile and your Larper account.",
-      "Also deletes your sign-in, then signs you out. If removing the sign-in doesn't go through, your data is still deleted and you stay signed in to try again.",
-      "You can sign up again later, with the same email if you like. That makes a new, empty account. After deletion Larper writes nothing new that identifies you. Records made before, such as server logs and event records, keep your account number until they expire on their usual schedule.",
+      "Also deletes your sign-in, then signs you out. If removing the sign-in doesn't go through, your data is still deleted, and Larper keeps trying to remove the sign-in until it's gone.",
+      "While it keeps trying, Larper holds only your sign-in's ID, so it can finish, and deletes that as soon as the sign-in is gone. Nothing else new that identifies you is written after deletion. Records made before, such as server logs and event records, keep your account number until they expire on their usual schedule.",
+      "You can sign up again later, with the same email if you like. That makes a new, empty account.",
     ],
   },
   {
     title: "Backups",
     points: [
       "Copies of deleted data can stay for about 3 weeks under the usual backup schedule. Backup storage has a 60-day cleanup rule for old objects.",
-      "Restoring a backup could bring back data deleted after that backup was taken. You can delete it again if that happens.",
+      "Restoring a backup could bring back data deleted after that backup was taken. Restored history can be deleted again from the journal. Larper keeps no list of deleted accounts, so a restored account isn't deleted again automatically.",
       "The shared demo account can't be exported or deleted because it belongs to every visitor.",
     ],
   },

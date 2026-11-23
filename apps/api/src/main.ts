@@ -17,7 +17,9 @@ const logLevels: LogLevel[] =
     : ['log', 'warn', 'error', 'fatal', 'debug', 'verbose'];
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: logLevels });
+  // rawBody: the Clerk webhook verifies its signature over the exact bytes received
+  // (privacy/clerk-webhook.ts). JSON parsing is unchanged for every other route.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: logLevels, rawBody: true });
   // Which proxies' X-Forwarded-For to believe, for req.ip (the per-IP rate limit,
   // throttle/client-ip.ts): a hop count (1: Traefik) or their addresses/CIDRs. Unset,
   // none: req.ip is the socket's peer.

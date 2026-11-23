@@ -42,6 +42,22 @@ describeRedis('CacheService.forgetUser (real Redis)', () => {
     expect(await redis.exists(keys.deckB, keys.area)).toBe(2); // B's id merely starts with A's
   });
 
+  it("never matches another user's deck whose last segment starts with the id (radius + floor)", async () => {
+    // A user whose id equals a radius: their delete must not touch everyone's decks at that radius.
+    const C = '9000000021';
+    const mine = `deck:v4:${C}:v1:dr5reg:1500c0.7`;
+    const theirs = `deck:v4:${B}:v1:dr5reg:${C}c0.7`;
+    await redis.set(mine, '1', 'EX', 60);
+    await redis.set(theirs, '1', 'EX', 60);
+    try {
+      await cache.forgetUser(C);
+      expect(await redis.exists(mine)).toBe(0);
+      expect(await redis.exists(theirs)).toBe(1);
+    } finally {
+      await redis.del(mine, theirs);
+    }
+  });
+
   it('does nothing for an id that is not a number (no pattern from a request)', async () => {
     await redis.set(keys.deckB, '1', 'EX', 60);
     await cache.forgetUser('*');

@@ -221,7 +221,7 @@ flowchart LR
    user row is created on first sight.
 3. **Expire stale offers.** An offer older than 20 h, or more than 5 km from where it was made,
    becomes `expired`.
-4. **Cache-aside.** The deck key is `deck:v4:{user}:{tasteVersion}:{geohash6}:{radius}`. Ranking
+4. **Cache-aside.** The deck key is `deck:v4:{user}:{tasteVersion}:{geohash6}:{radius}c{minConfidence}`. Ranking
    runs from the **geohash6 cell center**, so a cached deck is exact for anyone in that cell.
    Because the key contains the taste profile's version, a taste update can never serve a stale
    deck, and nothing has to be deleted.
@@ -236,6 +236,7 @@ flowchart LR
      `QUEST_GATE_EVENING_UNKNOWN_HOURS=on` also offers, from 6pm to 6am New York time, only places whose
      regular schedule (`place_hours_facts`, migration 0018) says they are open right then: unknown or closed
      places are held back (off by default: few places have hours on file yet); it is applied after the cache.
+     On the cluster both are Helm values: `api.questGate.minConfidence` and `api.questGate.eveningUnknownHours`.
    - Candidates are scored in TypeScript, and the top 200 are cached for 10 min.
 6. **Re-rank.** Places finished recently are dropped, for a window that depends on how the
    quest ended (`REOFFER_AFTER_DAYS` in `quests/transitions.ts`):

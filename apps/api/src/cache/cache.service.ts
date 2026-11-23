@@ -21,22 +21,23 @@ export class CacheService implements OnApplicationShutdown {
   // Returns the cached value or computes, stores, and returns it.
   async getOrSet<T>(key: string, ttlSeconds: number, compute: () => Promise<T>): Promise<{ value: T; hit: boolean }> {
     const cache = key.slice(0, key.indexOf(':')); // "deck", "area"
+    // Logs name the cache, never the key: a deck key holds a user id.
     try {
       const raw = await this.redis.get(key);
       if (raw !== null) {
-        this.log.debug(`hit ${key}`);
+        this.log.debug(`${cache} hit`);
         cacheLookups.inc({ cache, result: 'hit' });
         return { value: JSON.parse(raw) as T, hit: true };
       }
       cacheLookups.inc({ cache, result: 'miss' });
     } catch (err) {
-      this.log.warn(`cache read failed for ${key}: ${(err as Error).message}`);
+      this.log.warn(`${cache} cache read failed: ${(err as Error).name}`);
       cacheLookups.inc({ cache, result: 'error' });
     }
-    this.log.debug(`miss ${key}`);
+    this.log.debug(`${cache} miss`);
     const value = await compute();
     this.redis.set(key, JSON.stringify(value), 'EX', ttlSeconds).catch((err: Error) => {
-      this.log.warn(`cache write failed for ${key}: ${err.message}`);
+      this.log.warn(`${cache} cache write failed: ${err.name}`);
     });
     return { value, hit: false };
   }
