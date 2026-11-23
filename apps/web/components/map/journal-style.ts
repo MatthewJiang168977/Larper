@@ -12,6 +12,9 @@ const journalColors = {
   water: "#b8c2bd",
   waterLine: "#8e9c97",
   waterLabel: "#8e9c97",
+  // An outline drawn under every road, for streets lighter than the land around them
+  // (Larper OS day: cream roads on pink). The paper colour itself means no outline.
+  casing: "#f2ead8",
   inkMajor: "#4a453d",
   inkMinor: "#8f8676",
   inkPath: "#a89f8c",
@@ -87,6 +90,32 @@ export const makeQuestMapStyle = (
       minzoom: 14,
       filter: ["==", ["get", "class"], "path"],
       paint: { "line-color": C.inkPath, "line-width": 0.8, "line-dasharray": [2, 2] },
+    },
+    // Casings first, so each road sits on a slightly wider line of C.casing: a pale road
+    // then reads against pale land by its edges (WCAG 1.4.11, 3:1 for the outline).
+    {
+      id: "roads-minor-casing",
+      type: "line",
+      source: "omt",
+      "source-layer": "transportation",
+      filter: ["in", ["get", "class"], ["literal", ["minor", "service", "tertiary"]]],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": C.casing,
+        "line-width": ["interpolate", ["exponential", 1.6], ["zoom"], 12, 1.2, 16, 2.6, 19, 4.6],
+      },
+    },
+    {
+      id: "roads-major-casing",
+      type: "line",
+      source: "omt",
+      "source-layer": "transportation",
+      filter: ["in", ["get", "class"], ["literal", ["primary", "secondary", "trunk", "motorway"]]],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": C.casing,
+        "line-width": ["interpolate", ["exponential", 1.6], ["zoom"], 10, 1.4, 16, 3.8, 19, 7],
+      },
     },
     {
       id: "roads-minor",
