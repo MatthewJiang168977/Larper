@@ -385,6 +385,14 @@ describe('validateSchedule', () => {
 
 describe('shared test vectors (testdata/vectors.json)', () => {
   // The Go package's canonical file, copied verbatim (workers/internal/hours/testdata/vectors.json).
+  it('is byte for byte the Go package file, so the two evaluators are tested on the same cases', () => {
+    const here = readFileSync(join(__dirname, 'testdata', 'vectors.json'));
+    const goFile = readFileSync(join(__dirname, '..', '..', '..', '..', 'workers', 'internal', 'hours', 'testdata', 'vectors.json'));
+    if (!here.equals(goFile)) {
+      throw new Error('apps/api/src/hours/testdata/vectors.json differs from workers/internal/hours/testdata/vectors.json: copy the Go file over it verbatim');
+    }
+  });
+
   it('is the full canonical file, not a smaller one swapped in', () => {
     const f = JSON.parse(readFileSync(join(__dirname, 'testdata', 'vectors.json'), 'utf8')) as { state: unknown[] };
     if (f.state.length < MIN_STATE_VECTORS) {
