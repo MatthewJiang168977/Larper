@@ -43,13 +43,13 @@ export function DemoAccountMenu() {
     >
       <button
         type="button"
-        className="larper-os-menu-item"
+        className="larper-quest-menu-link"
         ref={trigger}
         aria-controls={panelId}
         aria-expanded={open}
         onClick={() => setOpen((wasOpen) => !wasOpen)}
       >
-        account <span className="larper-os-account-caret" aria-hidden="true">▾</span>
+        account
       </button>
       <div id={panelId} className="larper-os-demo-account-panel" hidden={!open}>
         <SignOutButton>

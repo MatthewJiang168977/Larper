@@ -31,8 +31,34 @@
   background: var(--larper-os-window);
   border-bottom: 1px solid var(--larper-os-ink);
 }
-.larper-quest-map-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.larper-quest-navigation, .larper-quest-map-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .larper-quest-map-controls:not(:empty) { margin-inline-start: auto; padding-block: 4px; }
+.larper-quest-brand { font: 400 28px/1 var(--larper-os-font-pixel), system-ui, sans-serif; }
+.larper-quest-navigation .larper-quest-menu-link { display: grid; min-height: 44px; min-width: 44px; place-items: center; padding: 0 8px; font: 400 24px/1 var(--larper-os-font-pixel), system-ui, sans-serif; }
+
+.larper-quest-navigation button.larper-quest-menu-link {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--larper-os-ink);
+  cursor: pointer;
+  transition: none;
+}
+
+.larper-quest-navigation .larper-quest-menu-link[aria-expanded="true"] {
+  background: var(--larper-os-butter);
+}
+
+.larper-quest-navigation .larper-quest-menu-link:focus-visible {
+  outline: 2px solid var(--larper-os-ink);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+/* Keep Clerk's native button and its localized accessible name. */
+.larper-quest-clerk-trigger .larper-quest-clerk-trigger-avatar { display: none; }
+.larper-quest-clerk-trigger::before { content: "account" / ""; }
 
 .larper-demo-notice-surface {
   background: var(--larper-os-window);
@@ -139,7 +165,7 @@
 }
 
 @media (hover: hover) {
-  .larper-quest-handle:hover, .larper-quest-links a:hover, .larper-quest-lead:hover, .larper-quest-screen .pin-lead:hover { background: var(--larper-os-butter); }
+  .larper-quest-handle:hover, .larper-quest-links a:hover, .larper-quest-navigation .larper-quest-menu-link:hover, .larper-quest-lead:hover, .larper-quest-screen .pin-lead:hover { background: var(--larper-os-butter); }
 }
 @media (min-width: 1024px) {
   .larper-quest-dock { left: auto; width: var(--larper-os-dock-width); max-width: var(--larper-os-dock-width); margin: 0; }

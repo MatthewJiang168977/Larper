@@ -1,14 +1,16 @@
 "use client";
 
-import { useUser } from "@clerk/nextjs";
+import { UserButton, useUser } from "@clerk/nextjs";
 import { larperOsClassName } from "@/app/larper-os";
 import "./quest-screen.css";
-import { OSNavigation } from "@/components/larper-os/navigation";
+import "@/components/larper-os/primitives.css";
 import { OSWindow } from "@/components/larper-os/primitives";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AccountMenu } from "@/components/auth/account-menu";
+import { avatarInitialsAppearance, larperOsAccountMenuAppearance, userProfileAppearance } from "@/components/auth/clerk-appearance";
+import { DemoAccountMenu } from "@/components/auth/demo-account-menu";
+import "@/components/auth/larper-os-account-menu.css";
 import { useLocation, type Located } from "@/hooks/use-location";
 import { type CheckinResult, questProps, setDemo, track } from "@/lib/analytics";
 import { ApiError, describeError, postWasOpen, useApi, type DeckItem, type Me, type QuestView, type SkipReason, type Today, type WasOpenAnswer } from "@/lib/api";
@@ -46,6 +48,14 @@ export function demoAccountLocation(loc: Located | null, outside: boolean): Loca
   return reason ? { ...DEMO_MIDTOWN, source: "demo", reason, spot: "Midtown" } : loc;
 }
 
+export const USER_BUTTON_APPEARANCE = larperOsAccountMenuAppearance(larperOsClassName);
+
+// Plus ink initials in place of Clerk's generated avatar, for a user with no photo.
+export function userButtonAppearance(user: Parameters<typeof avatarInitialsAppearance>[0]) {
+  const initials = avatarInitialsAppearance(user);
+  return initials ? { elements: { ...USER_BUTTON_APPEARANCE.elements, ...initials.elements } } : USER_BUTTON_APPEARANCE;
+}
+
 // After "not today", one optional tap says why. Only "not my thing" counts against the
 // place's kind of spot (the usual skip penalty); the rest are just recorded.
 export const SKIP_REASONS: { reason: SkipReason; label: string }[] = [
@@ -66,12 +76,16 @@ export function QuestHome() {
   const api = useApi();
   const { user } = useUser();
   const location = useLocation();
+  const userButton = useMemo(() => ({
+    appearance: userButtonAppearance(user),
+    userProfileProps: { appearance: userProfileAppearance(user) },
+  }), [user]);
   return (
     <QuestScreen
       key={user?.id}
       api={api}
       location={location}
-      renderAccountControl={(me) => <AccountMenu demo={!me || !!me.demo} />}
+      renderAccountControl={(me) => me && !me.demo ? <UserButton {...userButton} /> : <DemoAccountMenu />}
     />
   );
 }
@@ -440,7 +454,18 @@ export function QuestScreen({ api, location, renderAccountControl, previewContro
         ref={headerRef}
         className="larper-quest-menu"
       >
-        <OSNavigation page="map" account={renderAccountControl?.(meError ? null : me)} />
+        {/* Wraps too, at the narrowest (200% zoom on a phone): rounded-3xl looks the same as
+            rounded-full on one line and stays a card on two. */}
+        <div className="larper-quest-navigation">
+          <h1 className="larper-quest-brand">larper</h1>
+          <Link
+            href="/journal"
+            className="larper-quest-menu-link"
+          >
+            journal
+          </Link>
+          {renderAccountControl?.(meError ? null : me)}
+        </div>
         {previewControls}
         <div ref={setControlsHost} data-testid="map-controls" className="larper-quest-map-controls" />
       </header>

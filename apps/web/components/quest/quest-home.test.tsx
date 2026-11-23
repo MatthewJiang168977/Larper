@@ -608,8 +608,8 @@ describe("QuestHome: touch targets", () => {
     expect(userButton).toHaveBeenLastCalledWith({
       appearance: {
         elements: expect.objectContaining({
-          userButtonTrigger: "larper-os-menu-item larper-os-clerk-account-trigger",
-          userButtonBox: "larper-os-clerk-account-avatar",
+          userButtonTrigger: "larper-quest-menu-link larper-quest-clerk-trigger",
+          userButtonBox: "larper-quest-clerk-trigger-avatar",
           userButtonPopoverCard: "larper-os larper-os-account-menu",
           userButtonPopoverActionButton: "larper-os-account-menu-action",
           userButtonPopoverFooter: "larper-os-account-menu-footer",
@@ -621,8 +621,7 @@ describe("QuestHome: touch targets", () => {
         },
       },
     });
-    expect(screen.getByRole("link", { name: "journal" }).classList).toContain("larper-os-menu-item");
-    expect(screen.getByRole("link", { name: "larper" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("link", { name: "journal" }).classList).toContain("larper-quest-menu-link");
 
     fireEvent.click(screen.getByText("I went"));
     await settle();
@@ -637,7 +636,7 @@ describe("QuestHome: touch targets", () => {
       appearance: { elements: Record<string, unknown> };
       userProfileProps: { appearance: { elements: Record<string, unknown> } };
     };
-    expect(appearance.elements.userButtonTrigger).toContain("larper-os-menu-item");
+    expect(appearance.elements.userButtonTrigger).toContain("larper-quest-menu-link");
     expect(appearance.elements.userButtonPopoverCard).toBe("larper-os larper-os-account-menu");
     expect(appearance.elements.avatarImage).toEqual({ display: "none" });
     expect(appearance.elements.avatarBox).toMatchObject({ "&::after": { content: '"AB"' } });

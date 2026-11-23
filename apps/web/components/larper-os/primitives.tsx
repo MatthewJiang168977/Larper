@@ -3,10 +3,10 @@ import "./primitives.css";
 
 export const osPrimaryButtonClass = "larper-os-button larper-os-button-primary";
 
-export function OSMenuBar({ navigation, children }: { navigation?: ReactNode; children?: ReactNode }) {
+export function OSMenuBar({ children }: { children?: ReactNode }) {
   return (
     <header className="larper-os-menu">
-      {navigation ?? <span className="larper-os-brand">larper os</span>}
+      <span className="larper-os-brand">larper os</span>
       {children}
     </header>
   );

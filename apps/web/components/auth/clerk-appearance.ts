@@ -119,8 +119,8 @@ export const larperOsAuthAppearance = {
 export function larperOsAccountMenuAppearance(osClassName: string) {
   return {
     elements: {
-      userButtonTrigger: "larper-os-menu-item larper-os-clerk-account-trigger",
-      userButtonBox: "larper-os-clerk-account-avatar",
+      userButtonTrigger: "larper-quest-menu-link larper-quest-clerk-trigger",
+      userButtonBox: "larper-quest-clerk-trigger-avatar",
       userButtonPopoverRootBox: "larper-os-account-menu-root",
       // The popover can render in a portal. Carry the OS tokens and fonts with it.
       userButtonPopoverCard: `${osClassName} larper-os-account-menu`,

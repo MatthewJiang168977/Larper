@@ -20,53 +20,6 @@
 
 .larper-os-brand { font-size: 24px; }
 
-.larper-os-navigation {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  padding-block: 4px;
-}
-
-.larper-os .larper-os-menu-item {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  min-inline-size: var(--larper-os-tap-min);
-  min-block-size: var(--larper-os-tap-min);
-  padding: 0 6px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  color: var(--larper-os-ink);
-  font: 400 24px/1 var(--larper-os-font-pixel), system-ui, sans-serif;
-  text-decoration: none;
-  transition: none;
-}
-
-.larper-os .larper-os-menu-brand { font-weight: 700; }
-.larper-os :is(a, button).larper-os-menu-item { cursor: pointer; }
-
-.larper-os .larper-os-menu-item:is([aria-current="page"], [aria-expanded="true"], :active) {
-  background: var(--larper-os-ink);
-  color: var(--larper-os-window);
-}
-
-@media (hover: hover) {
-  .larper-os :is(a, button).larper-os-menu-item:hover {
-    background: var(--larper-os-ink);
-    color: var(--larper-os-window);
-  }
-}
-
-.larper-os .larper-os-menu-item:focus-visible {
-  outline: 2px solid var(--larper-os-ink);
-  outline-offset: 2px;
-  box-shadow: none;
-}
-
 .larper-os-window {
   background: var(--larper-os-window);
   border: 1px solid var(--larper-os-ink);

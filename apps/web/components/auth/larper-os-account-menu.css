@@ -1,21 +1,3 @@
-.larper-os-clerk-account-trigger .larper-os-clerk-account-avatar {
-  display: none;
-}
-
-/* Clerk supplies the button's accessible name and expanded state. */
-.larper-os-clerk-account-trigger::before {
-  content: "account" / "";
-}
-
-.larper-os-clerk-account-trigger::after {
-  content: "▾" / "";
-}
-
-.larper-os-clerk-account-trigger::after,
-.larper-os-account-caret {
-  font: 400 14px/1 system-ui, sans-serif;
-}
-
 .larper-os-account-menu.larper-os {
   inline-size: min(22rem, calc(100vw - 24px));
   max-inline-size: calc(100vw - 24px);

@@ -6,13 +6,7 @@ import JournalPage from "./page";
 const signOut = vi.fn<(keepPage: () => void, options: { sessionId: string }) => Promise<void>>();
 const replace = vi.fn();
 let auth: { isLoaded: boolean; userId: string | null; sessionId: string | null };
-vi.mock("@clerk/nextjs", () => ({
-  useAuth: () => auth,
-  useClerk: () => ({ signOut }),
-  useUser: () => ({ user: null }),
-  UserButton: () => <button aria-label="Open user menu" />,
-  SignOutButton: ({ children }: { children: React.ReactNode }) => children,
-}));
+vi.mock("@clerk/nextjs", () => ({ useAuth: () => auth, useClerk: () => ({ signOut }) }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
 vi.mock("@/app/larper-os", () => ({ larperOsClassName: "larper-os" }));
 vi.mock("@/components/require-sign-in", () => ({
@@ -174,8 +168,6 @@ describe("Journal", () => {
     expect(screen.getByText("blank pages. your first quest is on the map.")).toBeTruthy();
     expect(document.querySelector("ol")).toBeNull();
     expect(screen.getByRole("link", { name: "back to the map" }).getAttribute("href")).toBe("/");
-    expect(screen.getByRole("link", { name: "journal", current: "page" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "larper" }).getAttribute("href")).toBe("/");
   });
 
   it("says what went wrong in plain words, never the server's, and tries again", async () => {
