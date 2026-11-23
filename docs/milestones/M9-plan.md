@@ -528,4 +528,4 @@ additive, so they can go out together or release by release.
     who knows the city. Consider showing the rarest category only when its `nearby` is
     above a threshold.
 13. **Account deletion.** `profile_stats` and `share_cards` cascade from `users`, but
-    nothing deletes users yet (audit item 6). Revoking on account deletion depends on it.
+    account deletion exists now (migrations 0020 and 0021), so the cascade covers both; the delete-my-data tests should list them.
