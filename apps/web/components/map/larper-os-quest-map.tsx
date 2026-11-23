@@ -3,19 +3,26 @@
 import { useEffect, useState } from "react";
 import type { QuestMapProps } from "./quest-map";
 import MapLibreQuestMap from "./maplibre-quest-map";
-import { larperOsDayStyle, larperOsNightStyle } from "./larper-os-style";
-import { mapStyleAtTime } from "./map-daylight";
+import { styleFor } from "./map-blend";
+import { mapAppearanceAt } from "./map-daylight";
 
-export default function LarperOsQuestMap(props: QuestMapProps) {
-  const [mode, setMode] = useState(() => mapStyleAtTime(new Date()));
+const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+const paletteAt = (now: Date) => {
+  const appearance = mapAppearanceAt(now, reducedMotion());
+  return { mode: appearance.phase, style: styleFor(appearance) };
+};
+
+/** `at` pins the clock (the design lab's time override); without it the palette follows real time. */
+export default function LarperOsQuestMap({ at, ...props }: QuestMapProps & { at?: Date }) {
+  const [palette, setPalette] = useState(() => paletteAt(at ?? new Date()));
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     const update = () => {
       clearTimeout(timer);
-      const now = new Date();
-      setMode(mapStyleAtTime(now));
-      timer = setTimeout(update, 60_000 - now.getTime() % 60_000);
+      const now = at ?? new Date();
+      setPalette(paletteAt(now));
+      if (!at) timer = setTimeout(update, 60_000 - now.getTime() % 60_000);
     };
     update();
     document.addEventListener("visibilitychange", update);
@@ -23,8 +30,7 @@ export default function LarperOsQuestMap(props: QuestMapProps) {
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", update);
     };
-  }, []);
+  }, [at]);
 
-  const style = mode === "day" ? larperOsDayStyle : larperOsNightStyle;
-  return <MapLibreQuestMap {...props} palette={{ mode, style }} />;
+  return <MapLibreQuestMap {...props} palette={palette} />;
 }

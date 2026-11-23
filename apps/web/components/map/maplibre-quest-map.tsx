@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { homeBearingAt } from "@/lib/regions";
 import { haloDiameterPx } from "./accuracy-halo";
 import { BUILDINGS_3D, buildingVisibility, journalStyle } from "./journal-style";
+import type { MapPhase } from "./map-daylight";
 import type { QuestMapProps } from "./quest-map";
 
 const PITCH = 55;
@@ -198,7 +199,7 @@ export default function MapLibreQuestMap({
   /** Base style for maps with a fixed palette. Read when the map mounts. */
   initialStyle?: StyleSpecification;
   /** Live styles with the same layer structure and sources, differing only in paint and light. */
-  palette?: { mode: "day" | "night"; style: StyleSpecification };
+  palette?: { mode: MapPhase; style: StyleSpecification };
 }) {
   const paletteStyle = palette?.style;
   const markerDescriptionId = useId();

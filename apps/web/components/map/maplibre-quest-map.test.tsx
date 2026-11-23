@@ -177,7 +177,7 @@ beforeEach(() => {
 describe("live map palette", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
-    vi.setSystemTime(new Date("2026-06-22T00:30:30Z"));
+    vi.setSystemTime(new Date("2026-06-22T01:04:00Z"));
   });
 
   afterEach(() => {
@@ -185,7 +185,7 @@ describe("live map palette", () => {
     vi.unstubAllGlobals();
   });
 
-  it.each([false, true])("switches at sunset without moving the map (reduced motion: %s)", async (reducedMotion) => {
+  it.each([false, true])("switches to night without moving the map (reduced motion: %s)", async (reducedMotion) => {
     vi.stubGlobal("matchMedia", vi.fn((media: string) => ({
       media,
       matches: reducedMotion && media === "(prefers-reduced-motion: reduce)",
@@ -202,9 +202,9 @@ describe("live map palette", () => {
     instance.flyTo.mockClear();
     instance.easeTo.mockClear();
     instance.jumpTo.mockClear();
-    expect(container.querySelector("[data-map-palette='day']")).toBeTruthy();
+    expect(container.querySelector('[data-map-palette]')?.getAttribute('data-map-palette')).toBe('dusk');
 
-    act(() => { vi.advanceTimersByTime(29_999); });
+    act(() => { vi.advanceTimersByTime(59_999); });
     expect(instance.setPaintProperty).not.toHaveBeenCalled();
     act(() => { vi.advanceTimersByTime(1); });
 
@@ -222,6 +222,29 @@ describe("live map palette", () => {
     expect(instance.flyTo).not.toHaveBeenCalled();
     expect(instance.easeTo).not.toHaveBeenCalled();
     expect(instance.jumpTo).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("blends colors minute by minute mid-phase, never when reduced motion is on (%s)", async (reducedMotion) => {
+    vi.setSystemTime(new Date("2026-06-22T00:40:00Z")); // 8:40 pm: dusk, easing toward night
+    vi.stubGlobal("matchMedia", vi.fn((media: string) => ({
+      media,
+      matches: reducedMotion && media === "(prefers-reduced-motion: reduce)",
+    })));
+    render(<LarperOsQuestMap {...props()} />);
+    await act(async () => { await vi.dynamicImportSettled(); });
+    const instance = map();
+    instance.setPaintProperty.mockClear();
+    act(() => { vi.advanceTimersByTime(60_000); });
+    const paper = instance.setPaintProperty.mock.calls.filter(([id, prop]) => id === "paper" && prop === "background-color");
+    if (reducedMotion) {
+      expect(instance.setPaintProperty).not.toHaveBeenCalled();
+    } else {
+      expect(paper).toHaveLength(1);
+      expect(paper[0][2]).not.toBe("#F2A58F");
+      expect(paper[0][2]).not.toBe("#251e29");
+    }
+    expect(instance.setLight).toHaveBeenCalledWith(expect.objectContaining({ anchor: "map" }));
+    expect(fake.maps).toEqual([instance]); // the map is never rebuilt
   });
 
   it("catches up on tab return and waits for style layers", async () => {

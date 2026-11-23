@@ -2,14 +2,6 @@ const MINUTE_MS = 60_000;
 const RADIANS = Math.PI / 180;
 const NYC_LATITUDE = 40.7128 * RADIANS;
 const NYC_LONGITUDE = -74.006;
-// The sun's apparent upper edge at the horizon, accounting for refraction.
-const SUNRISE_ZENITH = 90.833 * RADIANS;
-const nycCalendar = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
-  year: "numeric",
-  month: "numeric",
-  day: "numeric",
-});
 
 // NOAA's solar calculator equations, based on Jean Meeus's Astronomical Algorithms.
 // https://gml.noaa.gov/grad/solcalc/calcdetails.html
@@ -38,27 +30,73 @@ function solarPosition(utcMs: number) {
   return { declination, equationOfTime };
 }
 
-function horizonMinute(utcMs: number, event: "sunrise" | "sunset") {
-  const { declination, equationOfTime } = solarPosition(utcMs);
-  const hourAngle = Math.acos(
-    (Math.cos(SUNRISE_ZENITH) - Math.sin(NYC_LATITUDE) * Math.sin(declination))
-    / (Math.cos(NYC_LATITUDE) * Math.cos(declination)),
-  ) / RADIANS;
-  const longitude = NYC_LONGITUDE + (event === "sunrise" ? hourAngle : -hourAngle);
-  return 720 - 4 * longitude - equationOfTime;
+const mod = (n: number, m: number) => ((n % m) + m) % m;
+
+/** suncalc-style azimuths run from south, positive towards the west. MapLibre's light wants degrees clockwise from north. */
+export function southAzimuthToClockwiseFromNorth(radiansFromSouth: number) {
+  return mod(radiansFromSouth / RADIANS + 180, 360);
 }
 
-export function mapStyleAtTime(now: Date): "day" | "night" {
-  const parts = nycCalendar.formatToParts(now);
-  const calendarNumber = (type: "year" | "month" | "day") =>
-    Number(parts.find((part) => part.type === type)?.value);
-  // Use the NYC calendar date but calculate the event instants in UTC. No offset
-  // arithmetic is needed, even on DST days or when sunset falls after UTC midnight.
-  const utcMidnight = Date.UTC(calendarNumber("year"), calendarNumber("month") - 1, calendarNumber("day"));
-  const boundary = (event: "sunrise" | "sunset") => {
-    const estimate = horizonMinute(utcMidnight + 720 * MINUTE_MS, event);
-    return utcMidnight + Math.round(horizonMinute(utcMidnight + estimate * MINUTE_MS, event)) * MINUTE_MS;
-  };
-  const instant = now.getTime();
-  return instant >= boundary("sunrise") && instant < boundary("sunset") ? "day" : "night";
+/** The sun over the NYC map center: altitude in degrees above the horizon, azimuth in degrees clockwise from north. */
+export function sunPosition(utcMs: number) {
+  const { declination, equationOfTime } = solarPosition(utcMs);
+  const trueSolarMinutes = mod(utcMs / MINUTE_MS + equationOfTime + 4 * NYC_LONGITUDE, 1440);
+  const hourAngle = (trueSolarMinutes / 4 - 180) * RADIANS; // negative before solar noon
+  const sinLat = Math.sin(NYC_LATITUDE);
+  const cosLat = Math.cos(NYC_LATITUDE);
+  const altitude = Math.asin(sinLat * Math.sin(declination) + cosLat * Math.cos(declination) * Math.cos(hourAngle)) / RADIANS;
+  const fromSouth = Math.atan2(
+    Math.sin(hourAngle),
+    Math.cos(hourAngle) * sinLat - Math.tan(declination) * cosLat,
+  );
+  return { altitude, azimuth: southAzimuthToClockwiseFromNorth(fromSouth), morning: hourAngle < 0 };
+}
+
+export type MapPhase = "dawn" | "day" | "golden" | "dusk" | "night";
+
+/** Which phase the sun's altitude puts the map in. Morning and afternoon differ at the same height. */
+export function phaseForSun(altitude: number, morning: boolean): MapPhase {
+  if (altitude < -6) return "night";
+  if (morning) return altitude < 8 ? "dawn" : "day";
+  if (altitude > 12) return "day";
+  return altitude > 2 ? "golden" : "dusk";
+}
+
+export type MapAppearance = {
+  phase: MapPhase;
+  /** The phase being blended towards (the same as phase when t is 0). */
+  next: MapPhase;
+  /** 0 is the phase's exact palette, 1 is the next one's. */
+  t: number;
+  altitude: number;
+  azimuth: number;
+};
+
+const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
+
+/**
+ * Each phase's palette is exact where the phase begins and eases into the next one's by the
+ * altitude where that one begins. Two phases start blending before they end, so no palette
+ * jumps: the afternoon day from 20° to 12° (golden hour begins), and the night before dawn
+ * from -12° to -6°. Reduced motion pins t to 0: each palette stays exact until its threshold,
+ * then is replaced.
+ */
+export function mapAppearanceAt(now: Date, reducedMotion = false): MapAppearance {
+  const { altitude, azimuth, morning } = sunPosition(now.getTime());
+  const phase = phaseForSun(altitude, morning);
+  let next: MapPhase;
+  let t: number;
+  switch (phase) {
+    case "night": next = "dawn"; t = morning ? (altitude + 12) / 6 : 0; break;
+    case "dawn": next = "day"; t = (altitude + 6) / 14; break;
+    case "day": next = "golden"; t = morning ? 0 : (20 - altitude) / 8; break;
+    case "golden": next = "dusk"; t = (12 - altitude) / 10; break;
+    case "dusk": next = "night"; t = (2 - altitude) / 8; break;
+  }
+  return { phase, next, t: reducedMotion ? 0 : clamp01(t), altitude, azimuth };
+}
+
+/** MapLibre light position: radial, azimuthal (clockwise from north), polar (from straight up). */
+export function lightPositionFor(altitude: number, azimuth: number): [number, number, number] {
+  return [1.4, azimuth, Math.min(80, Math.max(15, 90 - altitude))];
 }

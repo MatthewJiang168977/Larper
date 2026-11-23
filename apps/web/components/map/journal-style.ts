@@ -21,6 +21,8 @@ const journalColors = {
   building: "#e6dcc6",
   buildingTop: "#dacfb5",
   buildingEdge: "#cdbf9f",
+  // Extrusions fade in as the camera nears; this is how solid they end up (night: 1).
+  buildingOpacity: 0.72,
   label: "#5d574c",
   labelHalo: "#f2ead8",
 };
@@ -182,7 +184,7 @@ export const makeQuestMapStyle = (
         ],
         "fill-extrusion-height": ["coalesce", ["get", "render_height"], 6],
         "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
-        "fill-extrusion-opacity": ["interpolate", ["linear"], ["zoom"], 14.5, 0, 15.5, 0.72],
+        "fill-extrusion-opacity": ["interpolate", ["linear"], ["zoom"], 14.5, 0, 15.5, C.buildingOpacity],
       },
     },
     {
