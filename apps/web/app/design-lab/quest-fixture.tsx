@@ -1,11 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   OSButton, OSDesktopIcon, OSMenuBar, OSQuestPanel, OSWindow, QuestFlag,
 } from "@/components/larper-os/primitives";
 import { fixtureLeads, quest } from "./quest-fixture-data";
+import { nycInstant } from "./nyc-time";
 import "./quest-fixture.css";
 
 const DayMapFixture = dynamic(() => import("./day-map-fixture"), { ssr: false });
@@ -19,10 +20,13 @@ const statusCopy = {
   error: { title: "couldn’t load your quest", body: "try again to look for places near you." },
 };
 
-export function QuestFixture() {
+export function QuestFixture({ initialClock = null }: { initialClock?: number | null }) {
   const [state, setState] = useState<State>("offered");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [showMap, setShowMap] = useState(false);
+  const [showMap, setShowMap] = useState(initialClock !== null);
+  // NYC clock minutes pinned for the map (the scrubber, or ?time=19:30); null follows real time.
+  const [clock, setClock] = useState<number | null>(initialClock);
+  const at = useMemo(() => (clock === null ? undefined : nycInstant(clock)), [clock]);
   const [insets, setInsets] = useState({ bottomInset: 0, rightInset: 0 });
   const stageRef = useRef<HTMLDivElement>(null);
   const dockRef = useRef<HTMLDivElement>(null);
@@ -71,6 +75,14 @@ export function QuestFixture() {
       <OSMenuBar>
         <div className="larper-lab-review-controls">
           <OSButton aria-pressed={showMap} onClick={() => setShowMap(!showMap)}>day map</OSButton>
+          {showMap && (
+            <label className="larper-lab-selector">
+              map time {clock === null ? "live" : `${String(Math.floor(clock / 60)).padStart(2, "0")}:${String(clock % 60).padStart(2, "0")}`}
+              <input type="range" min={0} max={1439} step={5} value={clock ?? 0}
+                onChange={(event) => setClock(Number(event.target.value))} />
+              <OSButton aria-pressed={clock === null} onClick={() => setClock(null)}>live</OSButton>
+            </label>
+          )}
           <label className="larper-lab-selector">
             fixture state
             <select value={state} onChange={(event) => chooseState(event.target.value as State)}>
@@ -116,7 +128,7 @@ export function QuestFixture() {
         </div>
         {showMap && (
           <div className="larper-lab-day-map">
-            <DayMapFixture showQuest={!status} selectedId={selectedId} onSelect={setSelectedId} {...insets} />
+            <DayMapFixture at={at} showQuest={!status} selectedId={selectedId} onSelect={setSelectedId} {...insets} />
           </div>
         )}
       </div>
