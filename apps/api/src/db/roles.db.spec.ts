@@ -45,6 +45,7 @@ const EXPECTED: Record<Role, Record<string, string[]>> = {
     saved_places: [S, I], // migration 0017: the want-to-go list; never updated or deleted by the API
     place_hours_facts: [S, I], // migration 0018: hours facts and check-in answers; the first answer stands, so no UPDATE or DELETE
     clerk_deletions_pending: [S, I, U], // migration 0021: Clerk deletions still owed; a row goes through clerk_deletion_done()
+    weekly_email_preferences: [S, I, U], // migration 0022: consent and claims; account deletion cascades
   },
   larper_relay: {
     outbox: [S, U, D],
