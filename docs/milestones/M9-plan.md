@@ -1,10 +1,15 @@
 # M9 plan: Profile & Taste Identity
 
-> **Migrations renumbered again, 2026-11-16.** M9 phases 2-5 are parked by
-> `docs/plans/industry-ready-plan.md`. Meanwhile `0017` was taken by `saved_places` (#90) and
-> `0018` by place opening hours, so M9's remaining migrations below start at **0019**
-> (`profile_stats`), 0020 (tag families), 0021 (share cards) and the optional 0022 (star sign). Treat these numbers as
-> placeholders: re-check them against `db/migrations` when M9 resumes.
+> **Migrations renumbered, 2026-11-22.** M9 phases 2-5 are parked by
+> `docs/plans/industry-ready-plan.md`. `db/migrations` now runs to **0021**
+> (`clerk_deletions_pending`; `0017` is `saved_places`, `0018`-`0019` place hours, `0020`
+> `delete_my_data`), so M9's remaining migrations start at **0022**: `0022_profile_stats`,
+> `0023_tag_families`, `0024_share_cards`. The star sign (formerly 0022) is dropped.
+> **These are placeholders**: numbers are assigned at merge, so re-check `db/migrations`
+> when work resumes. [Profile v1](#profile-v1-the-smallest-version-worth-shipping) needs only one
+> of them (share cards) and takes the next free number.
+>
+> Earlier renumbering, 2026-11-16: `0017` taken by `saved_places` (#90), `0018` by place hours.
 
 > **Renumbered 2026-10-25.** Migrations 0010-0015 are taken (service roles, skip reasons,
 > the demo reset, check-in attempts, `places.location_suspect`), so M9's start at **0016**;
@@ -23,12 +28,15 @@ Each phase is its own PR, and each deploy is approved separately.
 | Phase | What | Migration |
 |---|---|---|
 | 1 | Quest facts: `accepted_at`, `completed_at`, `rarity` on `quests` | `0016_quest_facts` |
-| 2 | `profile_stats`, the profile-stats consumer, rebuild, lag metric, demo-reset change | `0019_profile_stats` |
-| 3 | Tag families, palette, archetypes | `0020_tag_families` |
+| 2 | `profile_stats`, the profile-stats consumer, rebuild, lag metric, demo-reset change | `0022_profile_stats` |
+| 3 | Tag families, palette, archetypes | `0023_tag_families` |
 | 4 | `GET /me/profile`, web profile page | none |
-| 5 | Share cards | `0021_share_cards` |
+| 5 | Share cards | `0024_share_cards` |
 
-The star sign (build step 16, migration 0022, open question 11) is **dropped**.
+The star sign (build step 16, open question 11) is **dropped**, and with it its migration.
+
+**Profile v1 (below) is a thin slice across phases 3-5** for when users have a few
+check-ins each. It deliberately skips phase 2 and most of phase 3.
 
 Decisions, which close the matching open questions below:
 
@@ -86,8 +94,100 @@ None of these affects Phase 1. The owner decided the first two, and the rules on
   they can't feed `profile_stats`. Phase 4 adds any profile events to `lib/analytics.ts`
   and keeps `/privacy` in step; Phase 1 sends none.
 
+## Profile v1: the smallest version worth shipping
+
+Written 2026-11-22 for pickup in mid-December, once users have about **3 check-ins each**.
+Checked against `main` on 2026-11-22. The decisions above stand; where v1 differs from the
+full plan it says so, and **three of its choices are the owner's to confirm** (marked ⚑).
+
+### What v1 is
+
+A private profile page at `/profile`, linked from the header next to the journal, with:
+
+| Piece | Where it comes from |
+|---|---|
+| **Color wave** | The user's `taste_profiles.vec`, mapped to 3-5 colors: stable hue per tag family, weighted by the top families; same vector, same palette. Rendered client-side. |
+| **Check-in count** | `count(*)` of the user's `quests` with `status = 'completed'`, excluding `reasons.simulated`. |
+| **Neighborhoods visited** | Distinct `left(places.geohash6, 5)` over those check-ins (the plan's definition, `places` has no neighborhood field). A geohash5 is about 5 x 5 km, so the label is generous: consider "areas" in the copy. |
+| **Journal link** | A link to the existing `/journal`. No new journal UI. |
+| **Share card** | An opt-in card with the palette, the check-in count and the neighborhood count, and nothing else: **no place names, addresses, coordinates or times**. Unguessable random token, only its SHA-256 stored, revocable, one active card per user, `GET /share/:token` public and rate-limited, unknown and revoked tokens both 404 identically. The demo account gets a profile but no card (403), as decided. |
+
+Below 3 check-ins the page shows the palette and "n of 3 check-ins until your card", with
+no share button. A zero-check-in user still sees their colors, so the page is never empty.
+
+### How v1 differs from the full plan
+
+- ⚑ **Computed on read, no `profile_stats`, no consumer.** One query per profile view over
+  a user's own quests (a few dozen rows), which is open question 1's own alternative. This
+  skips phase 2 entirely: no new table, no worker, no rebuild, no lag metric, no chaos run.
+  Phase 2's consumer is still the plan for percentiles and archetypes; v1's read model
+  would be replaced by it, not migrated.
+- ⚑ **Tag families are a committed map, not a column.** A tag-to-family map in
+  `apps/api/src/profile/` (generated from the comment headers in `taxonomy.yaml`), with a
+  test that fails if a taxonomy tag has no family. That skips `0023_tag_families` and the
+  `syncTags` change. If families should live in Postgres later, add the column then.
+- **One migration: `share_cards`**, shaped as in the schema table below (`token_hash
+  bytea PK`, `user_id` cascading from `users`, `payload jsonb`, `created_at`, `revoked_at`,
+  one active card per user). It takes the next free number: **0022 if nothing lands first**,
+  and the numbers above shift up by one. It must grant to the API's role and update
+  `apps/api/src/db/roles.db.spec.ts`, as every M9 migration does.
+- ⚑ **The card is a snapshot** (open question 4's recommendation): `payload` is built when
+  the card is created from a whitelist of fields, so a later check-in can't leak into an
+  old link. Creating a new card revokes the old one.
+- **The share page is a normal web route** (`/share/:token`). The web app is on Vercel now,
+  which closes open question 5. The server-rendered OG image is deferred.
+
+Tests v1 still needs: palette determinism (same vector, same colors; tiny float noise,
+same colors; 3-5 colors), the share payload whitelist (no place names, coordinates, ISO
+dates or user ids), and the 404/429/403 behaviors. Account deletion exists now (`0020`,
+`0021`), so `ON DELETE CASCADE` on `share_cards` covers it; check the delete-my-data test
+lists the new table. `/privacy` and the PostHog events in `lib/analytics.ts` stay in step.
+
+### What's deferred
+
+| Deferred | Why |
+|---|---|
+| **Archetypes** (k-means, names, `archetypes.json`) | Needs 5 accepts per user and enough users to cluster; the demo would need a baseline. A name for a profile with three check-ins would be noise. |
+| **Niche score and percentile** | The percentile needs 20 users with 3 check-ins each (decision 4), and the score needs stored `rarity`, which is NULL on every quest offered before 0016. |
+| **Streaks** | One quest a day makes streak days and check-ins nearly the same number. The metro-day boundary (decision 3) and its Go/TypeScript test come with the consumer. |
+| **`profile_stats`, consumer, rebuild, lag metric, chaos test** | Phase 2. Not needed to show three numbers. |
+| **Rarest category** | Privacy edge (open question 12): `nearby = 1` can narrow down a place. |
+| **OG image for the share link** | Cosmetic; add once cards get shared. |
+| **Star sign** | Dropped. |
+
+### What Phase 1 has collected, and what's missing
+
+Phase 1 (`0016_quest_facts`, #79) is merged on `main`: `act()` sets `accepted_at` and
+`completed_at`, and `offer()` stores `rarity`. What v1 can use:
+
+- **Check-ins: all history.** `status = 'completed'` is stored for every quest, and
+  `coalesce(completed_at, updated_at)` is the exact check-in time (completed is terminal),
+  so the count and the neighborhoods work for quests from before 0016 too.
+- **Taste vector.** `taste_profiles.vec` for every user who finished onboarding (source
+  `onboarding`, or `events` once the taste-worker has updated it), plus `tags (slot, tag)`
+  to name the slots.
+- **Place geography.** `places.geohash6` for the neighborhood cells.
+- **`accepted_at` and `rarity` from the deploy of 0016 onward**, and `reasons.rarest`
+  (`{tag, nearby}`) on every quest, though v1 doesn't show it.
+
+What's missing:
+
+- **No neighborhood names**: only geohash cells.
+- **No tag families in the database**, only comment headers in `taxonomy.yaml` (v1's map
+  fixes that in code).
+- **No `profile_stats`, no `share_cards`**, no consumer.
+- **No stored `rarity` on older quests** (NULL), and `accepted_at` is NULL on older
+  skipped quests, so accepts and skips can't be split exactly before 0016.
+- **No user time zone**; days use `America/New_York` (decision 3).
+- **I haven't checked live data.** Whether 0016 is deployed on the Oracle VM, and how many
+  users have 3 check-ins, is unknown from the repo. Before pickup, run a read-only count
+  (a person with access, since this is a live system):
+  `SELECT count(*) FILTER (WHERE n >= 3) AS users_with_3, count(*) AS users_with_any FROM (SELECT user_id, count(*) n FROM quests WHERE status = 'completed' AND NOT coalesce((reasons->>'simulated')::boolean, false) GROUP BY user_id) c;`
+  and `SELECT count(*) FILTER (WHERE rarity IS NOT NULL) FROM quests;` to see how much
+  rarity has accumulated.
+
 Plan for the spec in [`M9-profile.md`](M9-profile.md), written 2026-10-17 against commit
-`b843f4e`. Nothing here is built yet. File paths are real unless marked **new**. Decisions
+`b843f4e`. Phase 1 (quest facts) is built and merged; nothing else is. File paths are real unless marked **new**. Decisions
 that need the owner are collected under [Open questions](#open-questions-and-risks); where
 the plan picks a default, it says so.
 
@@ -166,10 +266,10 @@ them. No contract step is needed in M9. Each migration gets a `.down.sql`.
 | Migration (**new**) | Change | Why / rollout note |
 |---|---|---|
 | `0016_quest_facts` | `quests` add `accepted_at timestamptz`, `completed_at timestamptz`, `rarity real` (all nullable) | Makes the projection a function of stored facts. The new API sets them in `act()` and `offer()`. Rows written by old pods during the rollout, and all earlier rows, have NULLs; the projection reads `coalesce(completed_at, updated_at)` for completed rows (exact, since completed is terminal) and treats `status = 'completed'` as accepted (complete is only allowed from accepted). Legacy `rarity` stays NULL (see open question 6). |
-| `0019_profile_stats` | `profile_stats (user_id PK → users ON DELETE CASCADE, checkins, neighborhoods, accepts, skips, streak_longest, streak_run, streak_last_day date, niche_score real, rarest_tag text, projection_version int, updated_at)`; index on `niche_score` | The consumer's projection. `streak_run`/`streak_last_day` let the API compute the *current* streak at read time (it decays without events). |
-| `0020_tag_families` | `tags` add `family text` (nullable) | Hue per family for the palette. Old ingest-workers keep upserting `(slot, tag)` without it. |
-| `0021_share_cards` | `share_cards (token_hash bytea PK, user_id → users ON DELETE CASCADE, payload jsonb, created_at, revoked_at)`; partial unique index on `user_id WHERE revoked_at IS NULL` | Only a SHA-256 of the token is stored, so a database leak doesn't expose live links. One active card per user (open question 4). |
-| `0022_star_sign` (optional, last) | `users` add `birth_month smallint`, `birth_day smallint`, both nullable, with range checks | Opt-in only; month and day, never a year. |
+| `0022_profile_stats` | `profile_stats (user_id PK → users ON DELETE CASCADE, checkins, neighborhoods, accepts, skips, streak_longest, streak_run, streak_last_day date, niche_score real, rarest_tag text, projection_version int, updated_at)`; index on `niche_score` | The consumer's projection. `streak_run`/`streak_last_day` let the API compute the *current* streak at read time (it decays without events). |
+| `0023_tag_families` | `tags` add `family text` (nullable) | Hue per family for the palette. Old ingest-workers keep upserting `(slot, tag)` without it. |
+| `0024_share_cards` | `share_cards (token_hash bytea PK, user_id → users ON DELETE CASCADE, payload jsonb, created_at, revoked_at)`; partial unique index on `user_id WHERE revoked_at IS NULL` | Only a SHA-256 of the token is stored, so a database leak doesn't expose live links. One active card per user (open question 4). |
+| ~~`0022_star_sign`~~ (dropped) | `users` add `birth_month smallint`, `birth_day smallint`, both nullable, with range checks | Opt-in only; month and day, never a year. |
 
 The per-service database roles (`docs/audit-2026-10.md` item 3, migration 0010) are live,
 so each of these migrations also grants its tables to the roles that need them, and
@@ -360,7 +460,7 @@ item 10 is added).
    stores `rarity`; Jest for both.
 3. **Extract the consumer loop** into `workers/internal/consumer`; taste-worker uses it,
    behaviour unchanged.
-4. **Projection.** Migration 0019; `workers/internal/profile` with `Recompute` and the
+4. **Projection.** Migration 0022; `workers/internal/profile` with `Recompute` and the
    advisory lock; DB-backed tests with hand-computed values.
 5. **profile-stats consumer.** `cmd/profile-stats` (consume, dedupe, DLQ), Deployment in
    `templates/workers.yaml`; duplicate-event test.
@@ -368,20 +468,20 @@ item 10 is added).
    test.
 7. **Worker metrics and lag.** `platform/metrics.go`, ServiceMonitor(s), `workers.json`
    dashboard.
-8. **Tag families.** `taxonomy.yaml` families, parser, migration 0020, `syncTags` at
+8. **Tag families.** `taxonomy.yaml` families, parser, migration 0023, `syncTags` at
    ingest-worker startup; taxonomy tests.
 9. **Palette.** `palette.ts` and its tests.
 10. **Archetypes.** `cmd/archetypes`, committed `archetypes.json`, name map, nearest
     centroid and cold-start gating; tests.
 11. **`GET /me/profile`** with read-time streak and percentile; tests.
-12. **Share cards.** Migration 0021, `POST`/`DELETE /me/share-card`, `GET /share/:token`,
+12. **Share cards.** Migration 0024, `POST`/`DELETE /me/share-card`, `GET /share/:token`,
     rate-limit guard; payload whitelist and 404/429 tests.
 13. **Web profile page** and header link.
 14. **Web share page and OG image.**
 15. **Chaos and docs.** k6 event scenario, `chaos.sh` changes, run it and commit the
     report under `loadtest/results/`; README M9 section, privacy trade-offs, Status line;
     finalize the ADRs.
-16. **Optional: star sign.** Migration 0022, endpoint, UI toggle.
+16. ~~Optional: star sign.~~ Dropped.
 
 Steps 2-7 can ship before any UI, since nothing reads the new data yet. Every migration is
 additive, so they can go out together or release by release.
