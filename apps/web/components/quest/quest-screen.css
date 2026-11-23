@@ -130,8 +130,9 @@
 .larper-quest-map-controls button { background: var(--larper-os-window); border: 1px solid var(--larper-os-ink); border-radius: 6px; box-shadow: var(--larper-os-shadow-raised); backdrop-filter: none; color: var(--larper-os-ink); font-family: var(--larper-os-font-body), system-ui, sans-serif; }
 .larper-quest-screen .maplibregl-ctrl-attrib { background: var(--larper-os-window); color: var(--larper-os-ink); font-family: var(--larper-os-font-body), system-ui, sans-serif; }
 /* Pins sit over dark tiles at night: a light focus ring, and a light ring for the selected pin.
-   Only the pins: the map credit and the map controls sit on light panels and keep the ink ring. */
-.larper-quest-screen [data-map-palette="night"] :is(.pin-quest, .pin-lead):focus-visible {
+   The collapsed map credit is just its round button, on the tiles too. The map controls are
+   portaled into the light header and keep the ink ring. */
+.larper-quest-screen [data-map-palette="night"] :is(.pin-quest, .pin-lead, .maplibregl-ctrl-attrib-button):focus-visible {
   outline: 2px solid var(--larper-os-paper);
   outline-offset: 2px;
 }
