@@ -18,5 +18,16 @@
 .larper-os-privacy { display: grid; gap: 12px; }
 .larper-os-privacy :is(h2, h3) { font: 400 24px/1.15 var(--larper-os-font-pixel), system-ui, sans-serif; }
 .larper-os-privacy-groups { border-block: 1px solid var(--larper-os-ink); }
-.larper-os-privacy-groups > section { padding-block: 12px; }
-.larper-os-privacy-groups > section + section { border-top: 1px solid var(--larper-os-ink); }
+.larper-os-privacy-groups > :is(section, li) { padding-block: 12px; }
+.larper-os-privacy-groups > section + section,
+.larper-os-credits > li + li { border-top: 1px solid var(--larper-os-ink); }
+.larper-os-credits { list-style: none; margin: 0; padding: 0; }
+.larper-os-credit-licences { display: flex; flex-wrap: wrap; gap: 0 16px; margin: 4px 0 0; padding: 0; list-style: none; }
+/* Standalone links in lists, so each gets the full tap size, not the inline-link exception. */
+.larper-os-credit-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--larper-os-tap-min);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}

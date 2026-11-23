@@ -63,5 +63,10 @@ it.each([
   expect(screen.queryByRole("button", { name: excluded })).toBeNull();
   expect(screen.getByRole("button", { name: "sign in" })).toBeTruthy();
   expect(screen.getByTestId("track-landing")).toBeTruthy();
-  expect(screen.getByRole("link", { name: "privacy" }).getAttribute("href")).toBe("/privacy");
+  const about = screen.getByRole("navigation", { name: "about larper" });
+  for (const page of ["privacy", "terms", "credits"]) {
+    const link = screen.getByRole("link", { name: page });
+    expect(link.getAttribute("href")).toBe(`/${page}`);
+    expect(about.contains(link)).toBe(true);
+  }
 });

@@ -31,6 +31,12 @@ describe("Privacy", () => {
     }
   });
 
+  it("links to terms and credits", () => {
+    render(<PrivacyPage />);
+    expect(screen.getByRole("link", { name: "terms" }).getAttribute("href")).toBe("/terms");
+    expect(screen.getByRole("link", { name: "credits" }).getAttribute("href")).toBe("/credits");
+  });
+
   it("says no coordinates or place names go to any of them", () => {
     render(<PrivacyPage />);
     expect(screen.getByRole("main").textContent).toMatch(/none of the services below get your\s+coordinates/);

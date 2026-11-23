@@ -134,6 +134,10 @@ export default function PrivacyPage() {
         <p className="text-sm">
           Signing in uses Clerk, which sets the cookies that keep you signed in. Nothing here is sold or used for ads.
         </p>
+        <p className="text-sm">
+          See also <Link href="/terms" className="underline underline-offset-2">terms</Link> and{" "}
+          <Link href="/credits" className="underline underline-offset-2">credits</Link>.
+        </p>
       </div>
     </LarperOsPageShell>
   );
