@@ -159,7 +159,16 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     const taste = await this.loadTaste(userId);
     const rank = () => this.rank(userId, taste.vec, center.lat, center.lng, center.cell, radiusM, surveyed);
     const { value: ranked, hit } = surveyed
-      ? await this.cache.getOrSet(`deck:${DECK_CACHE_VERSION}:${userId}:${taste.version}:${center.cell}:${radiusM}`, DECK_TTL_S, rank)
+      ? // The confidence floor is in the key, so changing QUEST_MIN_CONFIDENCE never serves a
+        // deck ranked under the old floor. A blocklist change still needs DECK_CACHE_VERSION bumped.
+        // It shares the last segment with the radius ("1500c0.7"), never a segment of its own:
+        // CacheService.forgetUser matches deck:*:<id>:*, and Redis's * spans colons, so a
+        // segment after the radius would let user 1500's delete match everyone's 1500 m decks.
+        await this.cache.getOrSet(
+          `deck:${DECK_CACHE_VERSION}:${userId}:${taste.version}:${center.cell}:${radiusM}c${this.gate.minConfidence}`,
+          DECK_TTL_S,
+          rank,
+        )
       : { value: await rank(), hit: false };
 
     // The cached deck already holds only places that pass the gate's static rules (rank).
