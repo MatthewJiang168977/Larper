@@ -35,7 +35,7 @@ const sheet = () =>
   );
 // The fade wraps the peek's label, name and distance.
 const fade = () => screen.getByRole("heading", { name: "Cafe Uno" }).parentElement!;
-const distance = () => screen.getByText(/min on foot/);
+const distance = () => screen.getByText(/min walk, estimated/);
 
 beforeEach(() => {
   reduce = false;
@@ -46,7 +46,7 @@ describe("QuestSheet: the peek's motion", () => {
     sheet();
     expect(fade().style.filter).toBe("");
     expect(fade().style.transform).toBe("");
-    expect(distance().textContent).toContain("· 1,340 m"); // the count shows its final value at once
+    expect(distance().textContent).toContain("· 1,742 m"); // the count shows its final value at once
   });
 
   it("with reduced motion: no blur, no slide, and the distance as a plain number", () => {
@@ -54,6 +54,6 @@ describe("QuestSheet: the peek's motion", () => {
     sheet();
     expect(fade().style.filter).toBe("");
     expect(fade().style.transform).not.toContain("translateY(-4px)");
-    expect(distance().textContent).toContain("cafe · 1,340 m, about 17 min on foot");
+    expect(distance().textContent).toContain("cafe · 1,742 m, about 22 min walk, estimated");
   });
 });
