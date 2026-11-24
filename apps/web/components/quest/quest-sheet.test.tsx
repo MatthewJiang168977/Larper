@@ -369,7 +369,7 @@ describe("QuestSheet on a phone: full", () => {
       />,
     );
     const links = within(rest().querySelector<HTMLElement>(".larper-quest-links")!).getAllByRole("link");
-    expect(links.map((l) => l.textContent)).toEqual(["Directions", "Website", "Instagram", "Call", "Check hours"]);
+    expect(links.map((l) => l.textContent)).toEqual(["Directions", "Website", "Instagram", "Check hours"]);
     for (const link of links) expect(link.classList).toContain("hit-target");
     // 20 px text in a 44 px area reaches 12 px past each edge: 24 px apart either way.
     expect(links[0].parentElement!.className.split(" ")).toEqual(expect.arrayContaining(["gap-x-6", "gap-y-6"]));
@@ -598,7 +598,7 @@ describe("QuestSheet: links from the API", () => {
 });
 
 describe("QuestSheet: hours", () => {
-  it("shows the hours block in the full view, with the website and phone links when unverified", () => {
+  it("shows the website once and puts the phone number next to unverified hours", () => {
     render(
       <QuestSheet
         quest={{ ...quest("offered"), place: { ...place("p1", "Cafe Uno"), website: "https://cafe.example", phone: "212-555-0142" } }}
@@ -612,8 +612,9 @@ describe("QuestSheet: hours", () => {
       />,
     );
     const block = within(rest()).getByTestId("place-hours");
-    expect(within(block).getByRole("link", { name: "website" }).getAttribute("href")).toBe("https://cafe.example");
-    expect(within(block).getByRole("link", { name: "call" }).getAttribute("href")).toBe("tel:2125550142");
+    expect(within(rest()).getByRole("link", { name: /^website$/i }).getAttribute("href")).toBe("https://cafe.example");
+    expect(within(block).queryByRole("link", { name: /website/i })).toBeNull();
+    expect(within(block).getByRole("link", { name: "212-555-0142" }).getAttribute("href")).toBe("tel:2125550142");
     expect(within(rest()).getByRole("link", { name: "Check hours" })).toBeTruthy();
   });
 });

@@ -47,13 +47,11 @@ function Source({ hours }: { hours: KnownHours }) {
 export function PlaceHoursNote({
   hours = { status: "unverified" },
   openConfirmations,
-  website,
   phone,
   now = new Date(),
 }: {
   hours?: PlaceHours;
   openConfirmations?: OpenConfirmations | null;
-  website: PlaceView["website"];
   phone: PlaceView["phone"];
   now?: Date;
 }) {
@@ -61,7 +59,7 @@ export function PlaceHoursNote({
   const confirmations = readConfirmations(openConfirmations);
   return (
     <div className="larper-place-hours mt-4 space-y-1 text-sm" data-testid="place-hours">
-      {safe.status === "known" ? <Known hours={safe} now={now} /> : <Unverified website={website} phone={phone} />}
+      {safe.status === "known" ? <Known hours={safe} now={now} /> : <Unverified phone={phone} />}
       {confirmations && (
         <p>
           confirmed open by {confirmations.count} people, most
@@ -72,20 +70,14 @@ export function PlaceHoursNote({
   );
 }
 
-function Unverified({ website, phone }: Pick<PlaceView, "website" | "phone">) {
-  const site = webUrl(website);
+function Unverified({ phone }: Pick<PlaceView, "phone">) {
   const tel = telUrl(phone);
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
       <p>hours unverified, check before you go</p>
-      {site && (
-        <a className={LINK} href={site} target="_blank" rel="noreferrer">
-          website
-        </a>
-      )}
       {tel && (
         <a className={LINK} href={tel}>
-          call
+          {phone}
         </a>
       )}
     </div>

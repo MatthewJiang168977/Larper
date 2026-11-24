@@ -20,20 +20,15 @@ const known = (over: Partial<Known> = {}): Known => ({
   ...over,
 });
 const note = (props: Partial<React.ComponentProps<typeof PlaceHoursNote>> = {}) =>
-  render(<PlaceHoursNote website={null} phone={null} now={now} {...props} />);
+  render(<PlaceHoursNote phone={null} now={now} {...props} />);
 const text = () => screen.getByTestId("place-hours").textContent ?? "";
 
 describe("PlaceHoursNote: unverified", () => {
-  it("says so, with the website and phone as links right there", () => {
-    note({ hours: { status: "unverified" }, website: "https://cafe.example", phone: "(212) 555-0142" });
+  it("shows the phone number as a link when hours are unverified", () => {
+    note({ hours: { status: "unverified" }, phone: "(212) 555-0142" });
     expect(text()).toContain("hours unverified, check before you go");
-    const site = screen.getByRole("link", { name: "website" });
-    expect(site.getAttribute("href")).toBe("https://cafe.example");
-    expect(site.getAttribute("target")).toBe("_blank");
-    expect(site.getAttribute("rel")).toBe("noreferrer");
-    expect(site.classList).toContain("hit-target");
-    expect(site.classList).toContain("larper-place-hours-link");
-    const call = screen.getByRole("link", { name: "call" });
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    const call = screen.getByRole("link", { name: "(212) 555-0142" });
     expect(call.getAttribute("href")).toBe("tel:2125550142");
     expect(call.getAttribute("target")).toBeNull();
     expect(call.classList).toContain("hit-target");
@@ -41,20 +36,14 @@ describe("PlaceHoursNote: unverified", () => {
     expect(screen.getByTestId("place-hours").classList).toContain("larper-place-hours");
   });
 
-  it("is just the text when there's neither", () => {
+  it("is just the text when there's no phone number", () => {
     note({ hours: { status: "unverified" } });
     expect(text()).toBe("hours unverified, check before you go");
     expect(screen.queryAllByRole("link")).toHaveLength(0);
   });
 
-  it("offers only the one it has", () => {
-    note({ website: "https://cafe.example" });
-    expect(screen.getByRole("link", { name: "website" })).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "call" })).toBeNull();
-  });
-
   it("is what a missing hours means, and never says closed", () => {
-    note({ hours: undefined, website: "https://cafe.example", phone: "212 555 0142" });
+    note({ hours: undefined, phone: "212 555 0142" });
     expect(text()).toContain("hours unverified");
     expect(text().toLowerCase()).not.toContain("closed");
   });
@@ -332,11 +321,8 @@ describe("PlaceHoursNote: malformed data from the API", () => {
     }
   });
 
-  it("links only http(s) websites and numbers with digits when unverified", () => {
-    note({ website: "javascript:alert(1)", phone: "call us" });
-    expect(screen.queryAllByRole("link")).toHaveLength(0);
-    cleanup();
-    note({ website: "data:text/html,x" });
+  it("leaves out a phone link for text without a number", () => {
+    note({ phone: "call us" });
     expect(screen.queryAllByRole("link")).toHaveLength(0);
   });
 });
