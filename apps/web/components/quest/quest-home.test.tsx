@@ -17,7 +17,7 @@ vi.mock("@/app/larper-os", () => ({ larperOsClassName: "larper-os" }));
 
 // --- the component's world, replaced -------------------------------------------
 
-type UserButtonProps = { appearance?: unknown; userProfileProps?: { appearance?: unknown } };
+type UserButtonProps = { appearance?: unknown; userProfileMode?: string; userProfileUrl?: string };
 const userButton = vi.fn<(props: UserButtonProps) => null>(() => null);
 const signOut = vi.fn();
 let clerkUser: { hasImage: boolean; firstName: string | null; lastName: string | null } | null = null;
@@ -615,11 +615,8 @@ describe("QuestHome: touch targets", () => {
           userButtonPopoverFooter: "larper-os-account-menu-footer",
         }),
       },
-      userProfileProps: {
-        appearance: {
-          elements: expect.objectContaining({ rootBox: "larper-os-clerk-profile" }),
-        },
-      },
+      userProfileMode: "navigation",
+      userProfileUrl: "/account",
     });
     expect(screen.getByRole("link", { name: "journal" }).classList).toContain("larper-quest-menu-link");
 
@@ -628,20 +625,17 @@ describe("QuestHome: touch targets", () => {
     expect(screen.getByLabelText("Dismiss").classList).toContain("hit-target");
   });
 
-  it("keeps the menu trigger styling and draws initials inside the popover and profile", async () => {
+  it("keeps the menu trigger styling and draws initials inside the popover", async () => {
     clerkUser = { hasImage: false, firstName: "Ada", lastName: "Byron" };
     render(<QuestHome />);
     await settle();
-    const { appearance, userProfileProps } = userButton.mock.lastCall![0] as {
+    const { appearance } = userButton.mock.lastCall![0] as {
       appearance: { elements: Record<string, unknown> };
-      userProfileProps: { appearance: { elements: Record<string, unknown> } };
     };
     expect(appearance.elements.userButtonTrigger).toContain("larper-quest-menu-link");
     expect(appearance.elements.userButtonPopoverCard).toBe("larper-os larper-os-account-menu");
     expect(appearance.elements.avatarImage).toEqual({ display: "none" });
     expect(appearance.elements.avatarBox).toMatchObject({ "&::after": { content: '"AB"' } });
-    // The profile modal ("Manage account") draws the same avatar.
-    expect(userProfileProps.appearance.elements.avatarImage).toEqual({ display: "none" });
   });
 
   it("offers only sign out for the demo, wired to Clerk", async () => {

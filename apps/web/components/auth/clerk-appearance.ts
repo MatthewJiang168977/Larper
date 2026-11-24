@@ -178,14 +178,30 @@ export function avatarInitialsAppearance(user: AvatarUser | null | undefined) {
   };
 }
 
+const osBody = "var(--larper-os-font-body), system-ui, sans-serif";
+
+// The profile sits inside the account page's OS window (striped title bar "account"), which
+// is the one frame: Clerk's card, navbar header and sections draw no frame of their own.
+// Section labels are lowercase body type, and its links and buttons are OS buttons.
 export function userProfileAppearance(user: AvatarUser | null | undefined) {
   return {
     elements: {
       rootBox: "larper-os-clerk-profile",
+      cardBox: { width: "100%", maxWidth: "100%", height: "auto", minHeight: 0, background: "none", border: "none", borderRadius: 0, boxShadow: "none" },
+      card: { background: "none", border: "none", borderRadius: 0, boxShadow: "none" },
       navbar: "larper-os-clerk-profile-nav",
       navbarButton: "larper-os-clerk-profile-nav-button",
+      pageScrollBox: { padding: "0 0 0 16px" },
+      scrollBox: { background: "none", borderRadius: 0, boxShadow: "none" },
+      headerTitle: { fontFamily: osBody, fontWeight: 600, fontSize: "20px", textTransform: "lowercase" },
       profileSectionTitle: "larper-os-clerk-profile-title",
-      profileSectionPrimaryButton: osLink,
+      profileSectionTitleText: { fontFamily: osBody, fontWeight: 600, fontSize: "16px", textTransform: "lowercase", color: osInk },
+      profileSectionPrimaryButton: { ...osButton, borderRadius: "var(--larper-os-radius-tag)", color: osInk, textDecoration: "none", textTransform: "lowercase", fontFamily: osBody, "&:hover": { backgroundColor: "var(--larper-os-butter)", color: osInk } },
+      formButtonPrimary: { ...CLERK_APPEARANCE.elements.formButtonPrimary, borderRadius: "var(--larper-os-radius-tag)", textTransform: "lowercase" },
+      formButtonReset: { ...osButton, borderRadius: "var(--larper-os-radius-tag)", textTransform: "lowercase" },
+      // Deleting an account goes through "your data" and DELETE /me, never Clerk's own button.
+      "profileSection__danger": { display: "none" },
+      "profilePage__danger": { display: "none" },
       ...avatarInitialsAppearance(user)?.elements,
     },
   };

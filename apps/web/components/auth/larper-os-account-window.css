@@ -1,0 +1,43 @@
+/* The account window: sized to its content, in OS type, with OS buttons. The page's
+   OSWindow supplies the striped title bar, corners and shadow. */
+.larper-os-account-note { display: grid; justify-items: start; gap: 10px; margin: 0; }
+
+.larper-os-page .cl-rootBox,
+.larper-os-page .cl-cardBox,
+.larper-os-page .cl-card {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-height: 0;
+}
+
+.larper-os-page .cl-navbar {
+  background: none;
+  border-inline-end: 1px solid var(--larper-os-ink);
+}
+
+/* Clerk's own "account / manage your account info" heading repeats the window title. */
+.larper-os-page .cl-navbar .cl-header,
+.larper-os-page .cl-navbar p:has(+ .cl-navbarButtons) { display: none; }
+
+.larper-os-page .cl-profileSection { border-color: var(--larper-os-ink); }
+.larper-os-page .cl-profileSection__danger,
+.larper-os-page .cl-profilePage__danger { display: none; }
+
+.larper-os-page .cl-profileSectionTitleText,
+.larper-os-page .cl-headerTitle,
+.larper-os-page .cl-navbarButton { font-family: var(--larper-os-font-body), system-ui, sans-serif; }
+
+.larper-os-page .cl-navbarButton { min-height: var(--larper-os-tap-min); }
+.larper-os-page .cl-navbarButton[data-active="true"] { background: var(--larper-os-butter); }
+
+/* "your data" lives in a Clerk page: our panel needs no extra frame of its own there. */
+.larper-os-page .cl-page .larper-data-actions { margin-block: 8px; }
+
+@media (max-width: 640px) {
+  .larper-os-page .cl-pageScrollBox { padding-inline-start: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .larper-os-page .cl-rootBox * { transition: none !important; animation: none !important; }
+}
