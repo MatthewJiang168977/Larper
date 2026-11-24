@@ -1,0 +1,41 @@
+/* Motion, in one place. Short (<=200ms), never blocks input, and off for reduced motion.
+   Windows scale and settle, so their text is on screen from the first frame; they never
+   start transparent, which keeps first paint of a page's content where it was. */
+
+@keyframes larper-window-open {
+  from { transform: scale(0.97); }
+  60% { transform: scale(1.008); }
+  to { transform: scale(1); }
+}
+
+/* Windows on the pages that are windows. Not the quest screen: its first card must not wait. */
+.larper-landing .larper-os-window,
+.larper-journal .larper-os-window {
+  animation: larper-window-open 180ms ease-out;
+}
+
+/* Page to page (React's <ViewTransition> in app/template.tsx). */
+::view-transition-old(.larper-window-close) {
+  animation: larper-fade-out 90ms ease-in both;
+}
+::view-transition-new(.larper-window-open) {
+  animation: larper-fade-in 140ms ease-out both, larper-window-open 180ms ease-out both;
+}
+@keyframes larper-fade-out { to { opacity: 0; } }
+@keyframes larper-fade-in { from { opacity: 0; } }
+
+/* A button depresses: it moves into its shadow. */
+.larper-os-button:not(:disabled):active,
+.larper-os-icon:not(:disabled):active {
+  transform: translate(1px, 2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .larper-landing .larper-os-window,
+  .larper-journal .larper-os-window { animation: none; }
+  .larper-os-button:not(:disabled):active,
+  .larper-os-icon:not(:disabled):active { transform: none; }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) { animation: none !important; }
+}
