@@ -221,9 +221,10 @@ a number of days.
 
 ### Clerk deletions that fail, and deletions made in Clerk (D8)
 
-**Proposed 2026-11-22, needs the owner's decision: it keeps a Clerk id after
-`DELETE /me` while the Clerk deletion is still owed, which D7 ruled out.** Found by the
-2026-11-22 review:
+**Accepted 2026-11-22 by the owner.** It keeps a Clerk id after `DELETE /me` while the
+Clerk deletion is still owed, which D7 ruled out; the owner accepted that exception.
+Clerk self-delete is being turned off in the Clerk dashboard, so deletions go through
+`DELETE /me`. Found by the 2026-11-22 review:
 
 - When the Clerk call fails, Larper's data is gone but the Clerk user (email, name) is
   not, and nothing recorded that. If the user closed the tab, they stayed in Clerk for
