@@ -642,6 +642,7 @@ export function QuestScreen({ api, location, renderAccountControl, previewContro
           stampSlam={stampSlam}
           onStampSlammed={() => setStampSlam(false)}
           onSnapChange={onSnapChange}
+          from={loc}
         />
       ) : (
         // Nothing here. Asking again gives the same answer (a failed survey is retried
