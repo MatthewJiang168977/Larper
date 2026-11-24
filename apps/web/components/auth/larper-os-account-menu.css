@@ -77,14 +77,6 @@
   position: relative;
 }
 
-.larper-os-demo-account > summary {
-  list-style: none;
-}
-
-.larper-os-demo-account > summary::-webkit-details-marker {
-  display: none;
-}
-
 .larper-os-demo-account-panel {
   position: absolute;
   z-index: 1;

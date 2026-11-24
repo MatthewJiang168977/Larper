@@ -600,7 +600,7 @@ describe("QuestHome: the map's stand-in area is labelled as such", () => {
 });
 
 describe("QuestHome: touch targets", () => {
-  it("gives the avatar, the Journal link and Dismiss a 44 px hit area", async () => {
+  it("applies the menu item styling to the Clerk trigger and Journal link", async () => {
     routes["/quests/today"] = ok(withQuest);
     routes["/quests/q1/complete"] = fail(new ApiError("You're 110 m away", 422));
     render(<QuestHome />);
@@ -608,7 +608,8 @@ describe("QuestHome: touch targets", () => {
     expect(userButton).toHaveBeenLastCalledWith({
       appearance: {
         elements: expect.objectContaining({
-          userButtonTrigger: "hit-target",
+          userButtonTrigger: "larper-quest-menu-link larper-quest-clerk-trigger",
+          userButtonBox: "larper-quest-clerk-trigger-avatar",
           userButtonPopoverCard: "larper-os larper-os-account-menu",
           userButtonPopoverActionButton: "larper-os-account-menu-action",
           userButtonPopoverFooter: "larper-os-account-menu-footer",
@@ -627,7 +628,7 @@ describe("QuestHome: touch targets", () => {
     expect(screen.getByLabelText("Dismiss").classList).toContain("hit-target");
   });
 
-  it("keeps the hit area when the avatar draws ink initials for a user with no photo", async () => {
+  it("keeps the menu trigger styling and draws initials inside the popover and profile", async () => {
     clerkUser = { hasImage: false, firstName: "Ada", lastName: "Byron" };
     render(<QuestHome />);
     await settle();
@@ -635,7 +636,7 @@ describe("QuestHome: touch targets", () => {
       appearance: { elements: Record<string, unknown> };
       userProfileProps: { appearance: { elements: Record<string, unknown> } };
     };
-    expect(appearance.elements.userButtonTrigger).toBe("hit-target");
+    expect(appearance.elements.userButtonTrigger).toContain("larper-quest-menu-link");
     expect(appearance.elements.userButtonPopoverCard).toBe("larper-os larper-os-account-menu");
     expect(appearance.elements.avatarImage).toEqual({ display: "none" });
     expect(appearance.elements.avatarBox).toMatchObject({ "&::after": { content: '"AB"' } });
@@ -650,13 +651,13 @@ describe("QuestHome: touch targets", () => {
     await settle();
     expect(userButton).not.toHaveBeenCalled();
 
-    const trigger = screen.getByText("account", { selector: "summary" });
+    const trigger = screen.getByRole("button", { name: "account" });
     fireEvent.click(trigger);
     const action = screen.getByRole("button", { name: "sign out" });
     expect(screen.queryByText(/manage account/i)).toBeNull();
     action.focus();
     fireEvent.keyDown(action, { key: "Escape" });
-    expect(trigger.closest("details")?.open).toBe(false);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
     expect(document.activeElement).toBe(trigger);
 
     fireEvent.click(trigger);
@@ -669,18 +670,18 @@ describe("QuestHome: touch targets", () => {
     routes["/me"] = () => new Promise((_, reject) => { rejectMe = reject; });
     routes["/quests/today"] = ok(withQuest);
     render(<QuestHome />);
-    expect(screen.getByText("account", { selector: "summary" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "account" })).toBeTruthy();
     expect(userButton).not.toHaveBeenCalled();
 
     rejectMe(new ApiError("boom", 503));
     await settle();
-    expect(screen.getByText("account", { selector: "summary" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "account" })).toBeTruthy();
     expect(userButton).not.toHaveBeenCalled();
 
     routes["/me"] = ok({ ...ME, demo: false });
     fireEvent.click(screen.getByRole("button", { name: "retry" }));
     await settle();
-    expect(screen.queryByText("account", { selector: "summary" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "account" })).toBeNull();
     expect(userButton).toHaveBeenCalled();
   });
 });

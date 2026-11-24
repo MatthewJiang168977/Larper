@@ -1,21 +1,19 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DemoAccountMenu } from "./demo-account-menu";
 
 vi.mock("@clerk/nextjs", () => ({ SignOutButton: ({ children }: { children: React.ReactNode }) => children }));
 
-const menu = () => screen.getByText("account", { selector: "summary" }).closest("details") as HTMLDetailsElement;
-const openIt = () => act(() => {
-  menu().open = true;
-  menu().dispatchEvent(new Event("toggle"));
-});
+const trigger = () => screen.getByRole("button", { name: "account" });
+const openIt = () => fireEvent.click(trigger());
+const expanded = () => trigger().getAttribute("aria-expanded");
 
 describe("DemoAccountMenu", () => {
   it("stays open when a click blurs it without a related target (Safari, macOS Firefox)", () => {
     render(<DemoAccountMenu />);
     openIt();
-    fireEvent.blur(menu().querySelector("summary")!, { relatedTarget: null });
-    expect(menu().open).toBe(true);
+    fireEvent.blur(trigger(), { relatedTarget: null });
+    expect(expanded()).toBe("true");
     expect(screen.getByRole("button", { name: "sign out" })).toBeTruthy();
   });
 
@@ -23,15 +21,15 @@ describe("DemoAccountMenu", () => {
     render(<><DemoAccountMenu /><p>elsewhere</p></>);
     openIt();
     fireEvent.pointerDown(screen.getByRole("button", { name: "sign out" }));
-    expect(menu().open).toBe(true);
+    expect(expanded()).toBe("true");
     fireEvent.pointerDown(screen.getByText("elsewhere"));
-    expect(menu().open).toBe(false);
+    expect(expanded()).toBe("false");
   });
 
   it("closes when the keyboard moves focus out of it", () => {
     render(<><DemoAccountMenu /><button>next</button></>);
     openIt();
-    fireEvent.blur(menu().querySelector("summary")!, { relatedTarget: screen.getByRole("button", { name: "next" }) });
-    expect(menu().open).toBe(false);
+    fireEvent.blur(trigger(), { relatedTarget: screen.getByRole("button", { name: "next" }) });
+    expect(expanded()).toBe("false");
   });
 });
