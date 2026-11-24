@@ -1,9 +1,9 @@
 # M9 plan: Profile & Taste Identity
 
 > **Migrations renumbered, 2026-11-23.** M9 phases 2-5 are parked by
-> `docs/plans/industry-ready-plan.md`. `db/migrations` now runs to **0021**
-> (`clerk_deletions_pending`; `0017` is `saved_places`, `0018`-`0019` place hours, `0020`
-> `delete_my_data`), and `0022` is reserved by the weekly email PR. M9's remaining
+> `docs/plans/industry-ready-plan.md`. `db/migrations` now runs to **0022**
+> (`0017` is `saved_places`, `0018`-`0019` place hours, `0020` `delete_my_data`, `0021`
+> `clerk_deletions_pending`, `0022` `weekly_email`). M9's remaining
 > migrations start at **0023**: `0023_profile_stats`,
 > `0024_tag_families`, `0025_share_cards`. The star sign (formerly 0022) is dropped.
 > **These are placeholders**: numbers are assigned at merge, so re-check `db/migrations`
