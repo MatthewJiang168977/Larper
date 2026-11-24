@@ -57,6 +57,10 @@ demo:
   enabled: true
   email: demo@playlarper.com
 
+# Owner-provisioned at the Clerk production cutover. See docs/runbooks/clerk-production.md.
+clerk:
+  publishableKeyOverrideSecret: clerk-production-runtime
+
 redpanda:
   storage: 4Gi
 
@@ -83,3 +87,6 @@ privacy:
   deletes: "all"
   clerkSecret:
     name: clerk-privacy
+  clerkWebhook:
+    secretName: clerk-production-runtime
+    optional: true

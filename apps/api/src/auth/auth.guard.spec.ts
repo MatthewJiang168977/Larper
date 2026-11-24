@@ -105,6 +105,11 @@ describe('frontendApiFromPublishableKey', () => {
     expect(frontendApiFromPublishableKey(key)).toBe('example-1.clerk.accounts.dev');
   });
 
+  it('decodes a production domain from a live publishable key', () => {
+    const key = 'pk_live_' + Buffer.from('clerk.example.com$').toString('base64');
+    expect(frontendApiFromPublishableKey(key)).toBe('clerk.example.com');
+  });
+
   it('rejects things that are not publishable keys', () => {
     expect(() => frontendApiFromPublishableKey('sk_test_abc')).toThrow();
   });

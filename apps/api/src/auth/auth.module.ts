@@ -15,7 +15,7 @@ import { UsersService } from './users.service';
       provide: SESSION_VERIFIER,
       useFactory: () =>
         clerkVerifier(
-          process.env.CLERK_PUBLISHABLE_KEY ?? '',
+          process.env.CLERK_PUBLISHABLE_KEY_OVERRIDE?.trim() || process.env.CLERK_PUBLISHABLE_KEY || '',
           (process.env.CLERK_AUTHORIZED_PARTIES ?? '').split(',').map((s) => s.trim()).filter(Boolean),
         ),
     },
