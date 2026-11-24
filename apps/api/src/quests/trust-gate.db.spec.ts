@@ -38,13 +38,13 @@ describeDb('the trust gate (real database)', () => {
     return q;
   };
 
-  const place = async (name: string, categories: string[], confidence: number, northM: number) => {
+  const place = async (name: string, categories: string[], confidence: number, northM: number, overtureId?: string) => {
     const { rows } = await owner.query<{ id: string }>(
       `INSERT INTO places (overture_id, name, geom, categories, chain_key, tags, tag_vec, confidence)
-       VALUES ('test-trust-gate-' || gen_random_uuid(), $1, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography,
+       VALUES (COALESCE($6::text, 'test-trust-gate-' || gen_random_uuid()), $1, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography,
                $4::text[], 'test-trust-' || gen_random_uuid(), '{cafe}', array_fill(0, ARRAY[160])::vector, $5::real)
        RETURNING id::text`,
-      [name, HERE.lng, HERE.lat + northM / M_PER_DEG_LAT, categories, confidence],
+      [name, HERE.lng, HERE.lat + northM / M_PER_DEG_LAT, categories, confidence, overtureId ?? null],
     );
     placeIds.push(rows[0].id);
     idOf[name] = rows[0].id;
@@ -58,7 +58,7 @@ describeDb('the trust gate (real database)', () => {
   };
 
   // What may be offered; every other place below must never appear.
-  const ELIGIBLE = ['Alpha Cafe', 'Beta Books', 'Edge Spot', 'Green Park', 'Library Branch', 'Twin Cafe Best', 'Harbor B&B', 'Campus Museum', 'Holiday Rental'].sort();
+  const ELIGIBLE = ['Alpha Cafe', 'Beta Books', 'Edge Spot', 'Bill Rainey Park', 'Library Branch', 'Twin Cafe Best', 'Harbor B&B', 'Campus Museum', 'Holiday Rental'].sort();
 
   beforeAll(async () => {
     pool = createPool(URL);
@@ -69,7 +69,8 @@ describeDb('the trust gate (real database)', () => {
     await place('Alpha Cafe', ['food_and_drink', 'casual_eatery', 'cafe'], 0.9, 10);
     await place('Beta Books', ['shopping', 'specialty_store', 'books_music_and_video_store'], 0.8, 200);
     await place('Edge Spot', ['food_and_drink', 'cafe'], 0.7, 300); // exactly at the threshold, stored as a float4
-    await place('Green Park', ['sports_and_recreation', 'park'], 0.95, 400);
+    await place('Bill Rainey Park', ['lifestyle_services', 'wellness_service', 'public_bath_house'], 0.95, 400,
+      '70d5bf1f-edda-455a-bad1-dc88f85e6d94');
     await place('Library Branch', ['education', 'library'], 0.95, 450); // under the education root
     await place('Harbor B&B', ['lodging', 'bed_and_breakfast'], 0.8, 460); // visitors stay here: kept
     await place('Holiday Rental', ['lodging', 'private_lodging', 'holiday_rental_home'], 0.8, 470); // kept too
@@ -86,6 +87,8 @@ describeDb('the trust gate (real database)', () => {
     await place('Public School 9', ['education', 'place_of_learning', 'school'], 0.99, 700);
     await place('Sunset Apartments', ['services_and_business', 'housing_or_property_service', 'apartment'], 0.99, 750);
     await place('Mixed-Case Clinic', ['Food_And_Drink', 'HEALTH_CARE'], 0.99, 800); // the blocklist ignores case
+    await place('Wine and Spirits', ['shopping', 'liquor_store'], 0.99, 805);
+    await place('Indoor Range', ['sports_and_recreation', 'shooting_range'], 0.99, 810);
     // A duplicate trio within 10 m: only the highest-confidence one is eligible.
     await place('Twin Cafe', ['food_and_drink', 'cafe'], 0.75, 850);
     await place('The Twin Cafe!', ['food_and_drink', 'cafe'], 0.75, 860);
@@ -129,7 +132,7 @@ describeDb('the trust gate (real database)', () => {
         'Beta Books',
         'Campus Museum',
         'Edge Spot',
-        'Green Park',
+        'Bill Rainey Park',
         'Harbor B&B',
         'Holiday Rental',
         'Library Branch',
@@ -146,7 +149,7 @@ describeDb('the trust gate (real database)', () => {
          AND EXISTS (SELECT FROM unnest(p.categories) c WHERE lower(c) = ANY($2::text[]))`,
       [placeIds, BLOCKED_CATEGORIES],
     );
-    expect(rows[0].n).toBe(10); // clinic, church, school, apartments, the mixed-case clinic, day care, funeral home, courthouse, casino, university
+    expect(rows[0].n).toBe(13); // Includes both new exclusions and the park's allowlisted category.
   });
 
   it('a threshold override reaches the query: at 0.9 only the places at or above it remain', async () => {
@@ -156,10 +159,10 @@ describeDb('the trust gate (real database)', () => {
       HERE.lng,
       RADIUS,
     );
-    expect(offered(r)).toEqual(['Alpha Cafe', 'Green Park', 'Library Branch', 'Twin Cafe Best']);
+    expect(offered(r)).toEqual(['Alpha Cafe', 'Bill Rainey Park', 'Library Branch', 'Twin Cafe Best']);
   });
 
-  it('decks are cached under the v5 key, so decks cached before the current gate rules are not served', async () => {
+  it('decks are cached under the v6 key, so decks cached before the current gate rules are not served', async () => {
     const keys: string[] = [];
     const spy = {
       getOrSet: async (k: string, _t: number, fn: () => Promise<unknown>) => {
@@ -168,7 +171,7 @@ describeDb('the trust gate (real database)', () => {
       },
     };
     await service(undefined, spy).today(await user(), HERE.lat, HERE.lng, RADIUS);
-    expect(keys.filter((k) => k.startsWith('deck:'))).toEqual([expect.stringMatching(/^deck:v5:/)]);
+    expect(keys.filter((k) => k.startsWith('deck:'))).toEqual([expect.stringMatching(/^deck:v6:/)]);
   });
 
   describe('unknown hours in the evening (QUEST_GATE_EVENING_UNKNOWN_HOURS)', () => {

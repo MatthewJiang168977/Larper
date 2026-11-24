@@ -83,8 +83,9 @@ function sameCandidates(a: Candidate[], b: Candidate[]) {
 // candidates() also returns each place's categories, for the gate in rank(); the replaced query has no such column.
 const withoutCategories = (cs: Candidate[]) =>
   cs.map((row) => {
-    const c: Candidate & { categories?: string[] } = { ...row };
+    const c: Candidate & { categories?: string[]; overtureId?: string } = { ...row };
     delete c.categories;
+    delete c.overtureId;
     return c;
   });
 

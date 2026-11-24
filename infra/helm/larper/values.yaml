@@ -68,6 +68,8 @@ clerk:
   # so verifying tokens needs no Clerk secret (only demo.enabled and privacy.deletes=all
   # bring one).
   publishableKey: pk_test_bmF0aW9uYWwtcmVkZmlzaC04MTA0LmNsZXJrLmFjY291bnRzLmRldiQ
+  # Optional Secret containing publishableKey. If absent, use the value above.
+  publishableKeyOverrideSecret: ""
   # Origins allowed in a token's azp claim (comma-separated).
   authorizedParties: http://localhost:3001
 
@@ -100,6 +102,7 @@ privacy:
   clerkWebhook:
     secretName: ""
     key: signingSecret
+    optional: false
 
 ingress:
   className: traefik
