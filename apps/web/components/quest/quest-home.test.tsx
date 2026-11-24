@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { cloneElement, forwardRef, type ReactElement, useEffect } from "react";
+import { cloneElement, forwardRef, type ReactElement, type ReactNode, useEffect } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Located } from "@/hooks/use-location";
 import { ApiError, type Me, type Today } from "@/lib/api";
@@ -22,7 +22,11 @@ const userButton = vi.fn<(props: UserButtonProps) => null>(() => null);
 const signOut = vi.fn();
 let clerkUser: { hasImage: boolean; firstName: string | null; lastName: string | null } | null = null;
 vi.mock("@clerk/nextjs", () => ({
-  UserButton: (p: UserButtonProps) => userButton(p),
+  UserButton: Object.assign((p: UserButtonProps) => userButton(p), {
+    MenuItems: ({ children }: { children?: ReactNode }) => <>{children}</>,
+    Link: () => null,
+    Action: () => null,
+  }),
   SignOutButton: ({ children }: { children: ReactElement<{ onClick?: () => void }> }) =>
     cloneElement(children, { onClick: signOut }),
   useUser: () => ({ user: clerkUser }),
@@ -606,6 +610,7 @@ describe("QuestHome: touch targets", () => {
     render(<QuestHome />);
     await settle();
     expect(userButton).toHaveBeenLastCalledWith({
+      children: expect.anything(),
       appearance: {
         elements: expect.objectContaining({
           userButtonTrigger: "larper-quest-menu-link larper-quest-clerk-trigger",

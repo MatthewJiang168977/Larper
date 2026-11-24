@@ -31,14 +31,16 @@
   background: var(--larper-os-window);
   border-bottom: 1px solid var(--larper-os-ink);
 }
-.larper-quest-navigation, .larper-quest-map-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.larper-quest-map-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* One equal visual gap between larper, journal and account: no flex gap; each word carries
+   the same 8px on its sides, and Clerk's trigger has its inner padding zeroed to match. */
+.larper-quest-navigation { display: flex; flex-wrap: wrap; align-items: center; gap: 0; }
+.larper-quest-brand { padding-inline-end: 8px; }
 .larper-quest-map-controls:not(:empty) { margin-inline-start: auto; padding-block: 4px; }
 .larper-quest-brand { font: 400 28px/1 var(--larper-os-font-pixel), system-ui, sans-serif; }
 .larper-quest-navigation .larper-quest-menu-link { display: grid; min-height: 44px; min-width: 44px; place-items: center; padding: 0 8px; font: 400 24px/1 var(--larper-os-font-pixel), system-ui, sans-serif; }
-.larper-quest-navigation a.larper-quest-menu-link { padding-inline-end: 4px; }
 
 .larper-quest-navigation button.larper-quest-menu-link {
-  padding-inline-start: 4px;
   background: transparent;
   border: 0;
   border-radius: 0;
@@ -59,6 +61,7 @@
 }
 
 /* Keep Clerk's native button and its localized accessible name. */
+.larper-quest-navigation .larper-quest-clerk-trigger { padding: 0 8px; margin: 0; gap: 0; }
 .larper-quest-clerk-trigger .larper-quest-clerk-trigger-avatar { display: none; }
 .larper-quest-clerk-trigger::before { content: "account" / ""; }
 
