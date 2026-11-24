@@ -29,6 +29,7 @@ export interface DataExport {
   /** "Was it open?" answers given after a check-in. */
   hoursAnswers: HoursAnswerEntry[];
   savedPlaces: SavedPlaceEntry[];
+  weeklyEmail?: { optedInAt: string | null; lastAttemptDay: string | null };
 }
 
 interface PlaceRef {
@@ -138,8 +139,10 @@ export class DataExportService {
     let account, taste, quests, attempts, answers, saved;
     try {
       await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY');
-      account = await db.query<{ id: string; clerk_id: string; created_at: Date }>(
-        'SELECT id::text, clerk_id, created_at FROM users WHERE id = $1',
+      account = await db.query<{ id: string; clerk_id: string; created_at: Date; email_preference: boolean; opted_in_at: Date | null; last_attempt_day: string | null }>(
+        `SELECT u.id::text, u.clerk_id, u.created_at, w.user_id IS NOT NULL AS email_preference,
+                w.opted_in_at, to_char(w.last_attempt_day, 'YYYY-MM-DD') AS last_attempt_day
+         FROM users u LEFT JOIN weekly_email_preferences w ON w.user_id = u.id WHERE u.id = $1`,
         [userId],
       );
       taste = await db.query<{ vec: string; source: string; updated_at: Date }>(
@@ -244,6 +247,7 @@ export class DataExportService {
         place: place(r),
       })),
       savedPlaces: saved.rows.map((r) => ({ questId: r.quest_id, savedAt: r.created_at.toISOString(), place: place(r) })),
+      ...(acct.email_preference && { weeklyEmail: { optedInAt: iso(acct.opted_in_at), lastAttemptDay: acct.last_attempt_day } }),
     };
   }
 }

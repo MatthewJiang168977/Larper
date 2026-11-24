@@ -41,6 +41,13 @@ spec:
               valueFrom: { secretKeyRef: { name: {{ . | quote }}, key: publishableKey, optional: true } }
             {{- end }}
             - { name: CLERK_AUTHORIZED_PARTIES, value: {{ .Values.clerk.authorizedParties | quote }} }
+            {{- with .Values.weeklyEmail.secretName }}
+            {{- $name := . }}
+            {{- range list "ENABLED" "UNSUBSCRIBE_KEY" "APP_ORIGIN" "API_ORIGIN" "POSTAL_ADDRESS" "RESEND_KEY" "FROM" }}
+            - name: WEEKLY_EMAIL_{{ . }}
+              valueFrom: { secretKeyRef: { name: {{ $name | quote }}, key: WEEKLY_EMAIL_{{ . }}, optional: true } }
+            {{- end }}
+            {{- end }}
             - { name: RATE_LIMIT_ENABLED, value: {{ ternary "1" "0" .Values.api.rateLimit.enabled | quote }} }
             - { name: CLIENT_IP_SOURCE, value: {{ .Values.api.rateLimit.clientIp | quote }} }
             - { name: TRUST_PROXY, value: {{ .Values.api.rateLimit.trustProxy | quote }} }

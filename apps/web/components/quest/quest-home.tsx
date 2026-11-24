@@ -72,6 +72,18 @@ const QuestMap = dynamic(() => import("@/components/map/larper-os-quest-map"), {
 // place. Without one by this long, it starts anyway rather than leave the page blank.
 export const MAP_WAIT_MS = 3000;
 
+const weeklyEmailMenu = process.env.NEXT_PUBLIC_WEEKLY_EMAIL_ENABLED === "1" ? {
+  children: (
+    <UserButton.MenuItems>
+      <UserButton.Link label="weekly email" href="/account/weekly-email" labelIcon={
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <rect x="3" y="5" width="18" height="14" rx="2" /><path d="m4 7 8 6 8-6" />
+        </svg>
+      } />
+    </UserButton.MenuItems>
+  ),
+} : {};
+
 export function QuestHome() {
   const api = useApi();
   const { user } = useUser();
@@ -85,7 +97,7 @@ export function QuestHome() {
       key={user?.id}
       api={api}
       location={location}
-      renderAccountControl={(me) => me && !me.demo ? <UserButton {...userButton} /> : <DemoAccountMenu />}
+      renderAccountControl={(me) => me && !me.demo ? <UserButton {...userButton} {...weeklyEmailMenu} /> : <DemoAccountMenu />}
     />
   );
 }

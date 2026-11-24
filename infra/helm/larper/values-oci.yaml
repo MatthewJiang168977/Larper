@@ -80,6 +80,9 @@ queue:
 monitoring:
   enabled: true
 
+weeklyEmail:
+  secretName: weekly-email
+
 # Data deletion (docs/decisions/0005-data-deletion.md, "Rollout and rollback", step 4):
 # DELETE /me/history and DELETE /me. The Clerk key comes from clerk-privacy, which
 # scripts/oci-up.sh writes from apps/web/.env.local; it refuses to deploy "all" without it.
