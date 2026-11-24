@@ -6,6 +6,7 @@ import { csvField, defaultOutputPath, parseFocusAreas, PilotPlace, rankPilotCand
 
 const place = (id: string, over: Partial<PilotPlace> = {}): PilotPlace => ({
   id,
+  overtureId: `fixture-${id}`,
   name: `Place ${id}`,
   lat: 40.73 + Number(id) * 0.001,
   lng: -73.99,
@@ -125,6 +126,7 @@ describe('focus areas and the query', () => {
   it('pins the SQL to the TS rules: same constants, read-only, no writes', () => {
     expect(CANDIDATES_SQL).toContain('p.confidence >= $3::real');
     expect(CANDIDATES_SQL).toContain('lower(c) = ANY($4::text[])');
+    expect(CANDIDATES_SQL).toContain('p.overture_id = ANY($5::text[])');
     expect(CANDIDATES_SQL).toContain('p.location_suspect IS NULL');
     expect(CANDIDATES_SQL).not.toMatch(/\b(INSERT|UPDATE|DELETE|TRUNCATE|DROP|ALTER|CREATE)\b/i);
     expect(BLOCKED_CATEGORIES.length).toBeGreaterThan(20);
