@@ -106,13 +106,40 @@ export const CLERK_APPEARANCE = {
 };
 
 // These forms sit inside an OSWindow, which supplies the surrounding chrome.
+const osButtonSurface = {
+  borderRadius: "var(--larper-os-radius-tag)",
+  fontWeight: 600,
+  textTransform: "lowercase",
+};
+const osFooterQuiet = {
+  background: "none",
+  border: "none",
+  boxShadow: "none",
+  borderRadius: 0,
+  padding: 0,
+  margin: 0,
+};
+
+// These forms sit inside an OSWindow, which supplies the only frame: Clerk's own card,
+// card box and footer carry no border, radius, shadow or background here.
 export const larperOsAuthAppearance = {
   variables: CLERK_APPEARANCE.variables,
   elements: {
     ...CLERK_APPEARANCE.elements,
     rootBox: { width: "100%", minWidth: 0 },
-    cardBox: { width: "100%", maxWidth: "100%", backgroundColor: osWindow, border: "none", boxShadow: "none" },
-    card: { width: "100%", padding: "16px", backgroundColor: osWindow },
+    cardBox: { width: "100%", maxWidth: "100%", background: "none", border: "none", borderRadius: 0, boxShadow: "none", overflow: "visible" },
+    card: { width: "100%", padding: "16px", background: "none", border: "none", borderRadius: 0, boxShadow: "none" },
+    // The window title already says "sign in" or "sign up".
+    headerTitle: { display: "none" },
+    headerSubtitle: { color: osMutedInk, margin: 0, overflowWrap: "anywhere" },
+    footer: { ...osFooterQuiet, "&::before, &::after": { display: "none" } },
+    footerActionText: { color: osMutedInk },
+    formButtonPrimary: { ...CLERK_APPEARANCE.elements.formButtonPrimary, ...osButtonSurface, boxShadow: "var(--larper-os-shadow-primary)" },
+    socialButtonsBlockButton: { ...osButton, ...osButtonSurface },
+    socialButtonsBlockButtonText: { fontFamily: "var(--larper-os-font-body), system-ui, sans-serif", fontWeight: 600 },
+    formFieldLabel: { color: osInk, fontWeight: 600 },
+    formFieldInput: { ...osField, borderRadius: "var(--larper-os-radius-tag)", boxShadow: "inset 1px 1px 0 var(--larper-os-disabled)" },
+    dividerText: { color: osMutedInk },
   },
 };
 

@@ -32,3 +32,45 @@
   color: var(--larper-os-disabled-ink);
   font-size: 14px;
 }
+
+/* Privacy, terms and credits: a quiet small row under the window. The links keep
+   44px targets; only the type is small. */
+.larper-os-auth .larper-landing-about {
+  margin-top: 4px;
+  gap: 0;
+}
+
+.larper-os-auth .larper-landing-about-link {
+  font-size: 13px;
+  color: var(--larper-os-disabled-ink);
+  text-decoration-thickness: 1px;
+}
+
+.larper-os-auth .larper-landing-about-link:hover {
+  color: var(--larper-os-ink);
+}
+
+/* Clerk's own card adds nothing: the OS window is the one frame. */
+.larper-os-auth .cl-rootBox,
+.larper-os-auth .cl-cardBox,
+.larper-os-auth .cl-card,
+.larper-os-auth .cl-footer {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.larper-os-auth .cl-footer::before,
+.larper-os-auth .cl-footer::after,
+.larper-os-auth .cl-card::before,
+.larper-os-auth .cl-card::after {
+  content: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .larper-os-auth .cl-rootBox * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
