@@ -89,7 +89,7 @@ export function JournalView({ entries, error, retry, previewControls, mapHref = 
               </ol>
             </OSQuestPanel>
           )}
-          {dataPanel}
+          {dataPanel && <div id="your-data" className="larper-journal-data-anchor">{dataPanel}</div>}
           {!hideMapLink && (
             <Link href={mapHref} className="larper-os-button larper-journal-back">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"

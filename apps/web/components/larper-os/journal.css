@@ -58,3 +58,5 @@
   outline: 2px solid var(--larper-os-ink);
   outline-offset: 2px;
 }
+
+.larper-journal-data-anchor { scroll-margin-block-start: 12px; }

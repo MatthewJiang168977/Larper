@@ -40,7 +40,10 @@
   min-block-size: var(--larper-os-tap-min);
   background: var(--larper-os-window);
   color: var(--larper-os-ink);
-  font: 400 22px/1.1 var(--larper-os-font-pixel), system-ui, sans-serif;
+  /* Body font at body size: the pixel font is for titles. Clerk's own items arrive
+     capitalised ("Manage account"), ours are already lowercase. */
+  font: 400 16px/1.3 var(--larper-os-font-body), system-ui, sans-serif;
+  text-transform: lowercase;
   transition: none;
 }
 
