@@ -5,6 +5,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } f
 import { ApiError, describeError, useApi, type Privacy } from "@/lib/api";
 import { larperOsClassName } from "@/app/larper-os";
 import { OSButton, OSMenuBar, OSQuestPanel, OSWindow, osPrimaryButtonClass } from "./primitives";
+import { useToast } from "./toaster";
 import "./your-data.css";
 
 /** "checking": /me hasn't answered. "unknown": it failed, so we can't tell if this is the demo. */
@@ -121,6 +122,7 @@ export function YourData({ account, privacy = NO_PRIVACY, onHistoryDeleted, onAc
   onAccountDeletePendingChange: (pending: boolean) => void;
 }) {
   const api = useApi();
+  const toast = useToast();
   const headingId = useId();
   const [downloading, setDownloading] = useState(false);
   const [downloadMsg, setDownloadMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -163,6 +165,7 @@ export function YourData({ account, privacy = NO_PRIVACY, onHistoryDeleted, onAc
       // Not at once: iOS Safari can still be reading the blob when the click returns.
       setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS);
       setDownloadMsg({ ok: true, text: `saved ${a.download}.` });
+      toast("a copy of your data was downloaded.", "downloaded");
     } catch (e) {
       setDownloadMsg({ ok: false, text: failure(e) });
     } finally {

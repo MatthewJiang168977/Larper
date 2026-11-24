@@ -133,3 +133,27 @@ Repeat for the control build, and report the pair.
   Treat it as a rough reference until the control and candidate are measured together.
 - Any measurement against the real API or a real Clerk session; the method is
   deliberately offline so it never touches production.
+
+## Polish PR (Larper OS transitions, toasts, PWA, OG images)
+
+Measured with `docs/perf/first-quest-card.mjs` (raw Chrome DevTools Protocol, Edge headless:
+390 x 844, 4x CPU, 1.6 Mbps, 150 ms, cache off, external requests blocked, fresh context per run) on
+`/design-lab/quest` from production builds (`VERCEL_ENV=preview`, fixture Clerk key). Clerk's
+handshake is bypassed with dev-session cookies (`__clerk_db_jwt`, `__client_uat=0`), so Clerk's own
+JS is not in the numbers. Usage: `node docs/perf/first-quest-card.mjs <url> <runs>` against
+`next start`. This script is a committed version of the reconstructed harness above.
+
+Control = `main`, candidate = the polish branch. Four rounds of 5 runs per build, order alternated
+each round (control first in rounds 1 and 3, candidate first in rounds 2 and 4):
+
+| What | Median of 20 | Range |
+|---|---|---|
+| control (main) | 4.99 s | 4.18 to 7.35 s |
+| candidate | 5.12 s | 4.02 to 7.08 s |
+
+The difference (+0.13 s, +2.7%) is inside the run-to-run spread, so no regression is detectable at
+this noise level. It is not proof of zero. Transferred bytes on the same page: JS +8.7 KB (+1.3%),
+CSS +2.4 KB. An earlier, order-unbalanced run showed the candidate about 0.5 s slower; moving
+the toast animation code out of the root bundle (loaded on the first toast) and alternating the
+run order removed that gap. The absolute numbers are higher than the table above because this
+machine and profile differ; only compare a control and candidate from the same session.

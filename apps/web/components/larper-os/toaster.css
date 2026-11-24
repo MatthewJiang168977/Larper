@@ -1,0 +1,24 @@
+.larper-toasts {
+  position: fixed;
+  z-index: 60;
+  inset-inline: 12px;
+  inset-block-end: max(12px, env(safe-area-inset-bottom));
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.larper-toast {
+  width: min(100%, 20rem);
+  overflow: hidden;
+  color: var(--larper-os-ink);
+  pointer-events: auto;
+}
+
+.larper-toast-message {
+  margin: 0;
+  padding: 10px 12px;
+  font: 400 16px/1.35 var(--larper-os-font-body), system-ui, sans-serif;
+  overflow-wrap: anywhere;
+}
