@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import Link from "next/link";
 import type { DeckItem, PlaceView, QuestView, Reasons, WasOpenAnswer } from "@/lib/api";
 import { formatDistance } from "@/lib/format";
+import { estimateWalk, walkLabel, type LatLng } from "@/lib/walk";
 import { telUrl, webUrl } from "@/lib/web-url";
 import { readHours } from "@/lib/hours";
 import { DOCK_MIN_WIDTH_PX, DOCK_RESERVED_PX } from "./dock";
@@ -54,6 +55,8 @@ interface Props {
   wasOpen?: { answer: WasOpenAnswer | null; onAnswer: (answer: WasOpenAnswer) => Promise<void> } | null;
   /** Each snap the sheet goes to (and peek again as it goes away). */
   onSnapChange?: (snap: Snap) => void;
+  /** Where the user is now. Distances and walking times are worked out from here as it moves. */
+  from?: LatLng | null;
 }
 
 /** Map space reserved for the bottom sheet on a phone or the right dock on desktop. */
@@ -62,7 +65,6 @@ export interface Covered {
   right: number;
 }
 
-const WALK_M_PER_MIN = 80;
 // Whole metres, as the count-up shows them when it lands.
 const DISTANCE = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const HANDLE_HINT_KEY = "larper:quest-handle-hint-seen";
@@ -377,9 +379,10 @@ function Peek({
   onStampSlammed,
   onImpact,
   wasOpen,
+  from,
 }: Props & { place: PlaceView; label: string; isQuest: boolean; onImpact: () => void }) {
   const done = isQuest && quest?.status === "completed";
-  const walkMin = Math.max(1, Math.round(place.distanceM / WALK_M_PER_MIN));
+  const walk = estimateWalk(from, place, place.distanceM);
   return (
     <div key={place.id}>
       <p className="field-label">{label}</p>
@@ -392,9 +395,8 @@ function Peek({
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-2">
         <p className="min-w-[8rem] flex-1 text-ink-soft">
           {humanize(place.category)} ·{" "}
-          <span className="tabular-nums">{DISTANCE.format(place.distanceM)}</span>{" "}
-          m, about{" "}
-          {walkMin} min on foot
+          <span className="tabular-nums">{DISTANCE.format(walk.distanceM)}</span>{" "}
+          m, {walkLabel(walk)}
         </p>
         {isQuest && quest && (
           <div className="flex shrink-0 gap-2">
@@ -489,6 +491,7 @@ function Rest({
   onSelect,
   focused,
   isQuest,
+  from,
 }: Props & { focused: QuestView | DeckItem; isQuest: boolean }) {
   const { place, reasons } = focused;
   return (
@@ -506,6 +509,7 @@ function Rest({
               label="Quest"
               marker={<FlagMark />}
               place={quest.place}
+              from={from}
             />
           )}
           {deck.map((d, i) => (
@@ -516,6 +520,7 @@ function Rest({
               label={`${i + 1}. ${d.place.name}`}
               marker={i + 1}
               place={d.place}
+              from={from}
             />
           ))}
         </nav>
@@ -524,7 +529,7 @@ function Rest({
       <div className="larper-quest-facts">
         <dl className="larper-quest-facts-table">
           <dt>habitat</dt><dd>{humanize(place.category)}</dd>
-          <dt>distance</dt><dd>{formatDistance(place.distanceM)}</dd>
+          <dt>distance</dt><dd>{formatDistance(estimateWalk(from, place, place.distanceM).distanceM)} on foot, estimated</dd>
         </dl>
         <Why place={place} reasons={reasons} />
         {place.tags.length > 0 && (
@@ -567,7 +572,9 @@ function Tab({
   label,
   marker,
   place,
+  from,
 }: {
+  from?: LatLng | null;
   active: boolean;
   onClick: () => void;
   seal?: boolean;
@@ -588,7 +595,7 @@ function Tab({
       <span className="larper-quest-lead-icon" aria-hidden>{marker}</span>
       <span className="larper-quest-lead-copy">
         <span className="larper-quest-lead-name">{place.name}</span>
-        <span className="larper-quest-lead-meta">{humanize(place.category)} · {formatDistance(place.distanceM)}</span>
+        <span className="larper-quest-lead-meta">{humanize(place.category)} · {formatDistance(estimateWalk(from, place, place.distanceM).distanceM)}</span>
       </span>
     </button>
   );

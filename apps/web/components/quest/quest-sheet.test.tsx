@@ -56,7 +56,7 @@ describe("QuestSheet on a phone: peek", () => {
     sheet("offered");
     expect(within(peekPart()).getByRole("heading", { name: "Cafe Uno" })).toBeTruthy();
     expect(within(peekPart()).getByText(/ramen restaurant ·/)).toBeTruthy();
-    expect(within(peekPart()).getByText(/about 1 min on foot/)).toBeTruthy();
+    expect(within(peekPart()).getByText(/about 2 min walk, estimated/)).toBeTruthy();
     expect(within(peekPart()).getByRole("button", { name: "accept quest" })).toBeTruthy();
   });
 
@@ -489,7 +489,7 @@ describe("QuestSheet on a wide screen", () => {
     const row = screen.getByRole("button", { name: "1. A Very Long Lead Name That Truncates" });
     expect(row.getAttribute("aria-pressed")).toBe("true");
     expect(row.textContent).toContain("A Very Long Lead Name That Truncates");
-    expect(row.textContent).toContain("ramen restaurant · 100 m");
+    expect(row.textContent).toContain("ramen restaurant · 130 m");
     const questRow = screen.getByRole("button", { name: "Quest" });
     expect(questRow.textContent).toContain("Cafe Uno");
     expect(questRow.querySelector("svg")).toBeTruthy(); // its flag
@@ -768,6 +768,6 @@ describe("QuestSheet at 200% text or zoom", () => {
     sheet("offered");
     const row = within(peekPart()).getByRole("button", { name: "accept quest" }).parentElement!.parentElement!;
     expect(row.className.split(" ")).toContain("flex-wrap");
-    expect(within(row).getByText(/about 1 min on foot/).className).toContain("min-w-[8rem]");
+    expect(within(row).getByText(/about 2 min walk, estimated/).className).toContain("min-w-[8rem]");
   });
 });
