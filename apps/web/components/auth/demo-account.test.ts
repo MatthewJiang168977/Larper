@@ -11,13 +11,15 @@ describe("demoEnabled", () => {
 });
 
 describe("signInAppearance", () => {
-  it("hides the sign-up link only when sign-ups are restricted", () => {
-    expect(signInAppearance("restricted")).toEqual({
-      ...larperOsAuthAppearance,
-      elements: { ...larperOsAuthAppearance.elements, footerAction: { display: "none" } },
+  it("hides the sign-up link only when sign-ups are restricted, and never has a subtitle", () => {
+    expect(signInAppearance("restricted").elements).toMatchObject({
+      footerAction: { display: "none" },
+      headerSubtitle: { display: "none" },
     });
-    expect(signInAppearance("public")).toBe(larperOsAuthAppearance);
-    expect(signInAppearance(undefined)).toBe(larperOsAuthAppearance);
+    for (const mode of ["public", undefined]) {
+      expect(signInAppearance(mode).elements).not.toHaveProperty("footerAction");
+      expect(signInAppearance(mode).elements.headerSubtitle).toEqual({ display: "none" });
+    }
     expect(larperOsAuthAppearance.elements).not.toHaveProperty("footerAction");
   });
 });

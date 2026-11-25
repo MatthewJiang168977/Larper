@@ -7,7 +7,7 @@ import { LarperOsAuthShell } from "@/components/auth/larper-os-auth-shell";
 // the prerendered shell under Cache Components: the shell prerenders, the form streams in.
 export default function SignUpPage() {
   return (
-    <LarperOsAuthShell title="sign up">
+    <LarperOsAuthShell page="sign up">
       {/* Clerk's form renders nothing until clerk-js has loaded, a few seconds on a slow
           connection: say so instead of showing an empty window. This is the one loading
           line; the Suspense around the form needs none of its own. */}

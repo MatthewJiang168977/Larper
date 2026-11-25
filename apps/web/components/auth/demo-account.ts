@@ -7,12 +7,12 @@ import { larperOsAuthAppearance } from "./clerk-appearance";
 
 export const demoEnabled = (signUpMode: string | undefined) => signUpMode === "restricted";
 
-// With sign-ups restricted (Clerk's Restricted mode: invitations only), the sign-in
-// form's "Don't have an account? Sign up" link would lead nowhere.
-export const signInAppearance = (signUpMode: string | undefined) =>
-  demoEnabled(signUpMode)
-    ? {
-        ...larperOsAuthAppearance,
-        elements: { ...larperOsAuthAppearance.elements, footerAction: { display: "none" } },
-      }
-    : larperOsAuthAppearance;
+// Sign-in has a heading and no subtitle. With sign-ups restricted (Clerk's Restricted mode:
+// invitations only), its "Don't have an account? Sign up" footer would also lead nowhere.
+export function signInAppearance(signUpMode: string | undefined) {
+  const elements = { ...larperOsAuthAppearance.elements, headerSubtitle: { display: "none" } };
+  return {
+    ...larperOsAuthAppearance,
+    elements: demoEnabled(signUpMode) ? { ...elements, footerAction: { display: "none" } } : elements,
+  };
+}
