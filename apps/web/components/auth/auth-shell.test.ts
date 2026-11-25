@@ -40,10 +40,21 @@ describe("Clerk, themed only", () => {
   it("says what the design says", () => {
     expect(larperOsLocalization.socialButtonsBlockButton).toBe("continue with {{provider|titleize}}");
     expect(larperOsLocalization.signUp?.start).toMatchObject({
-      title: "welcome in.",
-      subtitle: "one quest a day, picked for you.",
+      title: "create your account",
+      subtitle: "welcome in.",
     });
     expect(JSON.stringify(larperOsLocalization)).not.toMatch(/invited/);
+  });
+
+  it("writes each error as plain sentences, in the words the form uses", () => {
+    const errors = Object.entries(larperOsLocalization.unstable__errors ?? {});
+    expect(errors.map(([code]) => code)).toEqual(expect.arrayContaining([
+      "form_identifier_not_found", "form_password_incorrect", "form_code_incorrect",
+      "form_identifier_exists__email_address", "not_allowed_access", "oauth_access_denied", "session_exists",
+    ]));
+    for (const [code, text] of errors) expect(text, code).toMatch(/^[A-Z].*\.$/);
+    // The button says "continue with Google" and the field "email address": errors don't invent others.
+    expect(JSON.stringify(errors)).not.toMatch(/invit|log ?in\b/i);
   });
 
   it("keeps links and controls at least 44px tall", () => {

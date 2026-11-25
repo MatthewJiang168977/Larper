@@ -6,7 +6,7 @@ export default function SignUpFixture() {
   assertDesignLab();
   return (
     <LarperOsAuthShell page="sign up">
-      <ClerkStandIn heading="welcome in." sub="one quest a day, picked for you." />
+      <ClerkStandIn heading="create your account" sub="welcome in." />
     </LarperOsAuthShell>
   );
 }
