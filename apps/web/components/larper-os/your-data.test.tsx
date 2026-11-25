@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, type Privacy } from "@/lib/api";
-import { SignInRemovalFailed, YourData, type AccountKind } from "./your-data";
+import { SignInRemovalFailedBody, YourData, type AccountKind } from "./your-data";
 
 vi.mock("@/app/larper-os", () => ({ larperOsClassName: "larper-os" }));
 
@@ -410,7 +410,7 @@ describe("DELETE /me answering 401 (Clerk no longer has the user)", () => {
   it("a bare 401 on try again is an error, not removed", async () => {
     const onRemoved = vi.fn();
     api.mockRejectedValue(noSession());
-    render(<SignInRemovalFailed onRemoved={onRemoved} />);
+    render(<SignInRemovalFailedBody onRemoved={onRemoved} />);
     fireEvent.click(button("try again"));
     await settle();
     expect(onRemoved).not.toHaveBeenCalled();
@@ -442,7 +442,7 @@ describe("DELETE /me answering 401 (Clerk no longer has the user)", () => {
   it("on try again it counts as deleted", async () => {
     const onRemoved = vi.fn();
     api.mockRejectedValue(gone());
-    render(<SignInRemovalFailed onRemoved={onRemoved} />);
+    render(<SignInRemovalFailedBody onRemoved={onRemoved} />);
     fireEvent.click(button("try again"));
     await settle();
     expect(onRemoved).toHaveBeenCalledOnce();
@@ -466,7 +466,7 @@ describe("sign-in removal failed", () => {
   it("says what happened, and try again repeats DELETE /me until it works", async () => {
     const onRemoved = vi.fn();
     api.mockResolvedValueOnce({ deleted: {}, clerkUser: "failed" }).mockResolvedValueOnce({ deleted: {}, clerkUser: "deleted" });
-    render(<SignInRemovalFailed onRemoved={onRemoved} />);
+    render(<SignInRemovalFailedBody onRemoved={onRemoved} />);
     expect(screen.getByRole("heading", { name: "your larper data is deleted." })).toBeTruthy();
     expect(screen.getByText("removing your sign-in didn't go through yet. larper keeps trying on its own until it's gone.")).toBeTruthy();
 
@@ -484,7 +484,7 @@ describe("sign-in removal failed", () => {
 
   it("explains a failed retry, and a 503 unavailable, calmly", async () => {
     api.mockRejectedValueOnce(new ApiError("boom", 500)).mockRejectedValueOnce(new ApiError("x", 503, "http", "deletes_unavailable"));
-    render(<SignInRemovalFailed onRemoved={() => {}} />);
+    render(<SignInRemovalFailedBody onRemoved={() => {}} />);
     fireEvent.click(button("try again"));
     await settle();
     expect(screen.getByRole("status").textContent).toBe("something went wrong on our end.");
@@ -494,7 +494,7 @@ describe("sign-in removal failed", () => {
   });
 
   it("says nothing about days or removal by hand", () => {
-    render(<SignInRemovalFailed onRemoved={() => {}} />);
+    render(<SignInRemovalFailedBody onRemoved={() => {}} />);
     expect(document.body.textContent).not.toMatch(/7 days|within \d+ days|by hand|manual/i);
   });
 });

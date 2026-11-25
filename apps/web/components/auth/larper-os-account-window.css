@@ -1,43 +1,117 @@
-/* The account window: sized to its content, in OS type, with OS buttons. The page's
-   OSWindow supplies the striped title bar, corners and shadow. */
-.larper-os-account-note { display: grid; justify-items: start; gap: 10px; margin: 0; }
+/* The account window: docked like the quest window, over the wallpaper, with no overlay. */
+.larper-account-dock {
+  position: fixed;
+  right: 10px;
+  bottom: max(10px, env(safe-area-inset-bottom));
+  left: 10px;
+  z-index: 1;
+}
 
-.larper-os-page .cl-rootBox,
-.larper-os-page .cl-cardBox,
-.larper-os-page .cl-card {
+.larper-account .larper-os-titlebar > h1 { margin: 0; font: inherit; }
+
+.larper-account .larper-os-body {
+  align-content: start;
+  max-height: calc(100svh - 45px - 32px - 28px - 40px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.larper-account-credit {
+  align-self: flex-start;
+  margin: 8px;
+  padding: 0 8px;
+  background: var(--larper-os-window);
+  border: 1px solid var(--larper-os-ink);
+  border-radius: var(--larper-os-radius-window);
+  font-size: 13px;
+}
+
+.larper-account-credit a,
+.larper-account-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--larper-os-tap-min);
+  min-height: var(--larper-os-tap-min);
+  text-decoration: underline;
+}
+
+.larper-account-page { display: grid; gap: 10px; }
+.larper-account-kept { margin: 0; }
+
+.larper-account-kept > div {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 8px;
+  padding-block: 6px;
+  border-bottom: 1px solid var(--larper-os-ink);
+}
+
+.larper-account-kept dt { font: 400 20px/1.2 var(--larper-os-font-pixel), system-ui, sans-serif; }
+.larper-account-kept dd { margin: 0; font-size: 16px; line-height: 1.35; }
+.larper-account-fine { font-size: 15px; }
+
+.larper-account-signout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 15px;
+}
+
+/* Deleting an account: a red edge, never the pool fill. */
+.larper-os .larper-os-button[data-danger]:not(:disabled) { border: 2px solid var(--larper-os-red); }
+
+/* Clerk's card: no frame of its own, and its page list as a row of tabs above the page. */
+.larper-account :is(.cl-rootBox, .cl-cardBox, .cl-card, .cl-scrollBox) {
   width: 100%;
   max-width: 100%;
   height: auto;
   min-height: 0;
-}
-
-.larper-os-page .cl-navbar {
   background: none;
-  border-inline-end: 1px solid var(--larper-os-ink);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
+.larper-account .cl-cardBox { flex-direction: column; }
+.larper-account .cl-navbar { flex: none; width: 100%; max-width: 100%; background: none; }
 /* Clerk's own "account / manage your account info" heading repeats the window title. */
-.larper-os-page .cl-navbar .cl-header,
-.larper-os-page .cl-navbar p:has(+ .cl-navbarButtons) { display: none; }
+.larper-account .cl-navbar .cl-header,
+.larper-account .cl-navbar p:has(+ .cl-navbarButtons) { display: none; }
+.larper-account .cl-navbarButtons { flex-direction: row; flex-wrap: wrap; gap: 6px; }
 
-.larper-os-page .cl-profileSection { border-color: var(--larper-os-ink); }
-.larper-os-page .cl-profileSection__danger,
-.larper-os-page .cl-profilePage__danger { display: none; }
+.larper-account .cl-navbarButton {
+  min-height: var(--larper-os-tap-min);
+  border: 1px solid var(--larper-os-ink);
+  text-transform: lowercase;
+}
 
-.larper-os-page .cl-profileSectionTitleText,
-.larper-os-page .cl-headerTitle,
-.larper-os-page .cl-navbarButton { font-family: var(--larper-os-font-body), system-ui, sans-serif; }
+.larper-account .cl-navbarButton[data-active="true"],
+.larper-account .cl-navbarButton[aria-current="page"] { background: var(--larper-os-ink); color: var(--larper-os-window); }
+.larper-account .cl-navbarMobileMenuButton { min-width: var(--larper-os-tap-min); min-height: var(--larper-os-tap-min); }
+.larper-account .cl-pageScrollBox { padding: 8px 0 0; }
+.larper-account .cl-profileSection { border-color: var(--larper-os-ink); }
+.larper-account :is(.cl-profileSectionTitleText, .cl-headerTitle, .cl-navbarButton) {
+  font-family: var(--larper-os-font-body), system-ui, sans-serif;
+}
 
-.larper-os-page .cl-navbarButton { min-height: var(--larper-os-tap-min); }
-.larper-os-page .cl-navbarButton[data-active="true"] { background: var(--larper-os-butter); }
+/* Deleting an account goes through "your data", never Clerk's own section. */
+.larper-account :is(.cl-profileSection__danger, .cl-profilePage__danger) { display: none; }
 
-/* "your data" lives in a Clerk page: our panel needs no extra frame of its own there. */
-.larper-os-page .cl-page .larper-data-actions { margin-block: 8px; }
+@media (min-width: 1024px) {
+  .larper-account-dock {
+    top: 58px;
+    right: 14px;
+    bottom: auto;
+    left: auto;
+    width: var(--larper-os-dock-width);
+  }
 
-@media (max-width: 640px) {
-  .larper-os-page .cl-pageScrollBox { padding-inline-start: 0; }
+  .larper-account .larper-os-body { max-height: calc(100svh - 45px - 32px - 28px - 40px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .larper-os-page .cl-rootBox * { transition: none !important; animation: none !important; }
+  .larper-account * { transition: none !important; animation: none !important; }
 }

@@ -1,97 +1,34 @@
 "use client";
 
-import { useAuth, useClerk } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import { useEffect, useRef, useState } from "react";
-import { AccountDeletionComplete, SignInRemovalFailed, YourData, NO_PRIVACY, privacyFrom, type AccountKind, type ClerkRemoval } from "@/components/larper-os/your-data";
 import { RequireSignIn } from "@/components/require-sign-in";
 import { JournalView } from "@/components/larper-os/journal";
 import { clearDemo, setDemo, track } from "@/lib/analytics";
-import { describeError, useApi, type JournalEntry, type Me, type Privacy } from "@/lib/api";
+import { describeError, useApi, type JournalEntry, type Me } from "@/lib/api";
 
 const LOAD_FAILED = "try again to reopen your quest history.";
 
-type SignOutStatus = "pending" | "failed" | "done";
-
-// The larp log: every quest you've been offered, newest first.
+// The larp log: every quest you've been offered, newest first. Downloading and deleting your
+// data is in the account window (/account/your-data).
 export default function JournalPage() {
   const { isLoaded, userId, sessionId } = useAuth();
-  const { signOut } = useClerk();
-  const router = useRouter();
-  // removalFailed: the data is gone but Clerk kept the sign-in; the session stays signed in.
-  const [removalFailed, setRemovalFailed] = useState<string | null>(null);
-  const [completion, setCompletion] = useState<{
-    sessionId: string;
-    status: SignOutStatus;
-  } | null>(null);
-
-  async function finishSignOut(deletedSession: string) {
-    setCompletion({ sessionId: deletedSession, status: "pending" });
-    try {
-      // Keep the completion visible through Clerk's auth change. Only leave once signed out.
-      await signOut(() => {}, { sessionId: deletedSession });
-    } catch {
-      setCompletion({ sessionId: deletedSession, status: "failed" });
-      return;
-    }
-    setCompletion({ sessionId: deletedSession, status: "done" });
-    router.replace("/");
-  }
-
-  // The signed-in journal must stay unmounted once the purge succeeds, even if sign-out fails.
-  if (completion) {
-    return (
-      <AccountDeletionComplete
-        status={completion.status}
-        onRetry={() => void finishSignOut(completion.sessionId)}
-      />
-    );
-  }
-
-  if (removalFailed && removalFailed === sessionId) {
-    return (
-      <RequireSignIn>
-        <SignInRemovalFailed
-          key={removalFailed}
-          onRemoved={() => {
-            setRemovalFailed(null);
-            void finishSignOut(removalFailed);
-          }}
-        />
-      </RequireSignIn>
-    );
-  }
-
   return (
     <RequireSignIn>
-      {isLoaded && userId && sessionId && (
-        <Journal
-          key={JSON.stringify([userId, sessionId])}
-          onAccountDeleted={(clerkUser) => {
-            if (clerkUser === "deleted") void finishSignOut(sessionId);
-            else setRemovalFailed(sessionId);
-          }}
-        />
-      )}
+      {isLoaded && userId && sessionId && <Journal key={JSON.stringify([userId, sessionId])} />}
     </RequireSignIn>
   );
 }
 
-function Journal({ onAccountDeleted }: { onAccountDeleted: (clerkUser: ClerkRemoval) => void }) {
+function Journal() {
   const api = useApi();
   const [entries, setEntries] = useState<JournalEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tries, setTries] = useState(0);
-  const [account, setAccount] = useState<AccountKind>("checking");
-  const [privacy, setPrivacy] = useState<Privacy>(NO_PRIVACY);
-  const [accountDeletePending, setAccountDeletePending] = useState(false);
-  const invalidateQuestRequest = useRef<(() => void) | null>(null);
   const opened = useRef(false);
 
   useEffect(() => {
     let current = true;
-    const invalidate = () => { current = false; };
-    invalidateQuestRequest.current = invalidate;
     api<JournalEntry[]>("/quests").then(
       (e) => {
         if (!current) return;
@@ -103,27 +40,19 @@ function Journal({ onAccountDeleted }: { onAccountDeleted: (clerkUser: ClerkRemo
         setError(describeError(e, LOAD_FAILED).toLowerCase());
       },
     );
-    return invalidate;
+    return () => { current = false; };
   }, [api, tries]);
 
-  // The keyed journal checks eligibility for each auth identity and session.
+  // Whether this is the demo account, before the visit is recorded.
   useEffect(() => {
     let current = true;
     clearDemo();
     api<Me>("/me").then(
       (m) => {
         if (!current) return;
-        if (typeof m?.demo === "boolean") {
-          setDemo(m.demo);
-          setPrivacy(m.demo ? NO_PRIVACY : privacyFrom(m.privacy));
-          setAccount(m.demo ? "demo" : "user");
-        } else {
-          setAccount("unknown");
-        }
+        if (typeof m?.demo === "boolean") setDemo(m.demo);
       },
-      () => {
-        if (current) setAccount("unknown");
-      },
+      () => {},
     ).then(() => {
       if (!current || opened.current) return;
       opened.current = true;
@@ -132,31 +61,5 @@ function Journal({ onAccountDeleted }: { onAccountDeleted: (clerkUser: ClerkRemo
     return () => { current = false; };
   }, [api]);
 
-  function reloadQuests() {
-    // Invalidate the old response now, before React runs the next request effect.
-    invalidateQuestRequest.current?.();
-    setTries((n) => n + 1);
-  }
-
-  return (
-    <JournalView
-      entries={entries}
-      error={error}
-      retry={reloadQuests}
-      hideMapLink={accountDeletePending}
-      dataPanel={
-        <YourData
-          account={account}
-          privacy={privacy}
-          onAccountDeleted={onAccountDeleted}
-          onAccountDeletePendingChange={setAccountDeletePending}
-          onHistoryDeleted={() => {
-            reloadQuests();
-            setEntries([]);
-            setError(null);
-          }}
-        />
-      }
-    />
-  );
+  return <JournalView entries={entries} error={error} retry={() => setTries((n) => n + 1)} />;
 }

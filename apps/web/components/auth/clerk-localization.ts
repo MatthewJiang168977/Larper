@@ -28,5 +28,6 @@ export const larperOsLocalization: NonNullable<ComponentProps<typeof ClerkProvid
   formButtonPrimary: "continue",
   signIn: { start: { title: "sign in to larper", titleCombined: "sign in to larper" } },
   signUp: { start: { title: "create your account", subtitle: "welcome in." } },
+  userProfile: { navbar: { account: "profile", security: "security" } },
   unstable__errors: errors,
 };

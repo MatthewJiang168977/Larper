@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import PrivacyPage from "./page";
+import { LOCATION_KEPT } from "@/components/larper-os/data-copy";
 
 vi.mock("@/app/larper-os", () => ({ larperOsClassName: "larper-os" }));
 
@@ -68,8 +69,15 @@ describe("Privacy: your data", () => {
       "your precise location at the time of the offer",
       "distance and location accuracy",
     ]) expect(t).toContain(item);
-    expect(t).toContain("bottom of the journal");
+    expect(t).toContain("“your data” in your account");
     expect(t).not.toMatch(/everything Larper holds|events/);
+  });
+
+  it("says the same about location as the account window, and no longer points at the journal", () => {
+    render(<PrivacyPage />);
+    const all = screen.getByRole("main").textContent ?? "";
+    expect(all).toContain(`Your location: ${LOCATION_KEPT}`);
+    expect(all).not.toMatch(/bottom of the journal|from the journal/);
   });
 
   it("says what each delete removes and keeps", () => {
@@ -96,7 +104,7 @@ describe("Privacy: your data", () => {
     expect(b).toMatch(/60-day cleanup rule for old objects/);
     expect(b).not.toMatch(/at (the very )?most|within 60 days/);
     expect(b).toMatch(/Restoring a backup could bring back data deleted/);
-    expect(b).toMatch(/Restored history can be deleted again from the journal/);
+    expect(b).toMatch(/Restored history can be deleted again from “your data” in your account/);
     expect(b).toMatch(/a restored account isn't deleted again automatically/);
     expect(b).not.toMatch(/You can delete it again/);
     expect(b).toMatch(/demo account can't be exported or deleted/);

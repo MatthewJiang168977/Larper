@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError, describeError, useApi, type Privacy } from "@/lib/api";
-import { larperOsClassName } from "@/app/larper-os";
-import { OSButton, OSMenuBar, OSQuestPanel, OSWindow, osPrimaryButtonClass } from "./primitives";
+import { OSButton, OSQuestPanel, osPrimaryButtonClass } from "./primitives";
 import "./your-data.css";
 
 /** "checking": /me hasn't answered. "unknown": it failed, so we can't tell if this is the demo. */
@@ -112,13 +111,15 @@ function intro(p: Privacy): string {
   return `${parts.length > 1 ? `${parts.slice(0, -1).join(", ")} or ${parts[parts.length - 1]}` : parts[0]}.`;
 }
 
-export function YourData({ account, privacy = NO_PRIVACY, onHistoryDeleted, onAccountDeleted, onAccountDeletePendingChange }: {
+export function YourData({ account, privacy = NO_PRIVACY, onHistoryDeleted, onAccountDeleted, onAccountDeletePendingChange, lead }: {
   account: AccountKind;
   /** What /me says is switched on. Only read for a signed-in, non-demo account. */
   privacy?: Privacy;
   onHistoryDeleted: () => void;
   onAccountDeleted: (clerkUser: ClerkRemoval) => void;
   onAccountDeletePendingChange: (pending: boolean) => void;
+  /** Shown under the heading, above the controls. */
+  lead?: ReactNode;
 }) {
   const api = useApi();
   const headingId = useId();
@@ -198,7 +199,9 @@ export function YourData({ account, privacy = NO_PRIVACY, onHistoryDeleted, onAc
           if (!accountAlreadyGone(e)) throw e;
           clerkUser = "deleted";
         }
-        if (active.current) onAccountDeleted(clerkUser);
+        // Even if this panel has since closed (a tab switch): the account is gone and the
+        // session still has to be ended. The owner ignores a reply for another session.
+        onAccountDeleted(clerkUser);
       }
     } catch (e) {
       // On success the completion screen takes over with the map link still hidden.
@@ -236,7 +239,7 @@ export function YourData({ account, privacy = NO_PRIVACY, onHistoryDeleted, onAc
             </OSButton>
           )}
           {privacy.deleteAccount && (
-            <OSButton ref={accountButton} onClick={() => ask("account")} disabled={actionsLocked} aria-expanded={asking === "account"}>
+            <OSButton ref={accountButton} data-danger onClick={() => ask("account")} disabled={actionsLocked} aria-expanded={asking === "account"}>
               {COPY.account.open}
             </OSButton>
           )}
@@ -264,13 +267,14 @@ export function YourData({ account, privacy = NO_PRIVACY, onHistoryDeleted, onAc
     <OSQuestPanel>
       <section className="larper-data" aria-labelledby={headingId}>
         <h2 id={headingId} className="larper-journal-name">your data</h2>
+        {lead}
         {body}
       </section>
     </OSQuestPanel>
   );
 }
 
-/** The "your data is deleted" message, without a page around it (used by the page and the account window). */
+/** The "your data is deleted" message, inside the account window. */
 export function AccountDeletionCompleteBody({ status, onRetry }: {
   status: "pending" | "failed" | "done";
   onRetry: () => void;
@@ -301,19 +305,6 @@ export function AccountDeletionCompleteBody({ status, onRetry }: {
         </div>
       )}
     </div>
-  );
-}
-
-export function AccountDeletionComplete(props: { status: "pending" | "failed" | "done"; onRetry: () => void }) {
-  return (
-    <main className={`${larperOsClassName} larper-journal`}>
-      <OSMenuBar />
-      <div className="larper-journal-stage">
-        <OSWindow title="your data">
-          <OSQuestPanel><AccountDeletionCompleteBody {...props} /></OSQuestPanel>
-        </OSWindow>
-      </div>
-    </main>
   );
 }
 
@@ -366,19 +357,6 @@ export function SignInRemovalFailedBody({ onRemoved }: { onRemoved: () => void }
       </div>
       <p role="status">{error}</p>
     </div>
-  );
-}
-
-export function SignInRemovalFailed({ onRemoved }: { onRemoved: () => void }) {
-  return (
-    <main className={`${larperOsClassName} larper-journal`}>
-      <OSMenuBar />
-      <div className="larper-journal-stage">
-        <OSWindow title="your data">
-          <OSQuestPanel><SignInRemovalFailedBody onRemoved={onRemoved} /></OSQuestPanel>
-        </OSWindow>
-      </div>
-    </main>
   );
 }
 
@@ -463,7 +441,7 @@ function Confirm({ kind, busy, onCancel, run }: {
           spellCheck={false}
         />
         <div className="larper-data-actions">
-          <OSButton type="submit" primary disabled={!armed || busy} aria-busy={busy}>
+          <OSButton type="submit" primary={kind === "history"} data-danger={kind === "account" || undefined} disabled={!armed || busy} aria-busy={busy}>
             {busy ? "deleting…" : copy.confirm}
           </OSButton>
           <OSButton onClick={onCancel} disabled={busy}>cancel</OSButton>

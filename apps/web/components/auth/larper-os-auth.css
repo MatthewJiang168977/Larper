@@ -79,7 +79,8 @@
   font: 400 24px/1 var(--larper-os-font-pixel), system-ui, sans-serif;
 }
 
-.larper-auth-menu a:hover { background: var(--larper-os-ink); color: var(--larper-os-window); }
+.larper-auth-menu a:hover,
+.larper-auth-menu a[aria-current="page"] { background: var(--larper-os-ink); color: var(--larper-os-window); }
 .larper-auth-menu .larper-auth-logo { background: var(--larper-os-ink); padding: 0; }
 
 .larper-auth-clock {

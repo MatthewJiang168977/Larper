@@ -32,17 +32,20 @@ function Clock() {
   );
 }
 
-// The signed-out menu bar. On sign-in there is no "sign in" item: the visitor is already there.
-export function AuthMenuBar({ page }: { page: "sign in" | "sign up" }) {
+// The menu bar over the wallpaper. On sign-in there is no "sign in" item: the visitor is already
+// there. The account window is signed in: journal, and "me" as where you are.
+export function AuthMenuBar({ page }: { page: "sign in" | "sign up" | "account" }) {
   return (
     <header className="larper-auth-menu">
       <nav aria-label="main">
         <Link href="/" className="larper-auth-logo" aria-label="larper home"><PixelArt name="logo" /></Link>
         <Link href="/">larper</Link>
+        {page === "account" && <Link href="/journal">journal</Link>}
       </nav>
       <div>
         <Clock />
-        {page !== "sign in" && <Link href="/sign-in">sign in</Link>}
+        {page === "sign up" && <Link href="/sign-in">sign in</Link>}
+        {page === "account" && <Link href="/account" aria-current="page">me</Link>}
       </div>
     </header>
   );

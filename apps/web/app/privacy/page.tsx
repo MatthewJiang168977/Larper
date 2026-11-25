@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { LOCATION_KEPT } from "@/components/larper-os/data-copy";
 import { LarperOsPageShell } from "@/components/larper-os/page-shell";
 
 export const metadata: Metadata = { title: "Privacy · Larper" };
@@ -47,7 +48,7 @@ const YOUR_DATA: { title: string; points: string[] }[] = [
     points: [
       "One JSON file with your Larper account record (its ID, Clerk ID and creation date), taste profile, quest journal with places, check-ins and check-in attempts, answers to “was it open?”, and saved places.",
       "For open or accepted quests, the journal includes your precise location at the time of the offer if Larper still holds it. Check-in attempts include measurements such as distance and location accuracy.",
-      "Find it under “your data” at the bottom of the journal.",
+      "Find it under “your data” in your account.",
     ],
   },
   {
@@ -70,7 +71,7 @@ const YOUR_DATA: { title: string; points: string[] }[] = [
     title: "Backups",
     points: [
       "Copies of deleted data can stay for about 3 weeks under the usual backup schedule. Backup storage has a 60-day cleanup rule for old objects.",
-      "Restoring a backup could bring back data deleted after that backup was taken. Restored history can be deleted again from the journal. Larper keeps no list of deleted accounts, so a restored account isn't deleted again automatically.",
+      "Restoring a backup could bring back data deleted after that backup was taken. Restored history can be deleted again from “your data” in your account. Larper keeps no list of deleted accounts, so a restored account isn't deleted again automatically.",
       "The shared demo account can't be exported or deleted because it belongs to every visitor.",
     ],
   },
@@ -115,7 +116,8 @@ export default function PrivacyPage() {
         </div>
 
         <h2 className="mt-2">Your data</h2>
-        <p>You can take your data with you, or delete it, from the journal. Some options are switched on step by step, and the journal shows only the ones that are available.</p>
+        <p>You can take your data with you, or delete it, under “your data” in your account. Some options are switched on step by step, and only the ones that are available are shown.</p>
+        <p>Your location: {LOCATION_KEPT}</p>
         <div className="larper-os-privacy-groups">
           {YOUR_DATA.map((s) => (
             <section key={s.title} aria-labelledby={`data-${slug(s.title)}`}>
