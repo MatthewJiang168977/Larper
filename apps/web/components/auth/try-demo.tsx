@@ -4,7 +4,7 @@
 import { useSignIn } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { OSQuestPanel, osPrimaryButtonClass } from "@/components/larper-os/primitives";
+import { OSWindow } from "@/components/larper-os/primitives";
 import { setDemo, track } from "@/lib/analytics";
 import { ApiError, demoTicket, describeError } from "@/lib/api";
 import { demoEnabled } from "./demo-account";
@@ -78,17 +78,27 @@ export function TryDemoButton({
   );
 }
 
-// On the sign-in page, under Clerk's form, for visitors without an invitation.
+// For visitors without an invitation. Cream, not pool: sign-in's "continue" is the primary.
+function Demo({ text }: { text: string }) {
+  return (
+    <section aria-label="demo" className="larper-os-auth-demo">
+      <p>{text}</p>
+      <TryDemoButton className="larper-os-button" />
+    </section>
+  );
+}
+
+/** Under Clerk's form, on a phone. */
 export function DemoPanel({ signUpMode }: { signUpMode: string | undefined }) {
   if (!demoEnabled(signUpMode)) return null;
+  return <Demo text="just looking? the shared demo needs no password. everyone shares it." />;
+}
+
+/** Its own window beside sign-in, on a wide screen. */
+export function DemoWindow() {
   return (
-    <OSQuestPanel>
-      <section aria-label="demo" className="larper-os-auth-demo">
-        <h2>just looking?</h2>
-        <p>sign-ups are by invitation. look around with the shared demo account, no password needed.</p>
-        <TryDemoButton className={osPrimaryButtonClass} labels={{ idle: "try the demo", busy: "starting the demo…" }} />
-        <p className="larper-os-auth-demo-note">everyone shares it, and it’s reset every night.</p>
-      </section>
-    </OSQuestPanel>
+    <OSWindow title="just_looking.txt">
+      <Demo text="look around with the shared demo account. no password needed. everyone shares it." />
+    </OSWindow>
   );
 }

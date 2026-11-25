@@ -105,14 +105,33 @@ export const CLERK_APPEARANCE = {
   },
 };
 
-// These forms sit inside an OSWindow, which supplies the surrounding chrome.
+const tapLink = { ...osLink, display: "inline-flex", alignItems: "center", minHeight: "var(--larper-os-tap-min)" };
+const flat = { background: "none", border: "none", borderRadius: 0, boxShadow: "none" };
+
+// These forms sit inside an OSWindow, which supplies the only frame.
 export const larperOsAuthAppearance = {
+  theme: CLERK_APPEARANCE.theme,
+  options: { socialButtonsVariant: "blockButton" as const, socialButtonsPlacement: "top" as const },
   variables: CLERK_APPEARANCE.variables,
   elements: {
     ...CLERK_APPEARANCE.elements,
     rootBox: { width: "100%", minWidth: 0 },
-    cardBox: { width: "100%", maxWidth: "100%", backgroundColor: osWindow, border: "none", boxShadow: "none" },
-    card: { width: "100%", padding: "16px", backgroundColor: osWindow },
+    cardBox: { ...flat, width: "100%", maxWidth: "100%", overflow: "visible" },
+    card: { ...flat, width: "100%", padding: "4px 2px" },
+    footer: { ...flat, margin: 0 },
+    socialButtonsBlockButton: { ...osButton, width: "100%" },
+    formButtonPrimary: {
+      ...CLERK_APPEARANCE.elements.formButtonPrimary,
+      borderWidth: "2px",
+      boxShadow: "var(--larper-os-shadow-primary)",
+    },
+    footerActionLink: tapLink,
+    formFieldAction: tapLink,
+    formResendCodeLink: tapLink,
+    identityPreviewEditButton: { ...tapLink, minWidth: "var(--larper-os-tap-min)" },
+    backLink: tapLink,
+    headerBackLink: tapLink,
+    formFieldInputShowPasswordButton: { minWidth: "var(--larper-os-tap-min)", minHeight: "var(--larper-os-tap-min)" },
   },
 };
 
