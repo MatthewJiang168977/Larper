@@ -1,0 +1,7 @@
+{
+  "runs": 120,
+  "top1Great": 0.425,
+  "top3Great": 0.85,
+  "badOrClosed": 0.0778,
+  "rated": 1
+}

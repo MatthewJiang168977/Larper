@@ -22,7 +22,6 @@ import { attemptParams, CheckInAttempt, checkInLogLine, judgeCheckIn, RECORD_ATT
 import { loadPlaceHours, requireObserver, loadRegularSchedules, NO_HOURS, type PlaceHours, type OpenConfirmations } from '../hours/place-hours';
 import { type Schedule, stateAt } from '../hours/schedule';
 import {
-  applyStaticGate,
   BLOCKED_CATEGORIES,
   CATEGORY_EXCEPTION_IDS,
   GateConfig,
@@ -32,12 +31,10 @@ import {
 } from './eligibility';
 import { cellOf, cellsCovering, haversineM } from './geo';
 import { applyReliability, loadReliability } from './reliability';
-import { AreaStats, Candidate, mmr, Reasons, score, Scored, weightsFromEnv } from './scoring';
+import { DECK_SIZE, MAX_CANDIDATES, rankCandidates } from './ranker';
+import { AreaStats, Candidate, mmr, Reasons, Scored, weightsFromEnv } from './scoring';
 import { QuestAction, QuestStatus, REOFFER_AFTER_DAYS, SkipReason, TRANSITIONS } from './transitions';
 
-const DECK_SIZE = 10;
-const CACHED_TOP_N = 200; // enough headroom to survive exclusions + MMR
-const MAX_CANDIDATES = 3000;
 const SAVED_PLACES_LIMIT = 100;
 const DECK_TTL_S = 600;
 const AREA_TTL_S = 3600;
@@ -582,25 +579,12 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
       this.areaStats(cell, lat, lng, radiusM, cacheAreaStats),
       this.candidates(userId, lat, lng, radiusM),
     ]);
-    // The trust gate, before scoring, so the cached deck is already clean (the query
-    // filtered confidence and categories too, so its LIMIT isn't spent on them; this is
-    // the rules' source of truth, and the dedupe only happens here).
-    const candidates: Candidate[] = applyStaticGate(rows, this.gate.minConfidence).map((row) => {
-      const c: Candidate & { categories?: string[]; overtureId?: string } = { ...row };
-      delete c.categories;
-      delete c.overtureId;
-      return c;
-    });
     const weightOf = (tag: string) => {
       const slot = this.tags.slotOf(tag);
       return userVec && slot !== undefined ? userVec[slot] : 0;
     };
-    // A great match at the edge of the radius keeps ~37% of its score: worth the walk.
-    const ctx = { bestTaste: Math.max(0, ...candidates.map((c) => c.taste)), d0: radiusM };
-    return candidates
-      .map((c) => score(c, area, weightOf, ctx, this.weights))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, CACHED_TOP_N);
+    // The pure part (gate, score, order) is shared with the offline eval (ranker.ts).
+    return rankCandidates(rows, area, weightOf, { radiusM, minConfidence: this.gate.minConfidence, weights: this.weights });
   }
 
   // Shared by every user in the cell, so cached separately from the per-user deck.
