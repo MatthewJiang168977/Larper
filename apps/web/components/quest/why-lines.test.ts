@@ -105,3 +105,17 @@ describe("whyLines: all together", () => {
     ]);
   });
 });
+
+describe("insider note", () => {
+  const reasons = { liked: ["ramen"], rarest: null, indie: false };
+  it("comes first, with its source and date", () => {
+    const insiderNote = { text: "go at dusk", source: "hand-verified" as const, notedAt: "2026-11-26T15:00:00Z" };
+    expect(whyLines({ name: "A", category: "cafe", insiderNote }, reasons)).toEqual([
+      "Insider note: go at dusk (checked by Larper, Nov 26, 2026)",
+      "You marked ramen.",
+    ]);
+  });
+  it("is absent without one", () => {
+    expect(whyLines({ name: "A", category: "cafe", insiderNote: null }, reasons)).toEqual(["You marked ramen."]);
+  });
+});

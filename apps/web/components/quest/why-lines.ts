@@ -66,11 +66,26 @@ const SEQUEL = /\s(?:II|III|IV|V|VI|VII|VIII|IX|X|(?:#|No\.?\s?)[2-9]\d*)$/;
 const words = (s: string) => humanize(s).toLowerCase().split(/\s+/).filter(Boolean);
 const within = (inner: string[], outer: string[]) => inner.every((w) => outer.includes(w));
 
+// The curator's note, with its date: someone who went there wrote it, so it comes first.
+function noteLine(note: PlaceView["insiderNote"]): string | null {
+  if (!note || typeof note.text !== "string" || !note.text.trim()) return null;
+  const at = new Date(note.notedAt);
+  const date = Number.isNaN(at.getTime())
+    ? ""
+    : `, ${at.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })}`;
+  return `Insider note: ${note.text.trim()} (checked by Larper${date})`;
+}
+
 /**
  * The lines under "Why this place", strongest first; empty when nothing holds up.
  */
-export function whyLines(place: Pick<PlaceView, "name" | "category">, reasons: Reasons): string[] {
+export function whyLines(
+  place: Pick<PlaceView, "name" | "category" | "insiderNote">,
+  reasons: Reasons,
+): string[] {
   const lines: string[] = [];
+  const note = noteLine(place.insiderNote);
+  if (note) lines.push(note);
   const category = words(place.category);
 
   // Drop tags the category already says (ramen at a ramen restaurant), and tags

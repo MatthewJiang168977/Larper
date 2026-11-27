@@ -238,6 +238,8 @@ flowchart LR
      places are held back (off by default: few places have hours on file yet); it is applied after the cache.
      On the cluster both are Helm values: `api.questGate.minConfidence` and `api.questGate.eveningUnknownHours`.
    - Candidates are scored in TypeScript, and the top 200 are cached for 10 min.
+   - The curator's "closed" and "bad fit" (`place_facts`, migration 0023) are applied after the cache.
+     Curators are named in `ADMIN_USER_IDS` (Helm `api.adminUserIds`) and use `/admin/places`.
 6. **Re-rank.** Places finished recently are dropped, for a window that depends on how the
    quest ended (`REOFFER_AFTER_DAYS` in `quests/transitions.ts`):
    - 30 days for a completed quest, a plain Skip, or "Not my thing"

@@ -17,7 +17,11 @@ export const CONFIRMATION_WINDOW_DAYS = 180;
  */
 export const MIN_CONFIRMATIONS = 3;
 
-export type HoursSource = 'osm' | 'website' | 'nyc_open_data' | 'alltheplaces' | 'manual';
+export type HoursSource = 'osm' | 'website' | 'nyc_open_data' | 'alltheplaces' | 'manual' | 'hand-verified';
+/** The owner looked: the pilot import ('manual') and the curation page ('hand-verified'). */
+const BY_HAND: readonly HoursSource[] = ['manual', 'hand-verified'];
+/** Hours checked by hand expire: older than this they are not used (the place is unverified). */
+export const HAND_HOURS_MAX_AGE_DAYS = 90;
 export type ServiceKind = 'kitchen' | 'bar';
 
 export interface HoursService {
@@ -69,6 +73,25 @@ interface Chosen {
 }
 
 /**
+ * Drops hand-checked facts past their 90 days, and applies a curator's "clear the hours" (a
+ * hand-verified fact with no schedule): it and every older hand-checked regular fact of
+ * that place go.
+ */
+export function currentFacts(facts: readonly ScheduleFact[], now: Date): ScheduleFact[] {
+  const clearedAt = new Map<string, number>();
+  for (const f of facts) {
+    if (f.source === 'hand-verified' && f.schedule === null) clearedAt.set(f.placeId, f.fetchedAt.getTime());
+  }
+  const oldest = now.getTime() - HAND_HOURS_MAX_AGE_DAYS * 86_400_000;
+  return facts.filter((f) => {
+    if (!BY_HAND.includes(f.source)) return true;
+    if (f.schedule === null || f.fetchedAt.getTime() < oldest) return false;
+    const cleared = clearedAt.get(f.placeId);
+    return cleared === undefined || f.service !== 'regular' || f.fetchedAt.getTime() > cleared;
+  });
+}
+
+/**
  * Per place and service, the usable schedule: valid JSON, confidence at least
  * MIN_HOURS_CONFIDENCE, then the highest confidence, ties to the newest fetched_at (and the
  * higher id, so the answer never depends on row order). An invalid schedule is skipped, so
@@ -98,17 +121,26 @@ export function chooseSchedules(facts: readonly ScheduleFact[]): Map<string, Map
 const SCHEDULE_COLUMNS = `place_id::text AS "placeId", id::text, service, source, source_url AS "sourceUrl",
               fetched_at AS "fetchedAt", confidence::float8 AS confidence, schedule`;
 
+// The curator's hours (place_facts, migration 0023): only the latest row per place counts,
+// with the same confidence as the pilot import's, so between the two the newer one wins.
+const HAND_FACTS = `SELECT DISTINCT ON (place_id) place_id::text AS "placeId", id::text, 'regular' AS service,
+              'hand-verified' AS source, NULL::text AS "sourceUrl", created_at AS "fetchedAt", 0.9::float8 AS confidence, schedule
+       FROM place_facts WHERE place_id = ANY($1::bigint[]) AND kind = 'hours'
+       ORDER BY place_id, created_at DESC, id DESC`;
+
 /** The best regular schedule of each of these places that has one (the trust gate's evening rule). One query. */
-export async function loadRegularSchedules(pg: Pool, placeIds: readonly string[]): Promise<Map<string, Schedule>> {
+export async function loadRegularSchedules(pg: Pool, placeIds: readonly string[], now: Date): Promise<Map<string, Schedule>> {
   if (!placeIds.length) return new Map();
   const { rows } = await pg.query<ScheduleFact>(
     `SELECT ${SCHEDULE_COLUMNS}
      FROM place_hours_facts
-     WHERE place_id = ANY($1::bigint[]) AND kind = 'schedule' AND service = 'regular' AND confidence >= $2::real`,
+     WHERE place_id = ANY($1::bigint[]) AND kind = 'schedule' AND service = 'regular' AND confidence >= $2::real
+     UNION ALL
+     SELECT * FROM (${HAND_FACTS}) h`,
     [placeIds, MIN_HOURS_CONFIDENCE],
   );
   const out = new Map<string, Schedule>();
-  for (const [placeId, byService] of chooseSchedules(rows)) {
+  for (const [placeId, byService] of chooseSchedules(currentFacts(rows, now))) {
     const regular = byService.get('regular');
     if (regular) out.set(placeId, regular.schedule);
   }
@@ -161,6 +193,8 @@ export async function loadPlaceHours(pg: Pool, placeIds: readonly string[], now:
      FROM place_hours_facts
      WHERE place_id = ANY($1::bigint[]) AND kind = 'schedule' AND confidence >= $2::real
      UNION ALL
+     SELECT 'schedule', h.*, NULL, NULL FROM (${HAND_FACTS}) h
+     UNION ALL
      SELECT 'confirmations', place_id::text, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
             count(DISTINCT user_id)::int, max(fetched_at)
      FROM place_hours_facts
@@ -173,7 +207,7 @@ export async function loadPlaceHours(pg: Pool, placeIds: readonly string[], now:
     [placeIds, MIN_HOURS_CONFIDENCE, now, CONFIRMATION_WINDOW_DAYS, process.env.DEMO_CLERK_USER_ID?.trim() || null],
   );
 
-  const chosen = chooseSchedules(rows.filter((r) => r.k === 'schedule') as ScheduleFact[]);
+  const chosen = chooseSchedules(currentFacts(rows.filter((r) => r.k === 'schedule') as ScheduleFact[], now));
   for (const id of placeIds) {
     const regular = chosen.get(id)?.get('regular');
     let hours: PlaceHours = { status: 'unverified' };

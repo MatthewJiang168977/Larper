@@ -4,6 +4,9 @@ import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
 import { AuthModule } from './auth/auth.module';
 import { CacheModule } from './cache/cache.module';
 import { DbModule } from './db/db.module';
+import { CurationController } from './curation/curation.controller';
+import { AdminGuard } from './curation/admin.guard';
+import { CurationService } from './curation/curation.service';
 import { DemoModule } from './demo/demo.module';
 import { HealthController } from './health/health.controller';
 import { clerkUserDeleterFromEnv, CLERK_USER_DELETER } from './privacy/clerk-user-deleter';
@@ -29,12 +32,14 @@ import { WEEKLY_EMAIL, WeeklyEmailService, weeklyEmailFromEnv } from './weekly-e
   // Sentry: route names on traces, and unexpected errors (not 4xx) reported.
   imports: [SentryModule.forRoot(), DbModule, CacheModule, AuthModule, ThrottleModule, DemoModule],
   controllers: [HealthController, ProfileController, QuestsController, SavedPlacesController, MeDataController,
-    ClerkWebhookController, WeeklyEmailPreferenceController, WeeklyEmailUnsubscribeController],
+    ClerkWebhookController, WeeklyEmailPreferenceController, WeeklyEmailUnsubscribeController, CurationController],
   providers: [
     { provide: APP_FILTER, useClass: SentryGlobalFilter },
     TagsService,
     QuestsService,
     AreasService,
+    CurationService,
+    AdminGuard,
     DataExportService,
     DataDeletionService,
     WeeklyEmailService,

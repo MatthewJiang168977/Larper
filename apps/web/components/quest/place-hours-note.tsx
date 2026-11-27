@@ -15,6 +15,7 @@ const SOURCES: Record<HoursSource, string> = {
   nyc_open_data: "NYC Open Data",
   alltheplaces: "AllThePlaces",
   manual: "checked by Larper",
+  "hand-verified": "checked by Larper",
 };
 
 const RECENCY: Record<ConfirmationRecency, string> = {
@@ -99,7 +100,7 @@ function Known({ hours, now }: { hours: KnownHours; now: Date }) {
   const today = spans || (hours.today.length === 0 && state === "closed" ? "closed today" : null);
   const age = hours.fetchedAt ? formatAge(hours.fetchedAt, now) : null;
   const days = hours.fetchedAt ? ageDays(hours.fetchedAt, now) : null;
-  const manual = hours.source === "manual";
+  const manual = hours.source === "manual" || hours.source === "hand-verified";
   const known = Object.hasOwn(SOURCES, hours.source);
   return (
     <>

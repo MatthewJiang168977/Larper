@@ -36,6 +36,9 @@ api:
   # "xmin,ymin,xmax,ymax" in degrees (lng,lat,lng,lat). Empty: anywhere.
   ingestRegion: ""
   # The quest trust gate (apps/api/src/quests/eligibility.ts; README, "On a miss, rank").
+  # Who may use the curation page (/admin/places): comma-separated Larper user ids or Clerk
+  # user ids (user_...). Empty: nobody, and every /admin route answers 404.
+  adminUserIds: ""
   # Unset keeps the code defaults. minConfidence: 0.7 to 1. eveningUnknownHours: "on" offers,
   # 6pm to 6am New York time, only places whose hours say open then. Turn it on only once
   # the focus neighborhoods have hours on file, or evenings get no new quests.

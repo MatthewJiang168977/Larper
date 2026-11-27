@@ -28,7 +28,7 @@ describe('DataExportService transaction', () => {
     expect(out.account.clerkId).toBe('user_x');
     expect(log[0]).toBe('BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY');
     expect(log.at(-1)).toBe('COMMIT');
-    expect(log).toHaveLength(8); // BEGIN, six reads, COMMIT
+    expect(log).toHaveLength(9); // BEGIN, seven reads, COMMIT
     expect((pg.query as jest.Mock)).not.toHaveBeenCalled();
     expect(client.release).toHaveBeenCalledTimes(1);
   });
