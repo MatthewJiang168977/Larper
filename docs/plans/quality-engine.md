@@ -146,8 +146,9 @@ repeated "was it open?".
 - `place_reliability(place_id PK, successes, failures, as_of, suspended_at, stale,
   updated_at)`: the result.
 
-The migration backfills `place_reports` from existing check-in answers, `closed` skips and
-curation verdicts, and marks those places `stale`.
+The migration backfills `place_reports` from existing check-in answers and curation
+verdicts, and marks those places `stale`. Past `closed` skips are not backfilled: SQL cannot
+tell the shared demo account's from a person's, and the demo account must report nothing.
 
 **How the worker stays correct:**
 
