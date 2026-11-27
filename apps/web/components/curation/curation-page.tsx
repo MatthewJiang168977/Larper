@@ -107,7 +107,8 @@ export function CurationPage() {
       if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
       if (e.key === "Escape") return setEditing(null);
       const t = e.target as HTMLElement;
-      if (t.closest("input, textarea, select")) return;
+      // Nor while a form is open: a key on its save or cancel button must not record.
+      if (editing || t.closest("input, textarea, select")) return;
       const place = places.find((p) => p.id === current);
       if (!place) return;
       const verdict = VERDICTS.find((v) => v.key === e.key);
@@ -121,7 +122,7 @@ export function CurationPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [places, current, record, move]);
+  }, [places, current, editing, record, move]);
 
   useEffect(() => {
     document.getElementById(`place-${current}`)?.scrollIntoView?.({ block: "start", behavior: "auto" });
@@ -356,8 +357,8 @@ function TextFact({
         <input
           ref={input}
           value={value}
-          maxLength={maxLength}
-          onChange={(e) => setValue(e.target.value)}
+          // Counted in code points, as the API and the database count (maxLength counts UTF-16).
+          onChange={(e) => setValue([...e.target.value].slice(0, maxLength).join(""))}
           autoCapitalize="off"
           autoCorrect="off"
         />
