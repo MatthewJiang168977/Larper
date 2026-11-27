@@ -20,7 +20,7 @@ export function LarperOsAuthShell({ page, children, demo }: {
   demo?: ReactNode;
 }) {
   return (
-    <AuthRoot className={`${larperOsClassName} larper-os-auth`}>
+    <AuthRoot className={`${larperOsClassName} larper-os-auth larper-auth-page`}>
       <AuthMenuBar page={page} />
       <div className="larper-auth-stage">
         <OSWindow title={PAGES[page].title} titleAs="h1" footer={<LegalLinks />}>

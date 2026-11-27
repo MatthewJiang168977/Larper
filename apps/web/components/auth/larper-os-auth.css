@@ -1,4 +1,5 @@
-/* Sign-in and sign-up: one window over a still of the city, in a single column on every width. */
+/* Sign-in and sign-up (.larper-auth-page): one window over a still of the city, in a single column
+   on every width. .larper-os-auth is the wallpaper page the account window shares. */
 .larper-os-auth {
   --larper-auth-tint: var(--larper-os-tint-day);
   position: relative;
@@ -83,8 +84,8 @@
   .larper-auth-stage { padding-top: 72px; }
 }
 
-.larper-os-auth .larper-os-window { background: var(--larper-auth-tint); }
-.larper-os-auth .larper-os-body { grid-template-columns: minmax(0, 1fr); padding: 14px; gap: 12px; }
+.larper-auth-page .larper-os-window { background: var(--larper-auth-tint); }
+.larper-auth-page .larper-os-body { grid-template-columns: minmax(0, 1fr); padding: 14px; gap: 12px; }
 
 .larper-auth-form { display: grid; min-width: 0; }
 .larper-os-auth .larper-os-auth-loading { padding: 16px; }
@@ -101,8 +102,8 @@
 .larper-os-auth-demo button { width: 100%; }
 
 /* The legal links at body size, on one line. */
-.larper-os-auth .larper-os-footer { padding: 0 10px; font-size: inherit; }
-.larper-os-auth .larper-landing-about { gap: 8px; }
+.larper-auth-page .larper-os-footer { padding: 0 10px; font-size: inherit; }
+.larper-auth-page .larper-landing-about { gap: 8px; }
 
 /* Solid, so the credit reads over every phase of the map. */
 .larper-auth-credit {

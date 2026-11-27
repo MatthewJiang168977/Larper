@@ -62,7 +62,7 @@ describe("the window's tint for the time of day", () => {
     for (const phase of ["dawn", "golden", "dusk", "night"]) {
       expect(css).toContain(`.larper-os-auth[data-phase="${phase}"] { --larper-auth-tint: var(--larper-os-tint-${phase}); }`);
     }
-    expect(css).toMatch(/\.larper-os-auth \.larper-os-window \{ background: var\(--larper-auth-tint\); \}/);
+    expect(css).toMatch(/\.larper-auth-page \.larper-os-window \{ background: var\(--larper-auth-tint\); \}/);
   });
 });
 
