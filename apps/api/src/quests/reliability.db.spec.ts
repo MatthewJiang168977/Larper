@@ -192,4 +192,33 @@ describeDb('place reliability (real database)', () => {
     await quests.act(u, quest.id, 'complete', { lat: 0, lng: 0, accuracyM: 5 }, true);
     await expect(quests.worthIt(u, quest.id, 'yes')).rejects.toThrow('simulated');
   });
+
+  // Deletions lock the shared place_reliability rows: in one order, or two of them deadlock.
+  it('lets two people sharing many places delete their history at once, and keeps suspensions', async () => {
+    const at = spot();
+    const places: string[] = [];
+    for (let i = 0; i < 40; i++) places.push(await place(at, `Shared ${i}`, i * 60));
+    for (let round = 0; round < 5; round++) {
+      const [v, w] = [await user(), await user()];
+      const report = (userId: string, ids: string[]) =>
+        owner.query(
+          `INSERT INTO place_reports (event_id, place_id, user_id, quest_id, kind, occurred_at)
+           SELECT gen_random_uuid(), id, $2, 1, 'wasnt_open', now() FROM unnest($1::bigint[]) AS id`,
+          [ids, userId],
+        );
+      await report(v, places);
+      await report(w, [places[31], places[7]]);
+      await owner.query(
+        `INSERT INTO place_reliability (place_id, suspended_at) SELECT id, now() FROM unnest($1::bigint[]) AS id
+         ON CONFLICT (place_id) DO UPDATE SET suspended_at = now()`,
+        [places],
+      );
+      await Promise.all([v, w].map((id) => pool.query('SELECT delete_my_history($1)', [id])));
+      const { rows } = await owner.query<{ n: number }>(
+        'SELECT count(*)::int AS n FROM place_reliability WHERE place_id = ANY($1::bigint[]) AND suspended_at IS NOT NULL AND stale',
+        [places],
+      );
+      expect(rows[0].n).toBe(places.length);
+    }
+  });
 });

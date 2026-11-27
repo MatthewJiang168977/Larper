@@ -75,6 +75,8 @@ BEGIN
   WITH gone AS (DELETE FROM place_reports WHERE user_id = p_user_id RETURNING place_id)
   INSERT INTO place_reliability (place_id, stale)
   SELECT DISTINCT place_id, true FROM gone
+  -- Locked in place order, so two deletions sharing places can't deadlock.
+  ORDER BY place_id
   ON CONFLICT (place_id) DO UPDATE SET stale = true;
 
   -- Attempts reach a person only through their quest (0014): count them, then the quest
