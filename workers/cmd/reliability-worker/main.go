@@ -261,6 +261,9 @@ func sweep(ctx context.Context, pool *pgxpool.Pool) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	// One place's failure (it can be deleted between the list and the recompute) doesn't hold
+	// back the rest; the first error is reported.
+	var first error
 	for _, id := range ids {
 		err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
 			if err := lockPlace(ctx, tx, id); err != nil {
@@ -268,11 +271,11 @@ func sweep(ctx context.Context, pool *pgxpool.Pool) (int, error) {
 			}
 			return recompute(ctx, tx, id, time.Now())
 		})
-		if err != nil {
-			return 0, err
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) && first == nil {
+			first = err
 		}
 	}
-	return len(ids), nil
+	return len(ids), first
 }
 
 func sweepLoop(ctx context.Context, log *slog.Logger, pool *pgxpool.Pool) {
