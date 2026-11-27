@@ -156,7 +156,7 @@ export interface HoursSpan {
   to: string;
   nextDay: boolean;
 }
-export type HoursSource = "osm" | "website" | "nyc_open_data" | "alltheplaces" | "manual";
+export type HoursSource = "osm" | "website" | "nyc_open_data" | "alltheplaces" | "manual" | "hand-verified";
 export type PlaceHours =
   /** No hours on file. Never shown as "closed". */
   | { status: "unverified" }
@@ -198,6 +198,8 @@ export interface PlaceView {
   phone: string | null;
   hours?: PlaceHours;
   openConfirmations?: OpenConfirmations | null;
+  /** A curator's one-line note, with when it was written. Older APIs omit it. */
+  insiderNote?: { text: string; source: "hand-verified"; notedAt: string } | null;
 }
 
 export interface Reasons {

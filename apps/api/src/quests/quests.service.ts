@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
 import { CacheService } from '../cache/cache.service';
+import { loadInsiderNotes, loadRejected, type InsiderNote } from '../curation/place-facts';
 import { PG } from '../db/db.module';
 import { enqueueQuestEvent } from '../events/outbox';
 import { QuestAction as EventAction, SkipReason as EventSkipReason } from '../gen/larper/events/v1/events_pb';
@@ -98,6 +99,8 @@ export interface PlaceView {
   // How many different people said it was open when they checked in (last 180 days), and the
   // newest one's day and part of day in New York. No dates, no times, no people.
   openConfirmations: OpenConfirmations | null;
+  // The curator's one-line note (place_facts), shown first under "Why this place".
+  insiderNote: InsiderNote | null;
 }
 
 export interface SavedPlaceView {
@@ -178,9 +181,13 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     // Its hours are looked up only when the rule is active (flag on, New York evening), in
     // one query for the candidates that survive the exclusions.
     const excluded = await this.recentlyDone(userId);
-    const candidates = ranked.filter((p) => !excluded.has(p.id));
+    const unseen = ranked.filter((p) => !excluded.has(p.id));
+    // The curator's "closed" and "bad fit", applied after the cache like the exclusions, so a
+    // tap takes effect on the next request.
+    const rejected = await loadRejected(this.pg, unseen.map((p) => p.id));
+    const candidates = unseen.filter((p) => !rejected.has(p.id));
     const eveningRule = this.gate.eveningUnknownHours && isEveningInNyc(now);
-    const schedules = eveningRule ? await loadRegularSchedules(this.pg, candidates.map((p) => p.id)) : null;
+    const schedules = eveningRule ? await loadRegularSchedules(this.pg, candidates.map((p) => p.id), now) : null;
     const deck = mmr(
       candidates.filter((p) => passesHoursRule(openAt(schedules, p.id, now), now, this.gate.eveningUnknownHours)),
       DECK_SIZE,
@@ -197,8 +204,13 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
 
     // Hours and confirmations for the places in this response (the quest and the leads, at
     // most ten), in one query. The deck cache never holds them: they change with the clock.
-    const hours = await loadPlaceHours(this.pg, [...(quest ? [quest.place.id] : []), ...leads.map((p) => p.id)], now);
-    const withHours = (p: PlaceView): PlaceView => ({ ...p, ...(hours.get(p.id) ?? NO_HOURS) });
+    const shown = [...(quest ? [quest.place.id] : []), ...leads.map((p) => p.id)];
+    const [hours, notes] = await Promise.all([loadPlaceHours(this.pg, shown, now), loadInsiderNotes(this.pg, shown)]);
+    const withHours = (p: PlaceView): PlaceView => ({
+      ...p,
+      ...(hours.get(p.id) ?? NO_HOURS),
+      insiderNote: notes.get(p.id) ?? null,
+    });
 
     return {
       quest: quest ? { ...quest, place: withHours(quest.place) } : quest,
@@ -721,7 +733,7 @@ function toQuestView(r: QuestRow, lat: number, lng: number): QuestView {
 
 // Distances in the cached deck are from the cell center; report them from the user.
 function toPlaceView(
-  p: Omit<PlaceView, 'distanceM' | 'hours' | 'openConfirmations'>,
+  p: Omit<PlaceView, 'distanceM' | 'hours' | 'openConfirmations' | 'insiderNote'>,
   lat: number,
   lng: number,
 ): PlaceView {
@@ -737,6 +749,7 @@ function toPlaceView(
     instagram: p.instagram,
     phone: p.phone,
     ...NO_HOURS, // today() fills the real ones in, for the places it returns
+    insiderNote: null,
   };
 }
 

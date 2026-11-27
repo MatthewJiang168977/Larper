@@ -30,6 +30,16 @@ export interface DataExport {
   hoursAnswers: HoursAnswerEntry[];
   savedPlaces: SavedPlaceEntry[];
   weeklyEmail?: { optedInAt: string | null; lastAttemptDay: string | null };
+  /** Facts recorded from the curation page (admins only; absent otherwise). */
+  curation?: CurationEntry[];
+}
+
+export interface CurationEntry {
+  kind: string;
+  note: string | null;
+  hours: string | null;
+  recordedAt: string;
+  place: PlaceRef;
 }
 
 interface PlaceRef {
@@ -121,6 +131,7 @@ type AttemptRow = {
 };
 type AnswerRow = PlaceCols & { quest_id: string | null; was_open: boolean | null; created_at: Date };
 type SavedRow = PlaceCols & { quest_id: string | null; created_at: Date };
+type CurationRow = PlaceCols & { kind: string; note: string | null; hours_raw: string | null; created_at: Date };
 
 @Injectable()
 export class DataExportService {
@@ -133,10 +144,10 @@ export class DataExportService {
   // reads only that user's rows. Nothing from another user, and nothing internal: no
   // outbox, jobs or processed-events rows.
   async export(userId: string, now = new Date()): Promise<DataExport> {
-    // One snapshot: the six reads see the same moment, on one connection, in a read-only
+    // One snapshot: the seven reads see the same moment, on one connection, in a read-only
     // REPEATABLE READ transaction (a delete or an accept in between can't tear the file).
     const db = await this.pg.connect();
-    let account, taste, quests, attempts, answers, saved;
+    let account, taste, quests, attempts, answers, saved, curation;
     try {
       await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY');
       account = await db.query<{ id: string; clerk_id: string; created_at: Date; email_preference: boolean; opted_in_at: Date | null; last_attempt_day: string | null }>(
@@ -170,6 +181,12 @@ export class DataExportService {
         `SELECT s.quest_id::text, s.created_at, ${PLACE_COLS}
          FROM saved_places s JOIN places p ON p.id = s.place_id
          WHERE s.user_id = $1 ORDER BY s.created_at DESC, p.id DESC`,
+        [userId],
+      );
+      curation = await db.query<CurationRow>(
+        `SELECT f.kind, f.note, f.hours_raw, f.created_at, ${PLACE_COLS}
+         FROM place_facts f JOIN places p ON p.id = f.place_id
+         WHERE f.user_id = $1 ORDER BY f.created_at DESC, f.id DESC`,
         [userId],
       );
       await db.query('COMMIT');
@@ -247,6 +264,15 @@ export class DataExportService {
         place: place(r),
       })),
       savedPlaces: saved.rows.map((r) => ({ questId: r.quest_id, savedAt: r.created_at.toISOString(), place: place(r) })),
+      ...(curation.rows.length > 0 && {
+        curation: curation.rows.map((r) => ({
+          kind: r.kind,
+          note: r.note,
+          hours: r.hours_raw,
+          recordedAt: r.created_at.toISOString(),
+          place: place(r),
+        })),
+      }),
       ...(acct.email_preference && { weeklyEmail: { optedInAt: iso(acct.opted_in_at), lastAttemptDay: acct.last_attempt_day } }),
     };
   }

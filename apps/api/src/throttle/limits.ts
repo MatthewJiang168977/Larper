@@ -34,6 +34,8 @@ export const LIMITS = {
   // together: each one is a Clerk sign-in token, i.e. a session on the shared account.
   // A visitor needs one; a few more cover a second tab or a retry.
   demoSignIn: { minute: 3, hour: 10, allPerHour: 300 },
+  // The curation page (/admin/places): a place every few seconds, one request per tap.
+  curation: { minute: 120 },
 } as const;
 
 // Opt-in windows: routes that use them unskip them (@SkipThrottle({ [name]: false })).

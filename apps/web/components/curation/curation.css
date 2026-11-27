@@ -1,0 +1,86 @@
+/* The curator's page: plain, large targets, usable one-handed on a phone. */
+.curation {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 1rem 1rem calc(60vh + env(safe-area-inset-bottom));
+}
+.curation h1 {
+  font-size: 1.4rem;
+}
+.curation-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+}
+.curation select,
+.curation-form input {
+  font-size: 1rem; /* 16px: iOS doesn't zoom on focus */
+  min-height: 44px;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  padding: 0 0.5rem;
+}
+.curation-count,
+.curation-meta {
+  color: var(--ink-soft);
+}
+.curation-keys {
+  width: 100%;
+  font-size: 0.8rem;
+  color: var(--ink-label);
+}
+@media (pointer: coarse) {
+  .curation-keys {
+    display: none;
+  }
+}
+.curation-error {
+  color: var(--oxblood);
+}
+.curation-card {
+  border: 1px solid var(--rule);
+  padding: 0.75rem;
+  margin-top: 0.75rem;
+  overflow-wrap: anywhere;
+  scroll-margin-top: 0.5rem;
+}
+.curation-card[aria-current="true"] {
+  border: 2px solid var(--ink);
+}
+.curation-card h2 {
+  font-size: 1.15rem;
+}
+.curation-links {
+  display: flex;
+  gap: 1.25rem;
+}
+.curation-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  text-decoration: underline;
+}
+.curation-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.curation-actions button {
+  min-height: 48px;
+}
+.curation-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.curation-form label {
+  width: 100%;
+  font-size: 0.9rem;
+}
+.curation-form input {
+  display: block;
+  width: 100%;
+}

@@ -1,0 +1,18 @@
+{
+  "accepted": [
+    { "input": "24/7", "schedule": { "v": 1, "tz": "America/New_York", "always": true, "weekly": [], "dates": [], "holidays": null, "partial": "none" } },
+    { "input": "Mo-Fr 09:00-17:00", "schedule": { "v": 1, "tz": "America/New_York", "always": false, "weekly": [ { "d": 1, "from": 540, "to": 1020 }, { "d": 2, "from": 540, "to": 1020 }, { "d": 3, "from": 540, "to": 1020 }, { "d": 4, "from": 540, "to": 1020 }, { "d": 5, "from": 540, "to": 1020 } ], "dates": [], "holidays": null, "partial": "none" } },
+    { "input": "Fr,Sa 22:00-02:00; PH off", "schedule": { "v": 1, "tz": "America/New_York", "always": false, "weekly": [ { "d": 5, "from": 1320, "to": 1560 }, { "d": 6, "from": 1320, "to": 1560 } ], "dates": [], "holidays": "closed", "partial": "none" } },
+    { "input": "mo 12:00-15:00,17:00-23:00", "schedule": { "v": 1, "tz": "America/New_York", "always": false, "weekly": [ { "d": 1, "from": 720, "to": 900 }, { "d": 1, "from": 1020, "to": 1380 } ], "dates": [], "holidays": null, "partial": "none" } },
+    { "input": "Sa-Mo 10:00-18:00; Su off", "schedule": { "v": 1, "tz": "America/New_York", "always": false, "weekly": [ { "d": 1, "from": 600, "to": 1080 }, { "d": 6, "from": 600, "to": 1080 } ], "dates": [], "holidays": null, "partial": "none" } },
+    { "input": "09:00-24:00; Dec 25 off", "schedule": { "v": 1, "tz": "America/New_York", "always": false, "weekly": [ { "d": 1, "from": 540, "to": 1440 }, { "d": 2, "from": 540, "to": 1440 }, { "d": 3, "from": 540, "to": 1440 }, { "d": 4, "from": 540, "to": 1440 }, { "d": 5, "from": 540, "to": 1440 }, { "d": 6, "from": 540, "to": 1440 }, { "d": 7, "from": 540, "to": 1440 } ], "dates": [ { "on": "--12-25", "closed": true, "spans": [] } ], "holidays": null, "partial": "none" } },
+    { "input": "Tu-Su 11:00-19:00; 2026 Dec 24 09:00-15:00", "schedule": { "v": 1, "tz": "America/New_York", "always": false, "weekly": [ { "d": 2, "from": 660, "to": 1140 }, { "d": 3, "from": 660, "to": 1140 }, { "d": 4, "from": 660, "to": 1140 }, { "d": 5, "from": 660, "to": 1140 }, { "d": 6, "from": 660, "to": 1140 }, { "d": 7, "from": 660, "to": 1140 } ], "dates": [ { "on": "2026-12-24", "closed": false, "spans": [ { "from": 540, "to": 900 } ] } ], "holidays": null, "partial": "none" } },
+    { "input": "Mo-Su 08:00-20:00; We 08:00-12:00", "schedule": { "v": 1, "tz": "America/New_York", "always": false, "weekly": [ { "d": 1, "from": 480, "to": 1200 }, { "d": 2, "from": 480, "to": 1200 }, { "d": 3, "from": 480, "to": 720 }, { "d": 4, "from": 480, "to": 1200 }, { "d": 5, "from": 480, "to": 1200 }, { "d": 6, "from": 480, "to": 1200 }, { "d": 7, "from": 480, "to": 1200 } ], "dates": [], "holidays": null, "partial": "none" } }
+  ],
+  "rejected": [
+    "", "9am-5pm", "Mo-Fr 9-17", "Mo-Fr", "17:00+", "sunrise-sunset", "Apr-Oct 09:00-17:00",
+    "Mo[1] 09:00-17:00", "Mo-Fr 09:00-17:00 \"call ahead\"", "off", "Mo off", "PH 10:00-12:00",
+    "PH off; Mo-Fr 09:00-17:00", "Mo-Fr 09:00-09:00", "Mo-Fr 25:00-26:00", "Mo-Fr 09:00-17:60",
+    "Mo 09:00-12:00, Tu 10:00-11:00", "Mo-Fr 09:00-17:00 || Sa 10:00-12:00", "Feb 30 off; 09:00-17:00"
+  ]
+}
