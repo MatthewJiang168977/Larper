@@ -101,8 +101,9 @@ vi.mock("./quest-sheet", () => ({
       onStampSlammed?: () => void;
       onSnapChange?: (s: "peek" | "full") => void;
       wasOpen?: { answer: string | null; onAnswer: (a: "yes" | "no" | "didnt_check") => Promise<void> } | null;
+      worthIt?: { answer: string | null; onAnswer: (a: "yes" | "meh" | "no") => Promise<void>; onSkip: () => void } | null;
     }
-  >(function QuestSheet({ quest, deck, onAction, topLimit, onCoveredChange, note, onDismissNote, demo, stampSlam, onStampSlammed, onSnapChange, wasOpen }, ref) {
+  >(function QuestSheet({ quest, deck, onAction, topLimit, onCoveredChange, note, onDismissNote, demo, stampSlam, onStampSlammed, onSnapChange, wasOpen, worthIt }, ref) {
     useEffect(() => onCoveredChange({ bottom: SHEET_PEEK, right: 0 }), [onCoveredChange]);
     return (
       <section ref={ref} data-top-limit={topLimit}>
@@ -129,6 +130,9 @@ vi.mock("./quest-sheet", () => ({
         <button onClick={() => wasOpen?.onAnswer("yes").then(() => void answerResult.push("ok"), () => void answerResult.push("failed"))}>
           Answer yes
         </button>
+        <p>worth it: {worthIt ? `asked (${worthIt.answer ?? "unanswered"})` : "not asked"}</p>
+        <button onClick={() => void worthIt?.onAnswer("meh")}>Worth meh</button>
+        <button onClick={() => worthIt?.onSkip()}>Worth skip</button>
         <button onClick={onStampSlammed}>Slammed</button>
         <button onClick={() => onAction("accept")}>Accept</button>
         <button onClick={() => onAction("complete")}>I went</button>
@@ -1309,5 +1313,45 @@ describe("QuestHome: analytics", () => {
     fireEvent.click(screen.getByText("I went"));
     await settle();
     expect(tracked.events.filter(([e]) => e === "checkin_attempted")).toEqual([["checkin_attempted", props]]);
+  });
+});
+
+describe("QuestHome: worth it?", () => {
+  const done = (over: Record<string, unknown> = {}): Today => ({
+    ...withQuest,
+    quest: { ...withQuest.quest!, status: "completed", wasOpen: null, worthIt: null, ...over },
+    deck: [],
+  });
+  const load = async (today: Today) => {
+    routes["/quests/today"] = ok(today);
+    render(<QuestHome />);
+    await settle();
+  };
+
+  it("is asked beside was it open, sends the answer, and keeps it as answered", async () => {
+    routes["/quests/q1/worth-it"] = ok({ worthIt: "meh" });
+    await load(done());
+    screen.getByText("worth it: asked (unanswered)");
+    fireEvent.click(screen.getByText("Worth meh"));
+    await settle();
+    expect(bodies.find((b) => b.path === "/quests/q1/worth-it")?.body).toEqual({ answer: "meh" });
+    screen.getByText("worth it: asked (meh)");
+  });
+
+  it("can be skipped", async () => {
+    await load(done());
+    fireEvent.click(screen.getByText("Worth skip"));
+    await settle();
+    screen.getByText("worth it: not asked");
+    expect(bodies.some((b) => b.path === "/quests/q1/worth-it")).toBe(false);
+  });
+
+  it.each([
+    ["already answered", { worthIt: "yes" }],
+    ["it wasn't open", { wasOpen: "no" }],
+    ["an API without the question", { worthIt: undefined }],
+  ])("is not asked when %s", async (_why, over) => {
+    await load(done(over));
+    screen.getByText("worth it: not asked");
   });
 });

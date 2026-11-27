@@ -11,13 +11,17 @@ import (
 //
 //	new = normalize((1 - |b|) * old + b * place)
 //
-// Going somewhere (completed) moves taste most; accepting moves it a bit; skipping
-// nudges away. Old evidence decays geometrically instead of being erased, so one
+// "Worth it?" after a check-in is the strongest signal either way; going somewhere
+// (completed) is next; accepting moves it a bit; skipping nudges away. Old evidence decays geometrically instead of being erased, so one
 // odd evening doesn't rewrite the profile.
 var steps = map[eventsv1.QuestAction]float64{
 	eventsv1.QuestAction_QUEST_ACTION_ACCEPTED:  0.10,
 	eventsv1.QuestAction_QUEST_ACTION_COMPLETED: 0.20,
 	eventsv1.QuestAction_QUEST_ACTION_SKIPPED:   -0.05,
+	// On top of the check-in's own +0.20, which has already been applied.
+	eventsv1.QuestAction_QUEST_ACTION_WORTH_IT_YES: 0.25,
+	eventsv1.QuestAction_QUEST_ACTION_WORTH_IT_MEH: -0.15,
+	eventsv1.QuestAction_QUEST_ACTION_WORTH_IT_NO:  -0.20,
 }
 
 // Step returns the step size for an action and whether the action moves taste at all.

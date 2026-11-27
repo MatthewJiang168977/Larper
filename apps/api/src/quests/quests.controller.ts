@@ -4,7 +4,7 @@ import { AuthUser, ClerkAuthGuard, CurrentUser } from '../auth/auth.guard';
 import { isDemoUser } from '../demo/demo-account';
 import { UserLimitGuard, userKey } from '../throttle/guards';
 import { actionOf, isCheckIn, LIMITS, OPT_IN_WINDOWS, USER_WINDOWS } from '../throttle/limits';
-import { isWasOpenAnswer, QuestsService, WAS_OPEN_ANSWERS } from './quests.service';
+import { isWasOpenAnswer, isWorthItAnswer, QuestsService, WAS_OPEN_ANSWERS, WORTH_IT_ANSWERS } from './quests.service';
 import { isAction, isSkipReason, SKIP_REASONS } from './transitions';
 
 const DEFAULT_RADIUS_M = 1500;
@@ -19,6 +19,12 @@ export const DEMO_WAS_OPEN_REFUSAL = {
   statusCode: 403,
   code: 'demo_account',
   message: 'The shared demo account cannot confirm opening hours.',
+};
+
+export const DEMO_WORTH_IT_REFUSAL = {
+  statusCode: 403,
+  code: 'demo_account',
+  message: 'The shared demo account cannot rate places.',
 };
 
 @Controller('quests')
@@ -90,6 +96,23 @@ export class QuestsController {
     // as a confirmation from someone, and survive the nightly reset. The web never asks it.
     if (isDemoUser(user.clerkId)) throw new ForbiddenException(DEMO_WAS_OPEN_REFUSAL);
     return this.quests.wasOpen(user.id, id, answer);
+  }
+
+  // POST /quests/:id/worth-it { answer }: "worth it?" after a check-in. Like was-open.
+  @Post(':id/worth-it')
+  @HttpCode(200)
+  @SkipThrottle({ [USER_WINDOWS.hour]: false })
+  @Throttle({
+    [USER_WINDOWS.minute]: { limit: LIMITS.questAction.minute },
+    [USER_WINDOWS.hour]: { limit: LIMITS.questAction.hour },
+  })
+  worthIt(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() body: { answer?: unknown } = {}) {
+    if (!/^\d+$/.test(id)) throw new BadRequestException('bad quest id');
+    const answer = body?.answer;
+    if (!isWorthItAnswer(answer)) throw new BadRequestException(`answer must be one of ${WORTH_IT_ANSWERS.join(', ')}`);
+    // One "person" for every visitor: its answers would move a shared taste.
+    if (isDemoUser(user.clerkId)) throw new ForbiddenException(DEMO_WORTH_IT_REFUSAL);
+    return this.quests.worthIt(user.id, id, answer);
   }
 
   // POST /quests/:id/accept | skip | not-today | complete

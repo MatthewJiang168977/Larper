@@ -119,6 +119,17 @@ export type WasOpenAnswer = (typeof WAS_OPEN_ANSWERS)[number];
 export const isWasOpenAnswer = (x: unknown): x is WasOpenAnswer =>
   typeof x === 'string' && (WAS_OPEN_ANSWERS as readonly string[]).includes(x);
 
+export const WORTH_IT_ANSWERS = ['yes', 'meh', 'no'] as const;
+export type WorthItAnswer = (typeof WORTH_IT_ANSWERS)[number];
+export const isWorthItAnswer = (x: unknown): x is WorthItAnswer =>
+  typeof x === 'string' && (WORTH_IT_ANSWERS as readonly string[]).includes(x);
+
+const WORTH_IT_ACTION: Record<WorthItAnswer, EventAction> = {
+  yes: EventAction.WORTH_IT_YES,
+  meh: EventAction.WORTH_IT_MEH,
+  no: EventAction.WORTH_IT_NO,
+};
+
 export interface QuestView {
   id: string;
   status: QuestStatus;
@@ -128,6 +139,8 @@ export interface QuestView {
   place: PlaceView;
   // This user's answer to "was it open?" for this quest (null: not asked, or not yet answered).
   wasOpen: WasOpenAnswer | null;
+  // This user's answer to "worth it?" (null: not answered).
+  worthIt: WorthItAnswer | null;
 }
 
 export interface DeckItem {
@@ -455,6 +468,44 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  // After a check-in: "worth it?". Stored on the quest, and the FIRST answer stands, as with
+  // "was it open?". It also goes to the taste worker, as a stronger signal than accepting or
+  // skipping. updated_at stays: it drives re-offering and "done today".
+  async worthIt(userId: string, questId: string, answer: WorthItAnswer): Promise<{ worthIt: WorthItAnswer }> {
+    const tx = await this.pg.connect();
+    try {
+      await tx.query('BEGIN');
+      await this.lockUserQuest(tx, userId, questId);
+      const { rows } = await tx.query<{ status: QuestStatus; placeId: string; simulated: boolean }>(
+        `SELECT status, place_id::text AS "placeId", coalesce((reasons->>'simulated')::boolean, false) AS simulated
+         FROM quests WHERE id = $1 AND user_id = $2`,
+        [questId, userId],
+      );
+      if (!rows.length) throw new NotFoundException('no such quest');
+      if (rows[0].status !== 'completed') throw new ConflictException('only a quest you checked in at can be asked about');
+      if (rows[0].simulated) throw new ConflictException('a simulated check-in has no answer: nobody went');
+
+      const set = await tx.query(
+        `UPDATE quests SET worth_it = $3, worth_it_at = now() WHERE id = $1 AND user_id = $2 AND worth_it IS NULL`,
+        [questId, userId, answer],
+      );
+      if (set.rowCount) {
+        await enqueueQuestEvent(tx, { userId, questId, placeId: rows[0].placeId, action: WORTH_IT_ACTION[answer] });
+      }
+      const stored = await tx.query<{ worthIt: WorthItAnswer }>(
+        'SELECT worth_it AS "worthIt" FROM quests WHERE id = $1 AND user_id = $2',
+        [questId, userId],
+      );
+      await tx.query('COMMIT');
+      return { worthIt: stored.rows[0].worthIt };
+    } catch (err) {
+      await tx.query('ROLLBACK');
+      throw err;
+    } finally {
+      tx.release();
+    }
+  }
+
   // A check-in counts only near the place (the rule and its messages: checkin.ts).
   private async checkGeofence(tx: PoolClient, attempt: CheckInAttempt, at?: CheckInPosition) {
     const { userId, questId } = attempt;
@@ -719,7 +770,7 @@ const QUEST_SELECT = `
   SELECT q.id::text, q.status, q.score::float8 AS score, q.reasons, q.created_at AS "createdAt",
          p.id::text AS "placeId", p.name, ST_Y(p.geom::geometry) AS lat, ST_X(p.geom::geometry) AS lng,
          p.categories[array_length(p.categories, 1)] AS category, p.tags,
-         p.website, p.instagram, p.phone,
+         p.website, p.instagram, p.phone, q.worth_it AS "worthIt",
          (SELECT CASE WHEN h.was_open IS TRUE THEN 'yes' WHEN h.was_open IS FALSE THEN 'no' ELSE 'didnt_check' END
           FROM place_hours_facts h WHERE h.quest_id = q.id) AS "wasOpen"
   FROM quests q JOIN places p ON p.id = q.place_id`;
@@ -740,6 +791,7 @@ interface QuestRow {
   instagram: string | null;
   phone: string | null;
   wasOpen: WasOpenAnswer | null;
+  worthIt: WorthItAnswer | null;
 }
 
 function toQuestView(r: QuestRow, lat: number, lng: number): QuestView {
@@ -751,6 +803,7 @@ function toQuestView(r: QuestRow, lat: number, lng: number): QuestView {
     createdAt: r.createdAt.toISOString(),
     place: toPlaceView({ ...r, id: r.placeId }, lat, lng),
     wasOpen: r.wasOpen,
+    worthIt: r.worthIt,
   };
 }
 

@@ -131,6 +131,18 @@ export async function demoTicket(): Promise<string> {
   return ticket;
 }
 
+/** POST /quests/:id/worth-it. The same refusals as was-open. */
+export async function postWorthIt(
+  api: <T>(path: string, init?: RequestInit) => Promise<T>,
+  questId: string,
+  answer: WorthItAnswer,
+): Promise<{ worthIt: WorthItAnswer }> {
+  return api<{ worthIt: WorthItAnswer }>(`/quests/${questId}/worth-it`, {
+    method: "POST",
+    body: JSON.stringify({ answer }),
+  });
+}
+
 /** POST /quests/:id/was-open. 404/405: an API without it. 409: a simulated (demo) check-in. */
 export async function postWasOpen(
   api: <T>(path: string, init?: RequestInit) => Promise<T>,
@@ -184,6 +196,8 @@ export interface OpenConfirmations {
 }
 /** One person's answer to "was it open?" after a check-in. */
 export type WasOpenAnswer = "yes" | "no" | "didnt_check";
+/** After a check-in: was it worth the walk? */
+export type WorthItAnswer = "yes" | "meh" | "no";
 
 export interface PlaceView {
   id: string;
@@ -222,6 +236,8 @@ export interface QuestView {
   place: PlaceView;
   /** This user's answer to "was it open?" for this quest; null or missing: not answered. */
   wasOpen?: WasOpenAnswer | null;
+  /** The answer to "worth it?"; null: not answered; missing: an API without the question. */
+  worthIt?: WorthItAnswer | null;
 }
 
 export interface DeckItem {

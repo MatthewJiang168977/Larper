@@ -41,6 +41,10 @@ const (
 	// says why, one more event carries skip_reason: SKIPPED for "Not my thing" (the usual
 	// skip penalty), NOT_TODAY for the other reasons.
 	QuestAction_QUEST_ACTION_NOT_TODAY QuestAction = 4
+	// "Worth it?" after a check-in: the strongest thing a user says about a place.
+	QuestAction_QUEST_ACTION_WORTH_IT_YES QuestAction = 5
+	QuestAction_QUEST_ACTION_WORTH_IT_MEH QuestAction = 6
+	QuestAction_QUEST_ACTION_WORTH_IT_NO  QuestAction = 7
 )
 
 // Enum value maps for QuestAction.
@@ -51,13 +55,19 @@ var (
 		2: "QUEST_ACTION_SKIPPED",
 		3: "QUEST_ACTION_COMPLETED",
 		4: "QUEST_ACTION_NOT_TODAY",
+		5: "QUEST_ACTION_WORTH_IT_YES",
+		6: "QUEST_ACTION_WORTH_IT_MEH",
+		7: "QUEST_ACTION_WORTH_IT_NO",
 	}
 	QuestAction_value = map[string]int32{
-		"QUEST_ACTION_UNSPECIFIED": 0,
-		"QUEST_ACTION_ACCEPTED":    1,
-		"QUEST_ACTION_SKIPPED":     2,
-		"QUEST_ACTION_COMPLETED":   3,
-		"QUEST_ACTION_NOT_TODAY":   4,
+		"QUEST_ACTION_UNSPECIFIED":  0,
+		"QUEST_ACTION_ACCEPTED":     1,
+		"QUEST_ACTION_SKIPPED":      2,
+		"QUEST_ACTION_COMPLETED":    3,
+		"QUEST_ACTION_NOT_TODAY":    4,
+		"QUEST_ACTION_WORTH_IT_YES": 5,
+		"QUEST_ACTION_WORTH_IT_MEH": 6,
+		"QUEST_ACTION_WORTH_IT_NO":  7,
 	}
 )
 
@@ -415,13 +425,16 @@ const file_larper_events_v1_events_proto_rawDesc = "" +
 	"\bquest_id\x18\x04 \x01(\tR\aquestId\x125\n" +
 	"\x04kind\x18\x05 \x01(\x0e2!.larper.events.v1.PlaceReportKindR\x04kind\x12;\n" +
 	"\voccurred_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"occurredAt*\x98\x01\n" +
+	"occurredAt*\xf4\x01\n" +
 	"\vQuestAction\x12\x1c\n" +
 	"\x18QUEST_ACTION_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15QUEST_ACTION_ACCEPTED\x10\x01\x12\x18\n" +
 	"\x14QUEST_ACTION_SKIPPED\x10\x02\x12\x1a\n" +
 	"\x16QUEST_ACTION_COMPLETED\x10\x03\x12\x1a\n" +
-	"\x16QUEST_ACTION_NOT_TODAY\x10\x04*\x93\x01\n" +
+	"\x16QUEST_ACTION_NOT_TODAY\x10\x04\x12\x1d\n" +
+	"\x19QUEST_ACTION_WORTH_IT_YES\x10\x05\x12\x1d\n" +
+	"\x19QUEST_ACTION_WORTH_IT_MEH\x10\x06\x12\x1c\n" +
+	"\x18QUEST_ACTION_WORTH_IT_NO\x10\a*\x93\x01\n" +
 	"\n" +
 	"SkipReason\x12\x1b\n" +
 	"\x17SKIP_REASON_UNSPECIFIED\x10\x00\x12\x1c\n" +

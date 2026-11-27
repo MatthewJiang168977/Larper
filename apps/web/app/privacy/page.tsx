@@ -23,7 +23,7 @@ const SERVICES: { name: string; what: string; collects: string[] }[] = [
       "Viewing the home page, trying the demo, finishing setup, and opening the journal.",
       "Being offered, accepting, skipping or setting aside a quest, plus the optional reason for setting it aside.",
       "Checking in, whether it went through, and whether it was a demo check-in.",
-      "Your answer (yes, no or didn't check) when Larper asks whether a place was open. Larper itself keeps that answer with the place, to show how many people confirmed it open; PostHog only gets the answer.",
+      "Your answer (yes, no or didn't check) when Larper asks whether a place was open. Larper itself keeps that answer with the place, to show how many people confirmed it open and to judge whether to keep offering it; PostHog only gets the answer.",
       "For quests: only the kind of place (say, “bakery”) and roughly how far it was (like “1–2 km”).",
       "Whether you're on the shared demo account, plus your browser, operating system, screen size and the page.",
       "No cookies or storage on your device, no account or email, and no recordings of the screen. Your IP address isn't kept and isn't used to locate you.",
@@ -45,7 +45,7 @@ const YOUR_DATA: { title: string; points: string[] }[] = [
   {
     title: "Download my data",
     points: [
-      "One JSON file with your Larper account record (its ID, Clerk ID and creation date), taste profile, quest journal with places, check-ins and check-in attempts, answers to “was it open?”, and saved places.",
+      "One JSON file with your Larper account record (its ID, Clerk ID and creation date), taste profile, quest journal with places, check-ins and check-in attempts, answers to “was it open?” and “worth it?”, what you reported about places (such as a check-in or a place being closed), and saved places.",
       "For open or accepted quests, the journal includes your precise location at the time of the offer if Larper still holds it. Check-in attempts include measurements such as distance and location accuracy.",
       "Find it under “your data” at the bottom of the journal.",
     ],
@@ -53,7 +53,7 @@ const YOUR_DATA: { title: string; points: string[] }[] = [
   {
     title: "Delete my history",
     points: [
-      "Removes your journal, check-ins and attempts, “was it open?” answers and saved places.",
+      "Removes your journal, check-ins and attempts, “was it open?” and “worth it?” answers, your reports about places and saved places.",
       "Keeps your account, your sign-in and your taste profile.",
     ],
   },

@@ -22,6 +22,10 @@ enum QuestAction {
   // says why, one more event carries skip_reason: SKIPPED for "Not my thing" (the usual
   // skip penalty), NOT_TODAY for the other reasons.
   QUEST_ACTION_NOT_TODAY = 4;
+  // "Worth it?" after a check-in: the strongest thing a user says about a place.
+  QUEST_ACTION_WORTH_IT_YES = 5;
+  QUEST_ACTION_WORTH_IT_MEH = 6;
+  QUEST_ACTION_WORTH_IT_NO = 7;
 }
 
 // Why a quest was set aside, when the user said (after "Not today").

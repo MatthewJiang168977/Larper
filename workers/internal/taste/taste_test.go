@@ -139,3 +139,24 @@ func TestActionsWithoutAStepLeaveTasteBitForBitUnchanged(t *testing.T) {
 		t.Fatal("SKIPPED left taste unchanged")
 	}
 }
+
+// "Worth it?" outweighs accepting and skipping, in both directions.
+func TestWorthItIsStrongerThanAcceptOrSkip(t *testing.T) {
+	step := func(a eventsv1.QuestAction) float64 {
+		b, ok := Step(a)
+		if !ok {
+			t.Fatalf("%v moves nothing", a)
+		}
+		return b
+	}
+	accept := step(eventsv1.QuestAction_QUEST_ACTION_ACCEPTED)
+	skip := -step(eventsv1.QuestAction_QUEST_ACTION_SKIPPED)
+	yes := step(eventsv1.QuestAction_QUEST_ACTION_WORTH_IT_YES)
+	meh := step(eventsv1.QuestAction_QUEST_ACTION_WORTH_IT_MEH)
+	no := step(eventsv1.QuestAction_QUEST_ACTION_WORTH_IT_NO)
+	for _, got := range []float64{yes, -meh, -no} {
+		if got <= accept || got <= skip {
+			t.Errorf("step %v is not stronger than accept %v and skip %v", got, accept, skip)
+		}
+	}
+}

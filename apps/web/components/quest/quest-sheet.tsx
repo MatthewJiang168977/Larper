@@ -3,7 +3,7 @@
 import { animate, motion, useDragControls, useMotionValue, useReducedMotion, type PanInfo } from "motion/react";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
-import type { DeckItem, PlaceView, QuestView, Reasons, WasOpenAnswer } from "@/lib/api";
+import type { DeckItem, PlaceView, QuestView, Reasons, WasOpenAnswer, WorthItAnswer } from "@/lib/api";
 import { formatDistance } from "@/lib/format";
 import { estimateWalk, walkLabel, type LatLng } from "@/lib/walk";
 import { telUrl, webUrl } from "@/lib/web-url";
@@ -12,6 +12,7 @@ import { DOCK_MIN_WIDTH_PX, DOCK_RESERVED_PX } from "./dock";
 import { fullHeight, offsetFor, resolveSnap, type Snap, snapForKey } from "./sheet-snap";
 import { PlaceHoursNote } from "./place-hours-note";
 import { WasOpenQuestion } from "./was-open-question";
+import { WorthItQuestion } from "./worth-it-question";
 import { humanize, whyLines } from "./why-lines";
 
 // "not-today" sets an accepted quest aside without counting against the place.
@@ -53,6 +54,12 @@ interface Props {
    * simulated check-in, already answered, an API without it). `answer` is what's saved.
    */
   wasOpen?: { answer: WasOpenAnswer | null; onAnswer: (answer: WasOpenAnswer) => Promise<void> } | null;
+  /** The optional "worth it?" beside it, on the same terms, and skippable. */
+  worthIt?: {
+    answer: WorthItAnswer | null;
+    onAnswer: (answer: WorthItAnswer) => Promise<void>;
+    onSkip: () => void;
+  } | null;
   /** Each snap the sheet goes to (and peek again as it goes away). */
   onSnapChange?: (snap: Snap) => void;
   /** Where the user is now. Distances and walking times are worked out from here as it moves. */
@@ -379,6 +386,7 @@ function Peek({
   onStampSlammed,
   onImpact,
   wasOpen,
+  worthIt,
   from,
 }: Props & { place: PlaceView; label: string; isQuest: boolean; onImpact: () => void }) {
   const done = isQuest && quest?.status === "completed";
@@ -408,6 +416,7 @@ function Peek({
       </div>
       {done && <DoneForToday demo={demo} />}
       {done && wasOpen && <WasOpenQuestion answer={wasOpen.answer} onAnswer={wasOpen.onAnswer} />}
+      {done && worthIt && <WorthItQuestion {...worthIt} />}
     </div>
   );
 }
