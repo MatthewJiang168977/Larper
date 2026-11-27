@@ -43,8 +43,7 @@ function records(csv: string): string[][] {
     else if (c === ',') {
       row.push(field);
       field = '';
-    } else if (c === '
-') {
+    } else if (c === '\n') {
       row.push(field);
       out.push(row);
       row = [];
