@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { PixelArt } from "@/components/larper-os/pixel-art";
 
 const timeFormat = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" });
 const dateFormat = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short" });
 
-/** "12:40 pm", and on wide screens "wed 25 nov · 12:40 pm": the visitor's own clock. */
+/** "wed 25 nov" and "12:40 pm": the visitor's own clock. */
 export function clockParts(now: Date) {
   return {
     date: dateFormat.format(now).replace(",", "").toLowerCase(),
@@ -25,24 +24,18 @@ function Clock() {
   }, []);
   if (!now) return null;
   const { date, time } = clockParts(now);
-  return (
-    <time className="larper-auth-clock" dateTime={now.toISOString()}>
-      <span className="larper-auth-clock-date">{date} · </span>{time}
-    </time>
-  );
+  return <time className="larper-auth-clock" dateTime={now.toISOString()}>{date} · {time}</time>;
 }
 
-// The signed-out menu bar. On sign-in there is no "sign in" item: the visitor is already there.
+// The signed-in app's menu bar (the quest screen's): the wordmark on the left. Here the
+// date and time sit on the right, and sign-up keeps a way to sign-in.
 export function AuthMenuBar({ page }: { page: "sign in" | "sign up" }) {
   return (
     <header className="larper-auth-menu">
-      <nav aria-label="main">
-        <Link href="/" className="larper-auth-logo" aria-label="larper home"><PixelArt name="logo" /></Link>
-        <Link href="/">larper</Link>
-      </nav>
+      <span className="larper-auth-brand">larper</span>
       <div>
         <Clock />
-        {page !== "sign in" && <Link href="/sign-in">sign in</Link>}
+        {page === "sign up" && <Link href="/sign-in" className="larper-auth-menu-link">sign in</Link>}
       </div>
     </header>
   );

@@ -4,7 +4,6 @@
 import { useSignIn } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { OSWindow } from "@/components/larper-os/primitives";
 import { setDemo, track } from "@/lib/analytics";
 import { ApiError, demoTicket, describeError } from "@/lib/api";
 import { demoEnabled } from "./demo-account";
@@ -79,26 +78,12 @@ export function TryDemoButton({
 }
 
 // For visitors without an invitation. Cream, not pool: sign-in's "continue" is the primary.
-function Demo({ text }: { text: string }) {
-  return (
-    <section aria-label="demo" className="larper-os-auth-demo">
-      <p>{text}</p>
-      <TryDemoButton className="larper-os-button" />
-    </section>
-  );
-}
-
-/** Under Clerk's form, on a phone. */
 export function DemoPanel({ signUpMode }: { signUpMode: string | undefined }) {
   if (!demoEnabled(signUpMode)) return null;
-  return <Demo text="just looking? the shared demo needs no password. everyone shares it." />;
-}
-
-/** Its own window beside sign-in, on a wide screen. */
-export function DemoWindow() {
   return (
-    <OSWindow title="just_looking.txt">
-      <Demo text="look around with the shared demo account. no password needed. everyone shares it." />
-    </OSWindow>
+    <section aria-label="demo" className="larper-os-auth-demo">
+      <p>just looking? try the shared demo, no account needed.</p>
+      <TryDemoButton className="larper-os-button" />
+    </section>
   );
 }

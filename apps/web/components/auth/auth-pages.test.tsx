@@ -10,13 +10,14 @@ const { SignIn, SignUp, ClerkLoading } = vi.hoisted(() => ({
   // Shown while clerk-js loads: rendered here as if it were still loading.
   ClerkLoading: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
+const mocked = vi.hoisted(() => ({ phase: "day" as string }));
 vi.mock("@clerk/nextjs", () => ({ SignIn, SignUp, ClerkLoading }));
 vi.mock("@/app/larper-os", () => ({ larperOsClassName: "larper-os" }));
 vi.mock("@/components/auth/try-demo", () => ({
   DemoPanel: ({ signUpMode }: { signUpMode?: string }) =>
     signUpMode === "restricted" ? <aside aria-label="demo" /> : null,
-  DemoWindow: () => <aside aria-label="demo window" />,
 }));
+vi.mock("@/components/map/map-daylight", () => ({ mapAppearanceAt: () => ({ phase: mocked.phase }) }));
 
 const { default: SignInPage } = await import("@/app/sign-in/[[...sign-in]]/page");
 const { default: SignUpPage } = await import("@/app/sign-up/[[...sign-up]]/page");
@@ -51,16 +52,34 @@ describe("sign-in and sign-up pages", () => {
   });
 
   it.each([
-    { Page: SignInPage, title: "sign_in.exe", form: "sign-in-form" },
-    { Page: SignUpPage, title: "new_account.exe", form: "sign-up-form" },
-  ])("renders Clerk's form in the $title window", ({ Page, title, form }) => {
+    { Page: SignInPage, title: "sign in", intro: "welcome back. today's quest is waiting.", form: "sign-in-form" },
+    { Page: SignUpPage, title: "new account", intro: "one quest a day, picked for you.", form: "sign-up-form" },
+  ])("$title: one window with the title, a one-line intro, then Clerk's form", ({ Page, title, intro, form }) => {
     render(<Page />);
     const main = screen.getByRole("main");
     const window = screen.getByRole("region", { name: title });
     expect(main.classList.contains("larper-os")).toBe(true);
-    expect(screen.getByText("side-quest edition")).toBeTruthy();
-    expect(main.contains(window)).toBe(true);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(title);
+    expect(title).not.toMatch(/\.exe/);
     expect(window.contains(screen.getByTestId(form))).toBe(true);
+    const line = screen.getByText(intro);
+    expect(window.contains(line)).toBe(true);
+    expect(line.compareDocumentPosition(screen.getByTestId(form)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Nothing from the old shell: no logon band, mini map, teaser, pins or flag.
+    expect(main.textContent).not.toMatch(/larper os 3\.1|side-quest edition|just_looking|signal:|today's quest:/);
+    expect(main.querySelector(".larper-auth-pin, .larper-auth-minimap, .larper-auth-band, canvas, .maplibregl-map")).toBeNull();
+  });
+
+  it("follows the sun: the page carries the phase the wallpaper uses, for the window's tint", async () => {
+    mocked.phase = "night";
+    try {
+      render(<SignInPage />);
+      expect(await screen.findByRole("main")).toBeTruthy();
+      expect(screen.getByRole("main").getAttribute("data-phase")).toBe("night");
+      expect(document.querySelector("img")?.getAttribute("src")).toBe("/wallpaper/night-phone.webp");
+    } finally {
+      mocked.phase = "day";
+    }
   });
 
   it("links to sign-in from the menu bar everywhere but sign-in itself", () => {
@@ -71,27 +90,18 @@ describe("sign-in and sign-up pages", () => {
     expect(screen.getByRole("link", { name: "sign in" }).getAttribute("href")).toBe("/sign-in");
   });
 
-  it("teases today's quest without saying anything about it", () => {
+  it("keeps the wallpaper out of the accessibility tree", () => {
     const { container } = render(<SignInPage />);
-    expect(screen.getAllByRole("img", { name: "hidden until you sign in" })).toHaveLength(2);
-    expect(container.textContent).toContain("sign in to see where");
-    expect(container.textContent).not.toMatch(/tea room|min walk/);
-  });
-
-  it("keeps the pins and the flag out of the accessibility tree, with no live map", () => {
-    const { container } = render(<SignInPage />);
-    for (const pin of container.querySelectorAll(".larper-auth-pin")) {
-      expect(pin.closest('[aria-hidden="true"]')).toBeTruthy();
-    }
-    expect(container.querySelector("canvas, .maplibregl-map")).toBeNull();
+    const wallpaper = container.querySelector(".larper-auth-wallpaper");
+    expect(wallpaper?.getAttribute("aria-hidden")).toBe("true");
+    expect(wallpaper?.querySelector("img")?.getAttribute("alt")).toBe("");
   });
 
   it("puts the restricted-mode demo after the sign-in form in the window", () => {
     vi.stubEnv("NEXT_PUBLIC_SIGNUP_MODE", "restricted");
     try {
       render(<SignInPage />);
-      const window = screen.getByRole("region", { name: "sign_in.exe" });
-      expect(window.contains(screen.getByRole("complementary", { name: "demo window" }))).toBe(false);
+      const window = screen.getByRole("region", { name: "sign in" });
       const demo = screen.getByRole("complementary", { name: "demo" });
       const form = screen.getByTestId("sign-in-form");
       expect(window.contains(demo)).toBe(true);
@@ -104,15 +114,25 @@ describe("sign-in and sign-up pages", () => {
   it.each([
     { Page: SignInPage, title: "sign in", loading: "loading sign-in…" },
     { Page: SignUpPage, title: "sign up", loading: "loading sign-up…" },
-  ])("$title: says it is loading while Clerk starts, and links privacy, terms and credits", ({ Page, loading }) => {
+  ])("$title: says it is loading while Clerk starts, and links privacy, terms and credits in the window's footer", ({ Page, title, loading }) => {
     render(<Page />);
     expect(screen.getAllByText(loading)).toHaveLength(1);
     expect(screen.getAllByRole("status")).toHaveLength(1);
+    const footer = screen.getByRole("region", { name: title === "sign in" ? "sign in" : "new account" }).querySelector("footer");
     const about = screen.getByRole("navigation", { name: "about larper" });
+    expect(footer?.contains(about)).toBe(true);
     for (const page of ["privacy", "terms", "credits"]) {
       const link = screen.getByRole("link", { name: page });
       expect(link.getAttribute("href")).toBe(`/${page}`);
       expect(about.contains(link)).toBe(true);
     }
+  });
+
+  it("credits the map in one line under the window, outside it", () => {
+    render(<SignInPage />);
+    const credit = screen.getByText(/^map ©/);
+    expect(credit.textContent).toBe("map © OpenStreetMap, OpenMapTiles");
+    expect(screen.getByRole("region", { name: "sign in" }).contains(credit)).toBe(false);
+    expect(screen.getByRole("link", { name: "OpenStreetMap" }).getAttribute("href")).toBe("https://www.openstreetmap.org/copyright");
   });
 });
