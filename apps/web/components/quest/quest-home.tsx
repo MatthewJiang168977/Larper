@@ -8,7 +8,7 @@ import { OSWindow } from "@/components/larper-os/primitives";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { avatarInitialsAppearance, larperOsAccountMenuAppearance, userProfileAppearance } from "@/components/auth/clerk-appearance";
+import { avatarInitialsAppearance, larperOsAccountMenuAppearance } from "@/components/auth/clerk-appearance";
 import { DemoAccountMenu } from "@/components/auth/demo-account-menu";
 import "@/components/auth/larper-os-account-menu.css";
 import { useLocation, type Located } from "@/hooks/use-location";
@@ -90,7 +90,9 @@ export function QuestHome() {
   const location = useLocation();
   const userButton = useMemo(() => ({
     appearance: userButtonAppearance(user),
-    userProfileProps: { appearance: userProfileAppearance(user) },
+    // "manage account" opens the account page (an OS window), not Clerk's modal.
+    userProfileMode: "navigation" as const,
+    userProfileUrl: "/account",
   }), [user]);
   return (
     <QuestScreen

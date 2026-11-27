@@ -63,6 +63,7 @@
 }
 
 .larper-auth-menu-link:hover { background: var(--larper-os-butter); }
+.larper-auth-menu-link[aria-current="page"] { background: var(--larper-os-ink); color: var(--larper-os-window); }
 
 .larper-auth-clock {
   white-space: nowrap;

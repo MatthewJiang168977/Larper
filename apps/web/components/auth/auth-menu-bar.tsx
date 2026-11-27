@@ -27,15 +27,20 @@ function Clock() {
   return <time className="larper-auth-clock" dateTime={now.toISOString()}>{date} · {time}</time>;
 }
 
-// The signed-in app's menu bar (the quest screen's): the wordmark on the left. Here the
-// date and time sit on the right, and sign-up keeps a way to sign-in.
-export function AuthMenuBar({ page }: { page: "sign in" | "sign up" }) {
+// The signed-in app's menu bar (the quest screen's): the wordmark on the left. Here the date and
+// time sit on the right, and sign-up keeps a way to sign-in. The account window is signed in:
+// journal beside the wordmark, and "me" as where you are.
+export function AuthMenuBar({ page }: { page: "sign in" | "sign up" | "account" }) {
   return (
     <header className="larper-auth-menu">
-      <span className="larper-auth-brand">larper</span>
+      <div>
+        <span className="larper-auth-brand">larper</span>
+        {page === "account" && <Link href="/journal" className="larper-auth-menu-link">journal</Link>}
+      </div>
       <div>
         <Clock />
         {page === "sign up" && <Link href="/sign-in" className="larper-auth-menu-link">sign in</Link>}
+        {page === "account" && <Link href="/account" className="larper-auth-menu-link" aria-current="page">me</Link>}
       </div>
     </header>
   );
