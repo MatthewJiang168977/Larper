@@ -163,7 +163,6 @@ describeDb('place reliability (real database)', () => {
     expect((await owner.query('SELECT stale FROM place_reliability WHERE place_id = $1', [id])).rows).toEqual([{ stale: true }]);
   });
 
-<<<<<<< HEAD
   it('stores the first "worth it?" answer, tells the taste worker once, exports it, and deletes it with history', async () => {
     const at = spot();
     await place(at, 'Worth Spot');
@@ -192,7 +191,8 @@ describeDb('place reliability (real database)', () => {
     await quests.act(u, quest.id, 'accept');
     await quests.act(u, quest.id, 'complete', { lat: 0, lng: 0, accuracyM: 5 }, true);
     await expect(quests.worthIt(u, quest.id, 'yes')).rejects.toThrow('simulated');
-=======
+  });
+
   // Deletions lock the shared place_reliability rows: in one order, or two of them deadlock.
   it('lets two people sharing many places delete their history at once, and keeps suspensions', async () => {
     const at = spot();
@@ -220,6 +220,5 @@ describeDb('place reliability (real database)', () => {
       );
       expect(rows[0].n).toBe(places.length);
     }
->>>>>>> feat/reliability-loop
   });
 });
