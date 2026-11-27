@@ -32,7 +32,7 @@ function records(csv: string): string[][] {
   let row: string[] = [];
   let field = '';
   let quoted = false;
-  const text = csv.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+  const text = csv.replace(/^FEFF/, '').replace(/\r\n/g, '\n');
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     if (quoted) {
