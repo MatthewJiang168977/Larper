@@ -13,7 +13,7 @@ import { DemoAccountMenu } from "@/components/auth/demo-account-menu";
 import "@/components/auth/larper-os-account-menu.css";
 import { useLocation, type Located } from "@/hooks/use-location";
 import { type CheckinResult, questProps, setDemo, track } from "@/lib/analytics";
-import { ApiError, describeError, postWasOpen, useApi, type DeckItem, type Me, type QuestView, type SkipReason, type Today, type WasOpenAnswer } from "@/lib/api";
+import { ApiError, describeError, postWasOpen, useApi, type DeckItem, type Me, type QuestView, type SkipReason, type Today, type WasOpenAnswer, type WorthItAnswer, postWorthIt } from "@/lib/api";
 import { DEMO_MIDTOWN, DEMO_SPOT } from "@/lib/demo-spot";
 import { getPreciseFix } from "@/lib/precise-fix";
 import { formatDistance } from "@/lib/format";
@@ -135,6 +135,8 @@ export function QuestScreen({ api, location, renderAccountControl, previewContro
   // "Was it open?" this visit, by quest: the answer sent, or "off" where it mustn't be
   // asked (a simulated check-in; an API that has no such call).
   const [wasOpenLocal, setWasOpenLocal] = useState<Record<string, WasOpenAnswer | "off">>({});
+  // The same for "worth it?"; "off" also once skipped.
+  const [worthItLocal, setWorthItLocal] = useState<Record<string, WorthItAnswer | "off">>({});
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<{ text: string; retry: (() => void) | null } | null>(null);
   const [fixing, setFixing] = useState(false);
@@ -367,7 +369,10 @@ export function QuestScreen({ api, location, renderAccountControl, previewContro
       if (action === "complete") track("checkin_attempted", { result: "checked_in", simulated: !!res?.simulated });
       if (action === "not-today") setSetAside(questId);
       if (action === "complete") {
-        if (res?.simulated) setWasOpenLocal((s) => ({ ...s, [questId]: "off" }));
+        if (res?.simulated) {
+          setWasOpenLocal((s) => ({ ...s, [questId]: "off" }));
+          setWorthItLocal((s) => ({ ...s, [questId]: "off" }));
+        }
         setCheckIn(checkedIn(placeName, res));
         setFinished({ ...quest, status: "completed" });
         setStampSlam(true);
@@ -409,6 +414,19 @@ export function QuestScreen({ api, location, renderAccountControl, previewContro
     setWasOpenLocal((s) => ({ ...s, [questId]: answer }));
   };
 
+  const answerWorthIt = async (questId: string, answer: WorthItAnswer) => {
+    try {
+      await postWorthIt(api, questId, answer);
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 404 || e.status === 405 || e.status === 409)) {
+        setWorthItLocal((s) => ({ ...s, [questId]: "off" }));
+        return;
+      }
+      throw e;
+    }
+    setWorthItLocal((s) => ({ ...s, [questId]: answer }));
+  };
+
   const giveReason = async (reason: SkipReason) => {
     if (!setAside) return;
     setBusy(true);
@@ -447,6 +465,17 @@ export function QuestScreen({ api, location, renderAccountControl, previewContro
   const wasOpen =
     quest?.status === "completed" && me && !me.demo && local !== "off" && (local || quest.wasOpen === null)
       ? { answer: local ?? null, onAnswer: (a: WasOpenAnswer) => answerWasOpen(quest.id, a) }
+      : null;
+  // Not asked once they've said it wasn't open: there was nothing to rate.
+  const worthLocal = quest ? worthItLocal[quest.id] : undefined;
+  const closed = local === "no" || quest?.wasOpen === "no";
+  const worthIt =
+    quest?.status === "completed" && me && !me.demo && !closed && worthLocal !== "off" && (worthLocal || quest.worthIt === null)
+      ? {
+          answer: worthLocal ?? null,
+          onAnswer: (a: WorthItAnswer) => answerWorthIt(quest.id, a),
+          onSkip: () => setWorthItLocal((s) => ({ ...s, [quest.id]: "off" })),
+        }
       : null;
   const deck: DeckItem[] = finished ? [] : (today?.deck ?? []);
   const selected = finished ? null : selectedId;
@@ -639,6 +668,7 @@ export function QuestScreen({ api, location, renderAccountControl, previewContro
           onDismissNote={() => setCheckIn(null)}
           demo={me?.demo}
           wasOpen={wasOpen}
+          worthIt={worthIt}
           stampSlam={stampSlam}
           onStampSlammed={() => setStampSlam(false)}
           onSnapChange={onSnapChange}

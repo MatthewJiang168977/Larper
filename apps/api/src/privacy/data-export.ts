@@ -66,6 +66,9 @@ export interface JournalEntry {
   /** Where you were when it was offered. Null once the offer is resolved (it is dropped then). */
   offeredFrom: { lat: number; lng: number } | null;
   place: PlaceRef;
+  /** Your answer to "worth it?" after checking in, and when. */
+  worthIt: string | null;
+  worthItAt: string | null;
 }
 export interface CheckInEntry {
   questId: string;
@@ -121,6 +124,8 @@ type QuestRow = PlaceCols & {
   completed_at: Date | null;
   origin_lat: number | null;
   origin_lng: number | null;
+  worth_it: string | null;
+  worth_it_at: Date | null;
 };
 type AttemptRow = {
   quest_id: string | null;
@@ -167,7 +172,7 @@ export class DataExportService {
         `SELECT q.id::text, q.status, q.skip_reason, q.score::float8 AS score, q.rarity::float8 AS rarity,
                 q.reasons - 'simulated' AS reasons,
                 coalesce((q.reasons->>'simulated')::boolean, false) AS simulated,
-                q.created_at, q.updated_at, q.accepted_at, q.completed_at,
+                q.created_at, q.updated_at, q.accepted_at, q.completed_at, q.worth_it, q.worth_it_at,
                 ST_Y(q.origin::geometry) AS origin_lat, ST_X(q.origin::geometry) AS origin_lng, ${PLACE_COLS}
          FROM quests q JOIN places p ON p.id = q.place_id
          WHERE q.user_id = $1 ORDER BY q.created_at DESC, q.id DESC`,
@@ -246,6 +251,8 @@ export class DataExportService {
         completedAt: iso(r.completed_at),
         offeredFrom: r.origin_lat === null ? null : { lat: r.origin_lat, lng: r.origin_lng! },
         place: place(r),
+        worthIt: r.worth_it,
+        worthItAt: iso(r.worth_it_at),
       })),
       checkIns: {
         completed: quests.rows

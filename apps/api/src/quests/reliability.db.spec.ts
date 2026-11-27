@@ -4,7 +4,7 @@ import type { CacheService } from '../cache/cache.service';
 import { CurationService } from '../curation/curation.service';
 import { createPool } from '../db/db.module';
 import { assertDisposableDatabase } from '../db/test-guard';
-import { PlaceReportKind, PlaceReportSchema } from '../gen/larper/events/v1/events_pb';
+import { PlaceReportKind, PlaceReportSchema, QuestAction, QuestEventSchema } from '../gen/larper/events/v1/events_pb';
 import { DataExportService } from '../privacy/data-export';
 import type { TagsService } from '../profile/tags.service';
 import type { AreasService } from './areas.service';
@@ -161,6 +161,36 @@ describeDb('place reliability (real database)', () => {
     await pool.query('SELECT delete_my_history($1)', [u]);
     expect((await owner.query('SELECT 1 FROM place_reports WHERE place_id = $1', [id])).rowCount).toBe(0);
     expect((await owner.query('SELECT stale FROM place_reliability WHERE place_id = $1', [id])).rows).toEqual([{ stale: true }]);
+  });
+
+  it('stores the first "worth it?" answer, tells the taste worker once, exports it, and deletes it with history', async () => {
+    const at = spot();
+    await place(at, 'Worth Spot');
+    const u = await user();
+    const quest = await checkIn(u, at);
+    const before = (await owner.query('SELECT updated_at FROM quests WHERE id = $1', [quest.id])).rows[0].updated_at;
+    await expect(quests.worthIt(u, quest.id, 'meh')).resolves.toEqual({ worthIt: 'meh' });
+    await expect(quests.worthIt(u, quest.id, 'yes')).resolves.toEqual({ worthIt: 'meh' });
+    const events = (await owner.query<{ payload: Buffer }>('SELECT payload FROM outbox WHERE key = $1 AND type = $2 ORDER BY id', [u, QuestEventSchema.typeName])).rows
+      .map((r) => fromBinary(QuestEventSchema, r.payload).action);
+    expect(events).toEqual([QuestAction.ACCEPTED, QuestAction.COMPLETED, QuestAction.WORTH_IT_MEH]);
+    expect((await owner.query('SELECT updated_at FROM quests WHERE id = $1', [quest.id])).rows[0].updated_at).toEqual(before);
+    const tags = { ready: async () => undefined, tagOf: () => undefined } as unknown as TagsService;
+    const out = await new DataExportService(pool, tags).export(u);
+    expect(out.journal[0]).toMatchObject({ worthIt: 'meh', worthItAt: expect.any(String) });
+    await pool.query('SELECT delete_my_history($1)', [u]);
+    expect((await owner.query('SELECT 1 FROM quests WHERE user_id = $1', [u])).rowCount).toBe(0);
+  });
+
+  it('refuses "worth it?" before a check-in or for a simulated one', async () => {
+    const at = spot();
+    await place(at, 'Early Spot');
+    const u = await user();
+    const quest = await offered(u, at);
+    await expect(quests.worthIt(u, quest.id, 'yes')).rejects.toThrow('only a quest you checked in at');
+    await quests.act(u, quest.id, 'accept');
+    await quests.act(u, quest.id, 'complete', { lat: 0, lng: 0, accuracyM: 5 }, true);
+    await expect(quests.worthIt(u, quest.id, 'yes')).rejects.toThrow('simulated');
   });
 
   // Deletions lock the shared place_reliability rows: in one order, or two of them deadlock.
