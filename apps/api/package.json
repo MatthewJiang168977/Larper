@@ -6,6 +6,7 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "start:dev": "tsc-watch -p tsconfig.build.json --onSuccess \"node dist/main.js\"",
+    "eval": "tsc -p tsconfig.build.json && node dist/eval/cli.js",
     "test": "jest",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json"
