@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { larperOsClassName } from "@/app/larper-os";
 import { OSWindow } from "@/components/larper-os/primitives";
 import { AuthMenuBar } from "./auth-menu-bar";
-import { AuthWallpaper } from "./auth-wallpaper";
+import { AuthRoot } from "./auth-wallpaper";
 import "./larper-os-auth.css";
 import "./larper-os-account-window.css";
 
@@ -10,8 +10,7 @@ import "./larper-os-account-window.css";
 // phone), with the menu bar in reach. Not a modal: nothing is dimmed.
 export function AccountFrame({ children }: { children: ReactNode }) {
   return (
-    <main className={`${larperOsClassName} larper-os-auth larper-account`}>
-      <AuthWallpaper />
+    <AuthRoot className={`${larperOsClassName} larper-os-auth larper-account`}>
       <AuthMenuBar page="account" />
       <p className="larper-account-credit">
         map © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>,{" "}
@@ -26,6 +25,6 @@ export function AccountFrame({ children }: { children: ReactNode }) {
           {children}
         </OSWindow>
       </div>
-    </main>
+    </AuthRoot>
   );
 }

@@ -26,13 +26,49 @@ describe("wallpaper stills", () => {
   });
 });
 
-describe("the demo's two places", () => {
-  it("shows under the form below 1024px, and beside the window from there up", () => {
-    const [narrow, wide] = css.split("@media (min-width: 1024px)");
-    expect(narrow).toMatch(/\.larper-auth-demo-window \{ display: none; \}/);
-    expect(narrow).not.toMatch(/\.larper-os-auth-demo \{ display: none/);
-    expect(wide).toMatch(/\.larper-auth-form > \.larper-os-auth-demo \{ display: none; \}/);
-    expect(wide).toMatch(/grid-template-columns: minmax\(0, 760px\) 300px/);
+const osCss = readFileSync(join(web, "app/larper-os.css"), "utf8");
+
+const luminance = (hex: string) => {
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const v = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const contrast = (a: string, b: string) => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+};
+const token = (name: string) => {
+  const m = osCss.match(new RegExp(`--${name}:\\s*(#[0-9a-f]{6})`, "i"));
+  if (!m) throw new Error(`missing token --${name}`);
+  return m[1];
+};
+
+describe("the window's tint for the time of day", () => {
+  it.each(WALLPAPER_PHASES)("%s: ink, links and muted text hold 4.5:1 on its tint", (phase) => {
+    const tint = token(`larper-os-tint-${phase}`);
+    for (const ink of ["larper-os-ink", "larper-os-red", "larper-os-disabled-ink"]) {
+      expect(contrast(token(ink), tint), ink).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("is a light tint everywhere, night included", () => {
+    for (const phase of WALLPAPER_PHASES) expect(luminance(token(`larper-os-tint-${phase}`)), phase).toBeGreaterThan(0.7);
+  });
+
+  it("starts as the day's tint, then follows data-phase", () => {
+    expect(css).toMatch(/\.larper-os-auth \{\s*--larper-auth-tint: var\(--larper-os-tint-day\);/);
+    for (const phase of ["dawn", "golden", "dusk", "night"]) {
+      expect(css).toContain(`.larper-os-auth[data-phase="${phase}"] { --larper-auth-tint: var(--larper-os-tint-${phase}); }`);
+    }
+    expect(css).toMatch(/\.larper-auth-page \.larper-os-window \{ background: var\(--larper-auth-tint\); \}/);
+  });
+});
+
+describe("one column, with nothing made up", () => {
+  it("has no side pane, pins, flag, band, teaser or second window in the stylesheet", () => {
+    expect(css).not.toMatch(/minimap|larper-auth-pin|larper-auth-flag|larper-auth-band|teaser|redacted|demo-window|larper-auth-split|larper-auth-pane|usericon/);
   });
 });
 

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api";
-import { DemoPanel, DemoWindow, demoError, TryDemoButton } from "./try-demo";
+import { DemoPanel, demoError, TryDemoButton } from "./try-demo";
 
 // Clerk's signal-based sign-in, faked: ticket() completes (or fails), finalize() navigates.
 const signIn = {
@@ -98,10 +98,10 @@ describe("DemoPanel", () => {
     expect(container.textContent?.toLowerCase()).not.toContain("password:");
   });
 
-  it("has its own window for wide screens", () => {
-    render(<DemoWindow />);
-    const demoWindow = screen.getByRole("region", { name: "just_looking.txt" });
-    expect(within(demoWindow).getByRole("button", { name: "try the demo" })).toBeTruthy();
+  it("says it needs no account, in one line above the button", () => {
+    render(<DemoPanel signUpMode="restricted" />);
+    const panel = screen.getByRole("region", { name: "demo" });
+    expect(panel.textContent).toBe("just looking? try the shared demo, no account needed.try the demo");
   });
 
   it("uses the same labels while redeeming the demo ticket", async () => {

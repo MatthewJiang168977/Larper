@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { PixelArt } from "@/components/larper-os/pixel-art";
 
 const timeFormat = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" });
 const dateFormat = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short" });
 
-/** "12:40 pm", and on wide screens "wed 25 nov · 12:40 pm": the visitor's own clock. */
+/** "wed 25 nov" and "12:40 pm": the visitor's own clock. */
 export function clockParts(now: Date) {
   return {
     date: dateFormat.format(now).replace(",", "").toLowerCase(),
@@ -25,27 +24,23 @@ function Clock() {
   }, []);
   if (!now) return null;
   const { date, time } = clockParts(now);
-  return (
-    <time className="larper-auth-clock" dateTime={now.toISOString()}>
-      <span className="larper-auth-clock-date">{date} · </span>{time}
-    </time>
-  );
+  return <time className="larper-auth-clock" dateTime={now.toISOString()}>{date} · {time}</time>;
 }
 
-// The menu bar over the wallpaper. On sign-in there is no "sign in" item: the visitor is already
-// there. The account window is signed in: journal, and "me" as where you are.
+// The signed-in app's menu bar (the quest screen's): the wordmark on the left. Here the date and
+// time sit on the right, and sign-up keeps a way to sign-in. The account window is signed in:
+// journal beside the wordmark, and "me" as where you are.
 export function AuthMenuBar({ page }: { page: "sign in" | "sign up" | "account" }) {
   return (
     <header className="larper-auth-menu">
-      <nav aria-label="main">
-        <Link href="/" className="larper-auth-logo" aria-label="larper home"><PixelArt name="logo" /></Link>
-        <Link href="/">larper</Link>
-        {page === "account" && <Link href="/journal">journal</Link>}
-      </nav>
+      <div>
+        <span className="larper-auth-brand">larper</span>
+        {page === "account" && <Link href="/journal" className="larper-auth-menu-link">journal</Link>}
+      </div>
       <div>
         <Clock />
-        {page === "sign up" && <Link href="/sign-in">sign in</Link>}
-        {page === "account" && <Link href="/account" aria-current="page">me</Link>}
+        {page === "sign up" && <Link href="/sign-in" className="larper-auth-menu-link">sign in</Link>}
+        {page === "account" && <Link href="/account" className="larper-auth-menu-link" aria-current="page">me</Link>}
       </div>
     </header>
   );
