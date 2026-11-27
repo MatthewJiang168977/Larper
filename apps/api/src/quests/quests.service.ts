@@ -13,8 +13,9 @@ import { Pool, PoolClient } from 'pg';
 import { CacheService } from '../cache/cache.service';
 import { loadInsiderNotes, loadRejected, type InsiderNote } from '../curation/place-facts';
 import { PG } from '../db/db.module';
-import { enqueueQuestEvent } from '../events/outbox';
-import { QuestAction as EventAction, SkipReason as EventSkipReason } from '../gen/larper/events/v1/events_pb';
+import { enqueuePlaceReport, enqueueQuestEvent } from '../events/outbox';
+import { PlaceReportKind, QuestAction as EventAction, SkipReason as EventSkipReason } from '../gen/larper/events/v1/events_pb';
+import { watchExcludedPlaces } from '../metrics/metrics';
 import { TagsService } from '../profile/tags.service';
 import { AreasService } from './areas.service';
 import { attemptParams, CheckInAttempt, checkInLogLine, judgeCheckIn, RECORD_ATTEMPT_SQL, rejection } from './checkin';
@@ -30,6 +31,7 @@ import {
   passesHoursRule,
 } from './eligibility';
 import { cellOf, cellsCovering, haversineM } from './geo';
+import { applyReliability, loadReliability } from './reliability';
 import { AreaStats, Candidate, mmr, Reasons, score, Scored, weightsFromEnv } from './scoring';
 import { QuestAction, QuestStatus, REOFFER_AFTER_DAYS, SkipReason, TRANSITIONS } from './transitions';
 
@@ -185,7 +187,10 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
     // The curator's "closed" and "bad fit", applied after the cache like the exclusions, so a
     // tap takes effect on the next request.
     const rejected = await loadRejected(this.pg, unseen.map((p) => p.id));
-    const candidates = unseen.filter((p) => !rejected.has(p.id));
+    // Then what people reported (place_reliability): suspended places go, doubtful ones drop
+    // down. Also after the cache, so a report takes effect on the next request.
+    const kept = unseen.filter((p) => !rejected.has(p.id));
+    const candidates = applyReliability(kept, await loadReliability(this.pg, kept.map((p) => p.id)), now);
     const eveningRule = this.gate.eveningUnknownHours && isEveningInNyc(now);
     const schedules = eveningRule ? await loadRegularSchedules(this.pg, candidates.map((p) => p.id), now) : null;
     const deck = mmr(
@@ -269,6 +274,11 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
         );
       }
       await enqueueQuestEvent(tx, { userId, questId, placeId: rows[0].placeId, action: EVENT_ACTION[action] });
+      // A real check-in says the place was there. Not the shared demo account's, nor a
+      // simulated one: nobody went.
+      if (action === 'complete' && !demo && !checkIn?.simulated) {
+        await enqueuePlaceReport(tx, { userId, questId, placeId: rows[0].placeId, kind: PlaceReportKind.CHECKED_IN });
+      }
       await tx.query('COMMIT');
       // A simulated demo check-in keeps the geofence's own outcome on record.
       if (checkIn && !checkIn.simulated) checkIn.outcome = 'accepted';
@@ -318,6 +328,12 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
   // from before and anything a path missed.
   private pruneTimer?: NodeJS.Timeout;
   onModuleInit() {
+    watchExcludedPlaces(async () => {
+      const { rows } = await this.pg.query<{ n: number }>(
+        'SELECT count(*)::int AS n FROM place_reliability WHERE suspended_at IS NOT NULL',
+      );
+      return rows[0].n;
+    });
     const prune = () =>
       Promise.resolve()
         .then(() => this.pg.query<{ n: string }>('SELECT prune_checkin_attempts() AS n'))
@@ -348,7 +364,7 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
   // After "Not today": the one reason the user gives, if any. "Not my thing" is a real
   // skip (a SKIPPED event, which taste-worker turns into the usual penalty); the other
   // reasons are only recorded. Either way the event carries the reason.
-  async giveReason(userId: string, questId: string, reason: SkipReason) {
+  async giveReason(userId: string, questId: string, reason: SkipReason, demo = false) {
     const tx = await this.pg.connect();
     try {
       await tx.query('BEGIN');
@@ -379,6 +395,9 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
         action: eventActionForReason(reason),
         skipReason: EVENT_SKIP_REASON[reason],
       });
+      if (reason === 'closed' && !demo) {
+        await enqueuePlaceReport(tx, { userId, questId, placeId: rows[0].placeId, kind: PlaceReportKind.SKIPPED_CLOSED });
+      }
       await tx.query('COMMIT');
       return { id: questId, status: 'skipped' as const, reason };
     } catch (err) {
@@ -392,8 +411,8 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
   // After a check-in: "was it open?". Stored as a hours fact (source 'check-in', migration 0018),
   // one per quest, and the FIRST answer stands: a repeat call changes nothing and returns it.
   // The place, the user and the time come from the quest row, never from the request. Nobody
-  // went on a simulated demo check-in, so it has nothing to say. A "no" is only recorded:
-  // nothing reacts to it yet (no event, no taste, no effect on the schedule).
+  // went on a simulated demo check-in, so it has nothing to say. A first yes or no is also a
+  // PlaceReport for the place's reliability score; it moves no taste and no schedule.
   async wasOpen(userId: string, questId: string, answer: WasOpenAnswer): Promise<{ wasOpen: WasOpenAnswer }> {
     requireObserver(userId); // an observation always has a user (also a CHECK in migration 0019)
     const tx = await this.pg.connect();
@@ -411,12 +430,16 @@ export class QuestsService implements OnModuleInit, OnModuleDestroy {
       if (q.status !== 'completed') throw new ConflictException('only a quest you checked in at can be asked about');
       if (q.simulated) throw new ConflictException('a simulated check-in has no answer: nobody went');
 
-      await tx.query(
+      const inserted = await tx.query(
         `INSERT INTO place_hours_facts (place_id, kind, source, fetched_at, confidence, was_open, quest_id, user_id)
          VALUES ($1, 'observation', 'check-in', $2, $3::real, $4::boolean, $5, $6)
          ON CONFLICT (quest_id) WHERE quest_id IS NOT NULL DO NOTHING`,
         [q.placeId, q.at, answer === 'didnt_check' ? 0 : 0.9, answer === 'didnt_check' ? null : answer === 'yes', questId, userId],
       );
+      if (inserted.rowCount && answer !== 'didnt_check') {
+        const kind = answer === 'yes' ? PlaceReportKind.CONFIRMED_OPEN : PlaceReportKind.WASNT_OPEN;
+        await enqueuePlaceReport(tx, { userId, questId, placeId: q.placeId, kind, at: q.at });
+      }
       const stored = await tx.query<{ wasOpen: boolean | null }>(
         'SELECT was_open AS "wasOpen" FROM place_hours_facts WHERE quest_id = $1 AND user_id = $2',
         [questId, userId],

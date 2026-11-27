@@ -75,7 +75,7 @@ describeDb('Not today and skip reasons (real database)', () => {
     ).rows[0];
   // The user's events, oldest first, decoded as taste-worker would.
   const events = async () =>
-    (await owner.query<{ payload: Buffer }>('SELECT payload FROM outbox WHERE key = $1 ORDER BY id', [userId])).rows.map(
+    (await owner.query<{ payload: Buffer }>('SELECT payload FROM outbox WHERE key = $1 AND type = $2 ORDER BY id', [userId, QuestEventSchema.typeName])).rows.map(
       (r) => fromBinary(QuestEventSchema, r.payload),
     );
 
@@ -324,7 +324,7 @@ describeDb('Not today is never a dislike (real database)', () => {
     ).rows[0].id;
   };
   const actions = async () =>
-    (await owner.query<{ payload: Buffer }>('SELECT payload FROM outbox WHERE key = $1 ORDER BY id', [userId])).rows.map(
+    (await owner.query<{ payload: Buffer }>('SELECT payload FROM outbox WHERE key = $1 AND type = $2 ORDER BY id', [userId, QuestEventSchema.typeName])).rows.map(
       (r) => fromBinary(QuestEventSchema, r.payload).action,
     );
 

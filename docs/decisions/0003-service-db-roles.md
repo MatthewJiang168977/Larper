@@ -32,6 +32,11 @@ stays the owner: it alone runs DDL, and only the migrate Job logs in as it.
 | `checkin_attempts` | I (+ EXECUTE `prune_checkin_attempts()`) | | | |
 | `TEMPORARY` on the database | | | | yes (revoked from PUBLIC) |
 
+Added since: `larper_reliability` (migration 0024, `reliability-worker`) has SELECT and INSERT on
+`place_reports`, SELECT, INSERT and UPDATE on `place_reliability`, INSERT on `processed_events`,
+and EXECUTE on `lock_user_quest`. `larper_api` reads the two tables. `apps/api/src/db/roles.db.spec.ts`
+holds the full matrix.
+
 Two more login roles, outside the services: `larper_backup_check` (the hourly backup
 check, no grant at all) and `larper_demo_reset` (migrations 0012 and 0013, the public
 demo's nightly reset: S on `users` and `tags`, S D on `quests`, S I U on

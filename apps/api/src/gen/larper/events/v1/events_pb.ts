@@ -3,7 +3,8 @@
 /* eslint-disable */
 
 // Events on the `user.events` topic. Producers: the API, via the transactional
-// outbox. Consumers: taste-worker (and later stats/analytics).
+// outbox. Consumers: taste-worker (QuestEvent) and reliability-worker (PlaceReport); each
+// ignores the other types, by the record header "type".
 //
 // Compatibility rules (buf breaking enforces them): never reuse or renumber a
 // field, only add new ones. Consumers must ignore unknown fields and enum values.
@@ -18,7 +19,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file larper/events/v1/events.proto.
  */
 export const file_larper_events_v1_events: GenFile = /*@__PURE__*/
-  fileDesc("Ch1sYXJwZXIvZXZlbnRzL3YxL2V2ZW50cy5wcm90bxIQbGFycGVyLmV2ZW50cy52MSLmAQoKUXVlc3RFdmVudBIQCghldmVudF9pZBgBIAEoCRIPCgd1c2VyX2lkGAIgASgJEhAKCHF1ZXN0X2lkGAMgASgJEhAKCHBsYWNlX2lkGAQgASgJEi0KBmFjdGlvbhgFIAEoDjIdLmxhcnBlci5ldmVudHMudjEuUXVlc3RBY3Rpb24SLwoLb2NjdXJyZWRfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjEKC3NraXBfcmVhc29uGAcgASgOMhwubGFycGVyLmV2ZW50cy52MS5Ta2lwUmVhc29uKpgBCgtRdWVzdEFjdGlvbhIcChhRVUVTVF9BQ1RJT05fVU5TUEVDSUZJRUQQABIZChVRVUVTVF9BQ1RJT05fQUNDRVBURUQQARIYChRRVUVTVF9BQ1RJT05fU0tJUFBFRBACEhoKFlFVRVNUX0FDVElPTl9DT01QTEVURUQQAxIaChZRVUVTVF9BQ1RJT05fTk9UX1RPREFZEAQqkwEKClNraXBSZWFzb24SGwoXU0tJUF9SRUFTT05fVU5TUEVDSUZJRUQQABIcChhTS0lQX1JFQVNPTl9OT1RfTVlfVEhJTkcQARIXChNTS0lQX1JFQVNPTl9UT09fRkFSEAISGQoVU0tJUF9SRUFTT05fTk9UX1RPREFZEAMSFgoSU0tJUF9SRUFTT05fQ0xPU0VEEARCTFpKZ2l0aHViLmNvbS9NYXR0aGV3SmlhbmcxNjg5NzcvbGFycGVyL3dvcmtlcnMvZ2VuL2xhcnBlci9ldmVudHMvdjE7ZXZlbnRzdjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
+  fileDesc("Ch1sYXJwZXIvZXZlbnRzL3YxL2V2ZW50cy5wcm90bxIQbGFycGVyLmV2ZW50cy52MSLmAQoKUXVlc3RFdmVudBIQCghldmVudF9pZBgBIAEoCRIPCgd1c2VyX2lkGAIgASgJEhAKCHF1ZXN0X2lkGAMgASgJEhAKCHBsYWNlX2lkGAQgASgJEi0KBmFjdGlvbhgFIAEoDjIdLmxhcnBlci5ldmVudHMudjEuUXVlc3RBY3Rpb24SLwoLb2NjdXJyZWRfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjEKC3NraXBfcmVhc29uGAcgASgOMhwubGFycGVyLmV2ZW50cy52MS5Ta2lwUmVhc29uIrYBCgtQbGFjZVJlcG9ydBIQCghldmVudF9pZBgBIAEoCRIPCgd1c2VyX2lkGAIgASgJEhAKCHBsYWNlX2lkGAMgASgJEhAKCHF1ZXN0X2lkGAQgASgJEi8KBGtpbmQYBSABKA4yIS5sYXJwZXIuZXZlbnRzLnYxLlBsYWNlUmVwb3J0S2luZBIvCgtvY2N1cnJlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAqmAEKC1F1ZXN0QWN0aW9uEhwKGFFVRVNUX0FDVElPTl9VTlNQRUNJRklFRBAAEhkKFVFVRVNUX0FDVElPTl9BQ0NFUFRFRBABEhgKFFFVRVNUX0FDVElPTl9TS0lQUEVEEAISGgoWUVVFU1RfQUNUSU9OX0NPTVBMRVRFRBADEhoKFlFVRVNUX0FDVElPTl9OT1RfVE9EQVkQBCqTAQoKU2tpcFJlYXNvbhIbChdTS0lQX1JFQVNPTl9VTlNQRUNJRklFRBAAEhwKGFNLSVBfUkVBU09OX05PVF9NWV9USElORxABEhcKE1NLSVBfUkVBU09OX1RPT19GQVIQAhIZChVTS0lQX1JFQVNPTl9OT1RfVE9EQVkQAxIWChJTS0lQX1JFQVNPTl9DTE9TRUQQBCqMAgoPUGxhY2VSZXBvcnRLaW5kEiEKHVBMQUNFX1JFUE9SVF9LSU5EX1VOU1BFQ0lGSUVEEAASIAocUExBQ0VfUkVQT1JUX0tJTkRfQ0hFQ0tFRF9JThABEiQKIFBMQUNFX1JFUE9SVF9LSU5EX0NPTkZJUk1FRF9PUEVOEAISIAocUExBQ0VfUkVQT1JUX0tJTkRfV0FTTlRfT1BFThADEiQKIFBMQUNFX1JFUE9SVF9LSU5EX1NLSVBQRURfQ0xPU0VEEAQSIwofUExBQ0VfUkVQT1JUX0tJTkRfSEFORF9WRVJJRklFRBAFEiEKHVBMQUNFX1JFUE9SVF9LSU5EX0hBTkRfQ0xPU0VEEAZCTFpKZ2l0aHViLmNvbS9NYXR0aGV3SmlhbmcxNjg5NzcvbGFycGVyL3dvcmtlcnMvZ2VuL2xhcnBlci9ldmVudHMvdjE7ZXZlbnRzdjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
 
 /**
  * @generated from message larper.events.v1.QuestEvent
@@ -72,6 +73,54 @@ export type QuestEvent = Message<"larper.events.v1.QuestEvent"> & {
  */
 export const QuestEventSchema: GenMessage<QuestEvent> = /*@__PURE__*/
   messageDesc(file_larper_events_v1_events, 0);
+
+/**
+ * @generated from message larper.events.v1.PlaceReport
+ */
+export type PlaceReport = Message<"larper.events.v1.PlaceReport"> & {
+  /**
+   * UUID. Consumers dedupe on it: delivery is at-least-once.
+   *
+   * @generated from field: string event_id = 1;
+   */
+  eventId: string;
+
+  /**
+   * Who reported it. Empty for the curator's verdicts, which are facts about the place.
+   *
+   * @generated from field: string user_id = 2;
+   */
+  userId: string;
+
+  /**
+   * @generated from field: string place_id = 3;
+   */
+  placeId: string;
+
+  /**
+   * The visit. Empty for the curator's verdicts.
+   *
+   * @generated from field: string quest_id = 4;
+   */
+  questId: string;
+
+  /**
+   * @generated from field: larper.events.v1.PlaceReportKind kind = 5;
+   */
+  kind: PlaceReportKind;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp occurred_at = 6;
+   */
+  occurredAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message larper.events.v1.PlaceReport.
+ * Use `create(PlaceReportSchema)` to create a new message.
+ */
+export const PlaceReportSchema: GenMessage<PlaceReport> = /*@__PURE__*/
+  messageDesc(file_larper_events_v1_events, 1);
 
 /**
  * @generated from enum larper.events.v1.QuestAction
@@ -152,4 +201,60 @@ export enum SkipReason {
  */
 export const SkipReasonSchema: GenEnum<SkipReason> = /*@__PURE__*/
   enumDesc(file_larper_events_v1_events, 1);
+
+/**
+ * What is reported about a place, for its reliability score. Consumers: reliability-worker.
+ *
+ * @generated from enum larper.events.v1.PlaceReportKind
+ */
+export enum PlaceReportKind {
+  /**
+   * @generated from enum value: PLACE_REPORT_KIND_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * A geofenced check-in, nothing said about whether it was open.
+   *
+   * @generated from enum value: PLACE_REPORT_KIND_CHECKED_IN = 1;
+   */
+  CHECKED_IN = 1,
+
+  /**
+   * "Was it open?" answered yes, or no.
+   *
+   * @generated from enum value: PLACE_REPORT_KIND_CONFIRMED_OPEN = 2;
+   */
+  CONFIRMED_OPEN = 2,
+
+  /**
+   * @generated from enum value: PLACE_REPORT_KIND_WASNT_OPEN = 3;
+   */
+  WASNT_OPEN = 3,
+
+  /**
+   * A quest set aside with the reason "closed".
+   *
+   * @generated from enum value: PLACE_REPORT_KIND_SKIPPED_CLOSED = 4;
+   */
+  SKIPPED_CLOSED = 4,
+
+  /**
+   * The curator verified the place, or marked it closed.
+   *
+   * @generated from enum value: PLACE_REPORT_KIND_HAND_VERIFIED = 5;
+   */
+  HAND_VERIFIED = 5,
+
+  /**
+   * @generated from enum value: PLACE_REPORT_KIND_HAND_CLOSED = 6;
+   */
+  HAND_CLOSED = 6,
+}
+
+/**
+ * Describes the enum larper.events.v1.PlaceReportKind.
+ */
+export const PlaceReportKindSchema: GenEnum<PlaceReportKind> = /*@__PURE__*/
+  enumDesc(file_larper_events_v1_events, 2);
 

@@ -3,3 +3,4 @@
 ALTER ROLE larper_taste LOGIN PASSWORD 'taste-pw';
 ALTER ROLE larper_ingest LOGIN PASSWORD 'ingest-pw';
 ALTER ROLE larper_demo_reset LOGIN PASSWORD 'demo-reset-pw' CONNECTION LIMIT 1;
+ALTER ROLE larper_reliability LOGIN PASSWORD 'reliability-pw';

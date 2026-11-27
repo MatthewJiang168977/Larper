@@ -113,6 +113,7 @@ jobs:
       TEST_INGEST_DATABASE_URL: postgres://larper_ingest:ingest-pw@localhost:5432/larper?sslmode=disable
       TEST_BACKUP_CHECK_DATABASE_URL: postgres://larper_backup_check:check-pw@localhost:5432/larper?sslmode=disable
       TEST_DEMO_RESET_DATABASE_URL: postgres://larper_demo_reset:demo-reset-pw@localhost:5432/larper?sslmode=disable
+      TEST_RELIABILITY_DATABASE_URL: postgres://larper_reliability:reliability-pw@localhost:5432/larper?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       # The stack's image is CloudNativePG's with PostGIS added; this is the same pair
@@ -167,6 +168,16 @@ jobs:
           set -o pipefail
           go test -count=1 -v ./cmd/taste-worker/ | tee taste.log
           if grep -q -- '--- SKIP' taste.log; then echo "::error::taste-worker database tests skipped"; exit 1; fi
+      # The reliability worker as its own role: replays, concurrent reports, history deletion.
+      - name: Reliability worker database tests
+        working-directory: workers
+        env:
+          TEST_DATABASE_URL: ${{ env.TEST_RELIABILITY_DATABASE_URL }}
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -count=1 -v ./cmd/reliability-worker/ | tee reliability.log
+          if grep -q -- '--- SKIP' reliability.log; then echo "::error::reliability-worker database tests skipped"; exit 1; fi
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:

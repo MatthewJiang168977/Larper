@@ -70,7 +70,7 @@ export class QuestsController {
     if (!/^\d+$/.test(id)) throw new BadRequestException('bad quest id');
     const reason = body?.reason;
     if (!isSkipReason(reason)) throw new BadRequestException(`reason must be one of ${SKIP_REASONS.join(', ')}`);
-    return this.quests.giveReason(user.id, id, reason);
+    return this.quests.giveReason(user.id, id, reason, isDemoUser(user.clerkId));
   }
 
   // POST /quests/:id/was-open { answer }: "was it open?" after a check-in. Declared before

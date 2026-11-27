@@ -240,6 +240,9 @@ flowchart LR
    - Candidates are scored in TypeScript, and the top 200 are cached for 10 min.
    - The curator's "closed" and "bad fit" (`place_facts`, migration 0023) are applied after the cache.
      Curators are named in `ADMIN_USER_IDS` (Helm `api.adminUserIds`) and use `/admin/places`.
+   - What people report (wasn't open, skipped as closed, check-ins) feeds `reliability-worker`, which keeps
+     `place_reliability` (migration 0024): doubtful places drop down, suspended ones are not offered until
+     hand-verified ([design](docs/plans/quality-engine.md)).
 6. **Re-rank.** Places finished recently are dropped, for a window that depends on how the
    quest ended (`REOFFER_AFTER_DAYS` in `quests/transitions.ts`):
    - 30 days for a completed quest, a plain Skip, or "Not my thing"

@@ -5,7 +5,8 @@
 // source: larper/events/v1/events.proto
 
 // Events on the `user.events` topic. Producers: the API, via the transactional
-// outbox. Consumers: taste-worker (and later stats/analytics).
+// outbox. Consumers: taste-worker (QuestEvent) and reliability-worker (PlaceReport); each
+// ignores the other types, by the record header "type".
 //
 // Compatibility rules (buf breaking enforces them): never reuse or renumber a
 // field, only add new ones. Consumers must ignore unknown fields and enum values.
@@ -143,6 +144,72 @@ func (SkipReason) EnumDescriptor() ([]byte, []int) {
 	return file_larper_events_v1_events_proto_rawDescGZIP(), []int{1}
 }
 
+// What is reported about a place, for its reliability score. Consumers: reliability-worker.
+type PlaceReportKind int32
+
+const (
+	PlaceReportKind_PLACE_REPORT_KIND_UNSPECIFIED PlaceReportKind = 0
+	// A geofenced check-in, nothing said about whether it was open.
+	PlaceReportKind_PLACE_REPORT_KIND_CHECKED_IN PlaceReportKind = 1
+	// "Was it open?" answered yes, or no.
+	PlaceReportKind_PLACE_REPORT_KIND_CONFIRMED_OPEN PlaceReportKind = 2
+	PlaceReportKind_PLACE_REPORT_KIND_WASNT_OPEN     PlaceReportKind = 3
+	// A quest set aside with the reason "closed".
+	PlaceReportKind_PLACE_REPORT_KIND_SKIPPED_CLOSED PlaceReportKind = 4
+	// The curator verified the place, or marked it closed.
+	PlaceReportKind_PLACE_REPORT_KIND_HAND_VERIFIED PlaceReportKind = 5
+	PlaceReportKind_PLACE_REPORT_KIND_HAND_CLOSED   PlaceReportKind = 6
+)
+
+// Enum value maps for PlaceReportKind.
+var (
+	PlaceReportKind_name = map[int32]string{
+		0: "PLACE_REPORT_KIND_UNSPECIFIED",
+		1: "PLACE_REPORT_KIND_CHECKED_IN",
+		2: "PLACE_REPORT_KIND_CONFIRMED_OPEN",
+		3: "PLACE_REPORT_KIND_WASNT_OPEN",
+		4: "PLACE_REPORT_KIND_SKIPPED_CLOSED",
+		5: "PLACE_REPORT_KIND_HAND_VERIFIED",
+		6: "PLACE_REPORT_KIND_HAND_CLOSED",
+	}
+	PlaceReportKind_value = map[string]int32{
+		"PLACE_REPORT_KIND_UNSPECIFIED":    0,
+		"PLACE_REPORT_KIND_CHECKED_IN":     1,
+		"PLACE_REPORT_KIND_CONFIRMED_OPEN": 2,
+		"PLACE_REPORT_KIND_WASNT_OPEN":     3,
+		"PLACE_REPORT_KIND_SKIPPED_CLOSED": 4,
+		"PLACE_REPORT_KIND_HAND_VERIFIED":  5,
+		"PLACE_REPORT_KIND_HAND_CLOSED":    6,
+	}
+)
+
+func (x PlaceReportKind) Enum() *PlaceReportKind {
+	p := new(PlaceReportKind)
+	*p = x
+	return p
+}
+
+func (x PlaceReportKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (PlaceReportKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_larper_events_v1_events_proto_enumTypes[2].Descriptor()
+}
+
+func (PlaceReportKind) Type() protoreflect.EnumType {
+	return &file_larper_events_v1_events_proto_enumTypes[2]
+}
+
+func (x PlaceReportKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use PlaceReportKind.Descriptor instead.
+func (PlaceReportKind) EnumDescriptor() ([]byte, []int) {
+	return file_larper_events_v1_events_proto_rawDescGZIP(), []int{2}
+}
+
 type QuestEvent struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// UUID. Consumers dedupe on it: delivery is at-least-once.
@@ -238,6 +305,93 @@ func (x *QuestEvent) GetSkipReason() SkipReason {
 	return SkipReason_SKIP_REASON_UNSPECIFIED
 }
 
+type PlaceReport struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// UUID. Consumers dedupe on it: delivery is at-least-once.
+	EventId string `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	// Who reported it. Empty for the curator's verdicts, which are facts about the place.
+	UserId  string `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	PlaceId string `protobuf:"bytes,3,opt,name=place_id,json=placeId,proto3" json:"place_id,omitempty"`
+	// The visit. Empty for the curator's verdicts.
+	QuestId       string                 `protobuf:"bytes,4,opt,name=quest_id,json=questId,proto3" json:"quest_id,omitempty"`
+	Kind          PlaceReportKind        `protobuf:"varint,5,opt,name=kind,proto3,enum=larper.events.v1.PlaceReportKind" json:"kind,omitempty"`
+	OccurredAt    *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PlaceReport) Reset() {
+	*x = PlaceReport{}
+	mi := &file_larper_events_v1_events_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PlaceReport) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PlaceReport) ProtoMessage() {}
+
+func (x *PlaceReport) ProtoReflect() protoreflect.Message {
+	mi := &file_larper_events_v1_events_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PlaceReport.ProtoReflect.Descriptor instead.
+func (*PlaceReport) Descriptor() ([]byte, []int) {
+	return file_larper_events_v1_events_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *PlaceReport) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *PlaceReport) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *PlaceReport) GetPlaceId() string {
+	if x != nil {
+		return x.PlaceId
+	}
+	return ""
+}
+
+func (x *PlaceReport) GetQuestId() string {
+	if x != nil {
+		return x.QuestId
+	}
+	return ""
+}
+
+func (x *PlaceReport) GetKind() PlaceReportKind {
+	if x != nil {
+		return x.Kind
+	}
+	return PlaceReportKind_PLACE_REPORT_KIND_UNSPECIFIED
+}
+
+func (x *PlaceReport) GetOccurredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.OccurredAt
+	}
+	return nil
+}
+
 var File_larper_events_v1_events_proto protoreflect.FileDescriptor
 
 const file_larper_events_v1_events_proto_rawDesc = "" +
@@ -253,7 +407,15 @@ const file_larper_events_v1_events_proto_rawDesc = "" +
 	"\voccurred_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"occurredAt\x12=\n" +
 	"\vskip_reason\x18\a \x01(\x0e2\x1c.larper.events.v1.SkipReasonR\n" +
-	"skipReason*\x98\x01\n" +
+	"skipReason\"\xeb\x01\n" +
+	"\vPlaceReport\x12\x19\n" +
+	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x19\n" +
+	"\bplace_id\x18\x03 \x01(\tR\aplaceId\x12\x19\n" +
+	"\bquest_id\x18\x04 \x01(\tR\aquestId\x125\n" +
+	"\x04kind\x18\x05 \x01(\x0e2!.larper.events.v1.PlaceReportKindR\x04kind\x12;\n" +
+	"\voccurred_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"occurredAt*\x98\x01\n" +
 	"\vQuestAction\x12\x1c\n" +
 	"\x18QUEST_ACTION_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15QUEST_ACTION_ACCEPTED\x10\x01\x12\x18\n" +
@@ -266,7 +428,15 @@ const file_larper_events_v1_events_proto_rawDesc = "" +
 	"\x18SKIP_REASON_NOT_MY_THING\x10\x01\x12\x17\n" +
 	"\x13SKIP_REASON_TOO_FAR\x10\x02\x12\x19\n" +
 	"\x15SKIP_REASON_NOT_TODAY\x10\x03\x12\x16\n" +
-	"\x12SKIP_REASON_CLOSED\x10\x04BLZJgithub.com/MatthewJiang168977/larper/workers/gen/larper/events/v1;eventsv1b\x06proto3"
+	"\x12SKIP_REASON_CLOSED\x10\x04*\x8c\x02\n" +
+	"\x0fPlaceReportKind\x12!\n" +
+	"\x1dPLACE_REPORT_KIND_UNSPECIFIED\x10\x00\x12 \n" +
+	"\x1cPLACE_REPORT_KIND_CHECKED_IN\x10\x01\x12$\n" +
+	" PLACE_REPORT_KIND_CONFIRMED_OPEN\x10\x02\x12 \n" +
+	"\x1cPLACE_REPORT_KIND_WASNT_OPEN\x10\x03\x12$\n" +
+	" PLACE_REPORT_KIND_SKIPPED_CLOSED\x10\x04\x12#\n" +
+	"\x1fPLACE_REPORT_KIND_HAND_VERIFIED\x10\x05\x12!\n" +
+	"\x1dPLACE_REPORT_KIND_HAND_CLOSED\x10\x06BLZJgithub.com/MatthewJiang168977/larper/workers/gen/larper/events/v1;eventsv1b\x06proto3"
 
 var (
 	file_larper_events_v1_events_proto_rawDescOnce sync.Once
@@ -280,23 +450,27 @@ func file_larper_events_v1_events_proto_rawDescGZIP() []byte {
 	return file_larper_events_v1_events_proto_rawDescData
 }
 
-var file_larper_events_v1_events_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_larper_events_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_larper_events_v1_events_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_larper_events_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_larper_events_v1_events_proto_goTypes = []any{
 	(QuestAction)(0),              // 0: larper.events.v1.QuestAction
 	(SkipReason)(0),               // 1: larper.events.v1.SkipReason
-	(*QuestEvent)(nil),            // 2: larper.events.v1.QuestEvent
-	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
+	(PlaceReportKind)(0),          // 2: larper.events.v1.PlaceReportKind
+	(*QuestEvent)(nil),            // 3: larper.events.v1.QuestEvent
+	(*PlaceReport)(nil),           // 4: larper.events.v1.PlaceReport
+	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
 }
 var file_larper_events_v1_events_proto_depIdxs = []int32{
 	0, // 0: larper.events.v1.QuestEvent.action:type_name -> larper.events.v1.QuestAction
-	3, // 1: larper.events.v1.QuestEvent.occurred_at:type_name -> google.protobuf.Timestamp
+	5, // 1: larper.events.v1.QuestEvent.occurred_at:type_name -> google.protobuf.Timestamp
 	1, // 2: larper.events.v1.QuestEvent.skip_reason:type_name -> larper.events.v1.SkipReason
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	2, // 3: larper.events.v1.PlaceReport.kind:type_name -> larper.events.v1.PlaceReportKind
+	5, // 4: larper.events.v1.PlaceReport.occurred_at:type_name -> google.protobuf.Timestamp
+	5, // [5:5] is the sub-list for method output_type
+	5, // [5:5] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_larper_events_v1_events_proto_init() }
@@ -309,8 +483,8 @@ func file_larper_events_v1_events_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_larper_events_v1_events_proto_rawDesc), len(file_larper_events_v1_events_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   1,
+			NumEnums:      3,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

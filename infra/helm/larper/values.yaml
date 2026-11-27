@@ -161,6 +161,8 @@ postgres:
     ingest: { pool: 4, connectionLimit: 16 }
     # The schema owner: the migrate Job (and psql by hand).
     owner: { connectionLimit: 10 }
+    # reliability-worker: one pod, Recreate; the consumer and the stale sweep.
+    reliability: { pool: 2, connectionLimit: 2 }
     # The hourly backup check: one connection, no grants (templates/backup-check.yaml).
     backup-check: { connectionLimit: 1 }
     # The nightly demo reset: one connection; deletes quests, restores taste (0012, 0013).

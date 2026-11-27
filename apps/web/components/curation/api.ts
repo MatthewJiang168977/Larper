@@ -7,6 +7,7 @@ export interface CurationFacts {
   note: { text: string; at: string } | null;
   hours: { source: string; text: string | null; service: string; at: string; expired: boolean }[];
   reports: { kind: "was_open" | "wasnt_open" | "skipped_closed"; day: string }[];
+  reliability?: { score: number; suspended: boolean } | null;
 }
 
 export interface CurationPlace extends CurationFacts {
