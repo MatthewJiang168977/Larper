@@ -50,6 +50,9 @@ functions. The API gets `users.id` from the verified session.
 purpose: `place_hours_facts.quest_id` is `ON DELETE SET NULL`, which would leave the answer
 behind. `place_hours_facts` schedule facts (`user_id` NULL) are places' data, not the user's.
 
+A curator's facts (`place_facts`, migration 0023) are about places too: history deletion keeps
+them, account deletion keeps them with `user_id` set to NULL, and the export lists them.
+
 After either delete the API drops the user's cached decks (`deck:*:<id>:*` in Redis).
 
 ### Races

@@ -89,7 +89,9 @@ describe("CurationPage", () => {
     await open();
     await key("n");
     const input = screen.getByRole("textbox") as HTMLInputElement;
-    expect(input.maxLength).toBe(140);
+    fireEvent.change(input, { target: { value: "\u{1F600}".repeat(150) } });
+    expect([...input.value]).toHaveLength(140);
+    await key("c"); // the form is open: no verdict
     fireEvent.keyDown(input, { key: "c" });
     fireEvent.change(input, { target: { value: "ask for the back room" } });
     await act(async () => {

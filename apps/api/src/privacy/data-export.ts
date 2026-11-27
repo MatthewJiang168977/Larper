@@ -147,7 +147,7 @@ export class DataExportService {
   // reads only that user's rows. Nothing from another user, and nothing internal: no
   // outbox, jobs or processed-events rows.
   async export(userId: string, now = new Date()): Promise<DataExport> {
-    // One snapshot: the six reads see the same moment, on one connection, in a read-only
+    // One snapshot: the seven reads see the same moment, on one connection, in a read-only
     // REPEATABLE READ transaction (a delete or an accept in between can't tear the file).
     const db = await this.pg.connect();
     let account, taste, quests, attempts, answers, saved, curation, reports;
