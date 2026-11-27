@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import { Session } from 'node:inspector/promises';
 import type { NextFunction, Request, Response } from 'express';
-import { collectDefaultMetrics, Counter, Histogram, Registry } from 'prom-client';
+import { collectDefaultMetrics, Counter, Gauge, Histogram, Registry } from 'prom-client';
 
 // Prometheus metrics. Served on their own port (not through the ingress), so the
 // public internet can't read them; Prometheus scrapes each pod directly.
@@ -41,6 +41,22 @@ export const rateLimitStorageErrors = new Counter({
   help: 'Rate-limit checks that failed open because Redis was down or slow, by limit window',
   labelNames: ['throttler'],
   registers: [registry],
+});
+
+// Places not offered because reports about them suspended them (place_reliability). Read from
+// the database at each scrape, so every pod reports the same number: take the max, not the sum.
+let excludedPlaces: (() => Promise<number>) | undefined;
+export const watchExcludedPlaces = (count: () => Promise<number>) => {
+  excludedPlaces = count;
+};
+new Gauge({
+  name: 'places_excluded_by_reliability',
+  help: 'Places suspended by the reliability score until a hand verification',
+  registers: [registry],
+  async collect() {
+    // A failed read keeps the last value: the rest of /metrics must still answer.
+    if (excludedPlaces) await excludedPlaces().then((n) => this.set(n), () => undefined);
+  },
 });
 
 // Express middleware. The route is read when the response finishes, after the

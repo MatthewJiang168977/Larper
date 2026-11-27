@@ -20,7 +20,8 @@ type Editing = "hours" | "note" | null;
 
 const day = (iso: string) => iso.slice(0, 10);
 /** Reviewed: a verdict that still stands (a positive one expires after 90 days). */
-const reviewed = (p: CurationPlace) => p.verdict !== null && !p.verdict.expired;
+// A suspended place needs another look whatever was said before.
+const reviewed = (p: CurationPlace) => p.verdict !== null && !p.verdict.expired && !p.reliability?.suspended;
 
 export function CurationPage() {
   const api = useApi();
@@ -258,6 +259,12 @@ function Card({
         <p>
           <strong>{VERDICT_LABEL[p.verdict.kind]}</strong> · {day(p.verdict.at)}
           {p.verdict.expired && " · older than 90 days, check again"}
+        </p>
+      )}
+      {p.reliability && (
+        <p>
+          reliability {Math.round(p.reliability.score * 100)}%
+          {p.reliability.suspended && <strong> · suspended until you verify it</strong>}
         </p>
       )}
       {p.hours.length === 0 ? (

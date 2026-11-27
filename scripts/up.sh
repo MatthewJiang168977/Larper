@@ -34,7 +34,7 @@ CLERK_PK=${CLERK_PUBLISHABLE_KEY:-$(grep -E '^NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
 scripts/pg-owner-createrole.sh
 helm upgrade --install larper infra/helm/larper -n larper --create-namespace \
   ${CLERK_PK:+--set clerk.publishableKey=$CLERK_PK}
-kubectl -n larper rollout restart deploy/api deploy/outbox-relay deploy/taste-worker deploy/ingest-worker
+kubectl -n larper rollout restart deploy/api deploy/outbox-relay deploy/taste-worker deploy/reliability-worker deploy/ingest-worker
 kubectl -n larper rollout status deploy/api --timeout=180s
 
 echo "Up. Try: for i in 1 2 3 4; do curl -s localhost:8080/healthz; echo; done"

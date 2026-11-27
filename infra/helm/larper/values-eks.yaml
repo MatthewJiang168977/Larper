@@ -29,6 +29,7 @@ postgres:
     taste: { pool: 2, connectionLimit: 4 }
     ingest: { pool: 4, connectionLimit: 12 }
     owner: { connectionLimit: 10 }
+    reliability: { pool: 2, connectionLimit: 2 }
 
 redpanda:
   storage: 4Gi

@@ -20,6 +20,7 @@ const ROLE_URLS = {
   larper_ingest: process.env.TEST_INGEST_DATABASE_URL,
   larper_backup_check: process.env.TEST_BACKUP_CHECK_DATABASE_URL,
   larper_demo_reset: process.env.TEST_DEMO_RESET_DATABASE_URL,
+  larper_reliability: process.env.TEST_RELIABILITY_DATABASE_URL,
 };
 type Role = keyof typeof ROLE_URLS;
 const ROLES = Object.keys(ROLE_URLS) as Role[];
@@ -47,6 +48,8 @@ const EXPECTED: Record<Role, Record<string, string[]>> = {
     clerk_deletions_pending: [S, I, U], // migration 0021: Clerk deletions still owed; a row goes through clerk_deletion_done()
     weekly_email_preferences: [S, I, U], // migration 0022: consent and claims; account deletion cascades
     place_facts: [S, I], // migration 0023: the curator's facts, append-only
+    place_reports: [S], // migration 0024: read for the export; the reliability-worker writes
+    place_reliability: [S],
   },
   larper_relay: {
     outbox: [S, U, D],
@@ -74,6 +77,12 @@ const EXPECTED: Record<Role, Record<string, string[]>> = {
     saved_places: [S, D],
     tags: [S],
     taste_profiles: [S, I, U],
+  },
+  // cmd/reliability-worker (migration 0024): the evidence and the estimate.
+  larper_reliability: {
+    processed_events: [I],
+    place_reports: [S, I],
+    place_reliability: [S, I, U],
   },
 };
 
@@ -182,7 +191,7 @@ describeDb('per-service database roles (real database)', () => {
       delete_my_account: ['larper_api'],
       delete_my_history: ['larper_api'],
       export_my_checkin_attempts: ['larper_api'],
-      lock_user_quest: ['larper_api', 'larper_taste'],
+      lock_user_quest: ['larper_api', 'larper_reliability', 'larper_taste'],
       prune_checkin_attempts: ['larper_api'],
     };
     const expected = Object.entries(grants).flatMap(([obj, allow]) =>

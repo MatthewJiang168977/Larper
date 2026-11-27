@@ -32,6 +32,8 @@ export interface DataExport {
   weeklyEmail?: { optedInAt: string | null; lastAttemptDay: string | null };
   /** Facts recorded from the curation page (admins only; absent otherwise). */
   curation?: CurationEntry[];
+  /** What you reported about places, as the reliability score uses it. Absent if nothing. */
+  placeReports?: { kind: string; reportedAt: string; place: PlaceRef }[];
 }
 
 export interface CurationEntry {
@@ -131,6 +133,7 @@ type AttemptRow = {
 };
 type AnswerRow = PlaceCols & { quest_id: string | null; was_open: boolean | null; created_at: Date };
 type SavedRow = PlaceCols & { quest_id: string | null; created_at: Date };
+type ReportRow = PlaceCols & { kind: string; occurred_at: Date };
 type CurationRow = PlaceCols & { kind: string; note: string | null; hours_raw: string | null; created_at: Date };
 
 @Injectable()
@@ -147,7 +150,7 @@ export class DataExportService {
     // One snapshot: the six reads see the same moment, on one connection, in a read-only
     // REPEATABLE READ transaction (a delete or an accept in between can't tear the file).
     const db = await this.pg.connect();
-    let account, taste, quests, attempts, answers, saved, curation;
+    let account, taste, quests, attempts, answers, saved, curation, reports;
     try {
       await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY');
       account = await db.query<{ id: string; clerk_id: string; created_at: Date; email_preference: boolean; opted_in_at: Date | null; last_attempt_day: string | null }>(
@@ -187,6 +190,12 @@ export class DataExportService {
         `SELECT f.kind, f.note, f.hours_raw, f.created_at, ${PLACE_COLS}
          FROM place_facts f JOIN places p ON p.id = f.place_id
          WHERE f.user_id = $1 ORDER BY f.created_at DESC, f.id DESC`,
+        [userId],
+      );
+      reports = await db.query<ReportRow>(
+        `SELECT r.kind, r.occurred_at, ${PLACE_COLS}
+         FROM place_reports r JOIN places p ON p.id = r.place_id
+         WHERE r.user_id = $1 ORDER BY r.occurred_at DESC, r.event_id`,
         [userId],
       );
       await db.query('COMMIT');
@@ -264,6 +273,9 @@ export class DataExportService {
         place: place(r),
       })),
       savedPlaces: saved.rows.map((r) => ({ questId: r.quest_id, savedAt: r.created_at.toISOString(), place: place(r) })),
+      ...(reports.rows.length > 0 && {
+        placeReports: reports.rows.map((r) => ({ kind: r.kind, reportedAt: r.occurred_at.toISOString(), place: place(r) })),
+      }),
       ...(curation.rows.length > 0 && {
         curation: curation.rows.map((r) => ({
           kind: r.kind,

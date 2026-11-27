@@ -77,6 +77,33 @@ spec:
           env: {{- include "larper.workerEnv" (dict "root" . "role" "taste") | nindent 12 }}
           resources: {{- toYaml .Values.workers.resources | nindent 12 }}
 ---
+# Keeps place_reliability from PlaceReport events (and recomputes rows a history deletion
+# marked stale). One replica: the volume is a few reports a day.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reliability-worker
+  labels: {{- include "larper.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: reliability-worker }
+  template:
+    metadata:
+      labels:
+        app: reliability-worker
+        {{- include "larper.labels" . | nindent 8 }}
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: reliability-worker
+          image: {{ .Values.workers.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/usr/local/bin/reliability-worker"]
+          env: {{- include "larper.workerEnv" (dict "root" . "role" "reliability") | nindent 12 }}
+          resources: {{- toYaml .Values.workers.resources | nindent 12 }}
+---
 # Its own identity: on EKS, a Pod Identity association maps this ServiceAccount to
 # an IAM role that can use the larper queues (infra/terraform/eks).
 apiVersion: v1

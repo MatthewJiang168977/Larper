@@ -1,7 +1,8 @@
 syntax = "proto3";
 
 // Events on the `user.events` topic. Producers: the API, via the transactional
-// outbox. Consumers: taste-worker (and later stats/analytics).
+// outbox. Consumers: taste-worker (QuestEvent) and reliability-worker (PlaceReport); each
+// ignores the other types, by the record header "type".
 //
 // Compatibility rules (buf breaking enforces them): never reuse or renumber a
 // field, only add new ones. Consumers must ignore unknown fields and enum values.
@@ -43,4 +44,31 @@ message QuestEvent {
   google.protobuf.Timestamp occurred_at = 6;
   // Set only on the event that records a reason (see QUEST_ACTION_NOT_TODAY).
   SkipReason skip_reason = 7;
+}
+
+// What is reported about a place, for its reliability score. Consumers: reliability-worker.
+enum PlaceReportKind {
+  PLACE_REPORT_KIND_UNSPECIFIED = 0;
+  // A geofenced check-in, nothing said about whether it was open.
+  PLACE_REPORT_KIND_CHECKED_IN = 1;
+  // "Was it open?" answered yes, or no.
+  PLACE_REPORT_KIND_CONFIRMED_OPEN = 2;
+  PLACE_REPORT_KIND_WASNT_OPEN = 3;
+  // A quest set aside with the reason "closed".
+  PLACE_REPORT_KIND_SKIPPED_CLOSED = 4;
+  // The curator verified the place, or marked it closed.
+  PLACE_REPORT_KIND_HAND_VERIFIED = 5;
+  PLACE_REPORT_KIND_HAND_CLOSED = 6;
+}
+
+message PlaceReport {
+  // UUID. Consumers dedupe on it: delivery is at-least-once.
+  string event_id = 1;
+  // Who reported it. Empty for the curator's verdicts, which are facts about the place.
+  string user_id = 2;
+  string place_id = 3;
+  // The visit. Empty for the curator's verdicts.
+  string quest_id = 4;
+  PlaceReportKind kind = 5;
+  google.protobuf.Timestamp occurred_at = 6;
 }

@@ -1,16 +1,26 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Pool } from 'pg';
 import { PG } from '../db/db.module';
+import { enqueuePlaceReport } from '../events/outbox';
+import { PlaceReportKind } from '../gen/larper/events/v1/events_pb';
 import { rankPilotCandidates, type PilotPlace } from '../hours-pilot/candidates';
 import { HoursTextError, parseHoursText } from '../hours/parse';
 import { HAND_HOURS_MAX_AGE_DAYS } from '../hours/place-hours';
 import { BLOCKED_CATEGORIES, CATEGORY_EXCEPTION_IDS, MIN_CONFIDENCE } from '../quests/eligibility';
+import { loadReliability, reliabilityScore } from '../quests/reliability';
 import { FACT_KINDS, MAX_NOTE_LENGTH, VERDICTS, type FactKind, type Verdict } from './place-facts';
 import { NEIGHBORHOODS, polygonGeoJson, type Neighborhood } from './neighborhoods';
 
 /** The most places one neighbourhood lists, most likely to be offered first. */
 export const LIST_LIMIT = 150;
 const REPORTS_PER_PLACE = 5;
+/** The list of suspended places, wherever they are: not a neighbourhood. */
+export const SUSPENDED = 'suspended';
+const HAND_REPORT: Partial<Record<FactKind, PlaceReportKind>> = {
+  great: PlaceReportKind.HAND_VERIFIED,
+  verified: PlaceReportKind.HAND_VERIFIED,
+  closed: PlaceReportKind.HAND_CLOSED,
+};
 const DAY_TIME_ZONE = 'America/New_York';
 
 export interface CurationHours {
@@ -31,6 +41,8 @@ export interface CurationFacts {
   note: { text: string; at: string } | null;
   hours: CurationHours[];
   reports: CurationReport[];
+  /** The reliability estimate, when anything has been reported. */
+  reliability: { score: number; suspended: boolean } | null;
 }
 export interface CurationPlace extends CurationFacts {
   id: string;
@@ -67,14 +79,15 @@ export class CurationService {
   constructor(@Inject(PG) private readonly pg: Pool) {}
 
   async list(slug: string, now = new Date()) {
+    const areas = [...NEIGHBORHOODS.map(({ slug, name }) => ({ slug, name })), { slug: SUSPENDED, name: 'suspended (everywhere)' }];
     const area = NEIGHBORHOODS.find((n) => n.slug === slug);
-    if (!area) throw new BadRequestException(`area must be one of ${NEIGHBORHOODS.map((n) => n.slug).join(', ')}`);
-    const ranked = await this.ranked(area);
+    if (!area && slug !== SUSPENDED) throw new BadRequestException(`area must be one of ${areas.map((a) => a.slug).join(', ')}`);
+    const ranked = area ? await this.ranked(area) : await this.suspended();
     const top = ranked.slice(0, LIST_LIMIT);
     const facts = await this.facts(top.map((p) => p.id), now);
     return {
-      areas: NEIGHBORHOODS.map(({ slug, name }) => ({ slug, name })),
-      area: area.slug,
+      areas,
+      area: slug,
       total: ranked.length,
       places: top.map(
         (p): CurationPlace => ({
@@ -90,6 +103,17 @@ export class CurationService {
         }),
       ),
     };
+  }
+
+  // Every suspended place, longest-suspended first, wherever it is: each needs a visit.
+  private async suspended() {
+    const { rows } = await this.pg.query<{ id: string; name: string; category: string; lat: number; lng: number; website: string | null; instagram: string | null }>(
+      `SELECT p.id::text, p.name, p.categories[array_length(p.categories, 1)] AS category,
+              ST_Y(p.geom::geometry) AS lat, ST_X(p.geom::geometry) AS lng, p.website, p.instagram
+       FROM place_reliability r JOIN places p ON p.id = r.place_id
+       WHERE r.suspended_at IS NOT NULL ORDER BY r.suspended_at, p.id`,
+    );
+    return rows;
   }
 
   // "How likely to be offered": the quest score without anyone's taste or distance.
@@ -110,7 +134,7 @@ export class CurationService {
   /** Everything the card shows about each place, in three queries. */
   async facts(placeIds: readonly string[], now = new Date()): Promise<Map<string, CurationFacts>> {
     const out = new Map<string, CurationFacts>(
-      placeIds.map((id) => [id, { verdict: null, note: null, hours: [], reports: [] }]),
+      placeIds.map((id) => [id, { verdict: null, note: null, hours: [], reports: [], reliability: null }]),
     );
     if (!placeIds.length) return out;
 
@@ -172,6 +196,9 @@ export class CurationService {
       [placeIds, DAY_TIME_ZONE, REPORTS_PER_PLACE],
     );
     for (const r of reports.rows) out.get(r.placeId)!.reports.push({ kind: r.kind, day: r.day });
+    for (const [id, r] of await loadReliability(this.pg, placeIds)) {
+      out.get(id)!.reliability = { score: reliabilityScore(r, now), suspended: r.suspendedAt !== null };
+    }
     return out;
   }
 
@@ -209,12 +236,26 @@ export class CurationService {
     return { id: placeId, ...(await this.facts([placeId])).get(placeId)! };
   }
 
+  // The fact and, for a verdict that says whether the place is there, its PlaceReport: in one
+  // transaction (events/outbox.ts).
   private async insert(userId: string, placeId: string, kind: FactKind, note: string | null, raw: string | null, schedule: string | null) {
-    const { rowCount } = await this.pg.query(
-      `INSERT INTO place_facts (place_id, kind, user_id, note, hours_raw, schedule)
-       SELECT id, $2, $3, $4, $5, $6::jsonb FROM places WHERE id = $1`,
-      [placeId, kind, userId, note, raw, schedule],
-    );
-    if (!rowCount) throw new NotFoundException('no such place');
+    const tx = await this.pg.connect();
+    try {
+      await tx.query('BEGIN');
+      const { rowCount } = await tx.query(
+        `INSERT INTO place_facts (place_id, kind, user_id, note, hours_raw, schedule)
+         SELECT id, $2, $3, $4, $5, $6::jsonb FROM places WHERE id = $1`,
+        [placeId, kind, userId, note, raw, schedule],
+      );
+      if (!rowCount) throw new NotFoundException('no such place');
+      const report = HAND_REPORT[kind];
+      if (report !== undefined) await enqueuePlaceReport(tx, { placeId, kind: report });
+      await tx.query('COMMIT');
+    } catch (err) {
+      await tx.query('ROLLBACK');
+      throw err;
+    } finally {
+      tx.release();
+    }
   }
 }
