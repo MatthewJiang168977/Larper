@@ -85,8 +85,8 @@ An event the relay already published can reach `taste-worker` after either delet
 locking the taste profile, the worker uses `lock_user_quest` to take the same user and quest
 locks as the API. The function checks ownership and reads the quest after the user lock
 is acquired. Missing users or quests cause the worker to skip the event. A taste update
-that commits before a history clear remains in the retained profile. Only `larper_api`
-and `larper_taste` can execute the locking function.
+that commits before a history clear remains in the retained profile. Only `larper_api`,
+`larper_taste` and `larper_reliability` can execute the locking function.
 
 `processed_events` keeps event IDs. The outbox sweep waits on rows the relay has claimed
 with `FOR UPDATE SKIP LOCKED`. The ingest jobs are keyed by area.
