@@ -14,6 +14,15 @@
   --larper-os-disabled: #e9e1d8;
   --larper-os-disabled-ink: #5c5552;
 
+  /* A window body tinted for the map's phase: a light tint of that phase's paper (DESIGN.md,
+     Map phases). Sign-in and sign-up use them over the wallpaper. Night is a pale cool tint,
+     not dark. Ink must hold 4.5:1 on each (components/auth/auth-shell.test.ts). */
+  --larper-os-tint-dawn: #f5eef7;
+  --larper-os-tint-day: #fbebe6;
+  --larper-os-tint-golden: #fbecd2;
+  --larper-os-tint-dusk: #fae0d6;
+  --larper-os-tint-night: #e6eaf4;
+
   --larper-os-radius-window: 7px;
   --larper-os-radius-tag: 5px;
   --larper-os-shadow-raised: 1px 2px 0 var(--larper-os-ink);

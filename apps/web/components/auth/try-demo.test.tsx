@@ -88,18 +88,23 @@ describe("TryDemoButton", () => {
 });
 
 describe("DemoPanel", () => {
-  it("shows the demo only when sign-ups are restricted, and never a password", () => {
+  it("shows the demo only when sign-ups are restricted, as a second button and never a password", () => {
     const { container, rerender } = render(<DemoPanel signUpMode="public" />);
     expect(container.textContent).toBe("");
     rerender(<DemoPanel signUpMode="restricted" />);
     const panel = screen.getByRole("region", { name: "demo" });
-    expect(panel.closest(".larper-os-panel")).toBeTruthy();
-    expect(within(panel).getByRole("heading", { name: "just looking?" })).toBeTruthy();
-    expect(within(panel).getByRole("button", { name: "try the demo" }).classList.contains("larper-os-button-primary")).toBe(true);
+    // "continue" is sign-in's one primary action.
+    expect(within(panel).getByRole("button", { name: "try the demo" }).className).toBe("larper-os-button");
     expect(container.textContent?.toLowerCase()).not.toContain("password:");
   });
 
-  it("uses the sign-in panel labels while redeeming the same demo ticket", async () => {
+  it("says it needs no account, in one line above the button", () => {
+    render(<DemoPanel signUpMode="restricted" />);
+    const panel = screen.getByRole("region", { name: "demo" });
+    expect(panel.textContent).toBe("just looking? try the shared demo, no account needed.try the demo");
+  });
+
+  it("uses the same labels while redeeming the demo ticket", async () => {
     demoTicket.mockResolvedValue("ticket-1");
     render(<DemoPanel signUpMode="restricted" />);
     fireEvent.click(screen.getByRole("button", { name: "try the demo" }));

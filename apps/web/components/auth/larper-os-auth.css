@@ -1,34 +1,145 @@
-.larper-os-auth-window {
-  width: min(100%, 28rem);
-  min-width: 0;
+/* Sign-in and sign-up (.larper-auth-page): one window over a still of the city, in a single column
+   on every width. .larper-os-auth is the wallpaper page the account window shares. */
+.larper-os-auth {
+  --larper-auth-tint: var(--larper-os-tint-day);
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 100svh;
+  background: var(--larper-os-pink);
+  color: var(--larper-os-ink);
+  font: 18px/1.4 var(--larper-os-font-body), system-ui, sans-serif;
 }
 
-.larper-os-auth .larper-os-body {
-  grid-template-columns: minmax(0, 1fr);
+/* The window follows the time of day. Until the browser has read it, the day's tint (the
+   pink the wallpaper starts as). */
+.larper-os-auth[data-phase="dawn"] { --larper-auth-tint: var(--larper-os-tint-dawn); }
+.larper-os-auth[data-phase="golden"] { --larper-auth-tint: var(--larper-os-tint-golden); }
+.larper-os-auth[data-phase="dusk"] { --larper-auth-tint: var(--larper-os-tint-dusk); }
+.larper-os-auth[data-phase="night"] { --larper-auth-tint: var(--larper-os-tint-night); }
+
+.larper-os-auth p { margin: 0; }
+
+.larper-auth-wallpaper {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
 }
 
-.larper-os-auth-loading {
-  margin: 0;
-  padding: 16px;
+.larper-auth-wallpaper-still {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
+
+/* The signed-in menu bar (quest-screen.css): the wordmark, then the controls. */
+.larper-auth-menu {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  box-sizing: border-box;
+  min-height: 45px;
+  padding-inline: 10px;
+  background: var(--larper-os-window);
+  border-bottom: 1px solid var(--larper-os-ink);
+}
+
+.larper-auth-menu > div { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.larper-auth-brand { font: 400 28px/1 var(--larper-os-font-pixel), system-ui, sans-serif; }
+
+.larper-auth-menu-link {
+  display: grid;
+  min-width: var(--larper-os-tap-min);
+  min-height: var(--larper-os-tap-min);
+  place-items: center;
+  padding-inline: 8px;
+  font: 400 24px/1 var(--larper-os-font-pixel), system-ui, sans-serif;
+}
+
+.larper-auth-menu-link:hover { background: var(--larper-os-butter); }
+
+.larper-auth-clock {
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.larper-auth-stage {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 28rem);
+  justify-content: center;
+  align-content: start;
+  gap: 12px;
+  padding: 11px 10px max(20px, env(safe-area-inset-bottom));
+}
+
+@media (min-width: 1024px) {
+  .larper-auth-stage { padding-top: 72px; }
+}
+
+.larper-auth-page .larper-os-window { background: var(--larper-auth-tint); }
+.larper-auth-page .larper-os-body { grid-template-columns: minmax(0, 1fr); padding: 14px; gap: 12px; }
+
+.larper-auth-form { display: grid; min-width: 0; }
+.larper-os-auth .larper-os-auth-loading { padding: 16px; }
 
 .larper-os-auth-demo {
   display: grid;
-  justify-items: start;
   gap: 8px;
-  font-size: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--larper-os-ink);
 }
 
-.larper-os-auth-demo h2 {
-  font: 400 26px/1 var(--larper-os-font-pixel), system-ui, sans-serif;
-  margin: 0;
+/* The button, and any error under it, at full width. */
+.larper-os-auth-demo > span { display: flex; align-items: stretch; width: 100%; }
+.larper-os-auth-demo button { width: 100%; }
+
+/* The legal links at body size, on one line. */
+.larper-auth-page .larper-os-footer { padding: 0 10px; font-size: inherit; }
+.larper-auth-page .larper-landing-about { gap: 8px; }
+
+/* Solid, so the credit reads over every phase of the map. */
+.larper-auth-credit {
+  justify-self: center;
+  padding: 4px 10px;
+  background: var(--larper-os-window);
+  border: 1px solid var(--larper-os-ink);
+  border-radius: var(--larper-os-radius-tag);
+  font-size: 13px;
+  line-height: 1.3;
+  text-align: center;
 }
 
-.larper-os-auth-demo p {
-  margin: 0;
+.larper-auth-credit a { text-decoration: underline; text-underline-offset: 2px; }
+
+.larper-os-auth a:focus-visible {
+  outline: 2px solid var(--larper-os-ink);
+  outline-offset: 2px;
 }
 
-.larper-os-auth-demo .larper-os-auth-demo-note {
-  color: var(--larper-os-disabled-ink);
-  font-size: 14px;
+/* Clerk's own card adds nothing: the OS window is the one frame. */
+.larper-os-auth :is(.cl-rootBox, .cl-cardBox, .cl-card, .cl-footer) {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.larper-os-auth :is(.cl-card, .cl-footer)::before,
+.larper-os-auth :is(.cl-card, .cl-footer)::after {
+  content: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .larper-os-auth .cl-rootBox * {
+    transition: none !important;
+    animation: none !important;
+  }
 }
