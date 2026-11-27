@@ -8,8 +8,8 @@
 > `docs/plans/industry-ready-plan.md`. `db/migrations` now runs to **0022**
 > (`0017` is `saved_places`, `0018`-`0019` place hours, `0020` `delete_my_data`, `0021`
 > `clerk_deletions_pending`, `0022` `weekly_email`). M9's remaining
-> migrations start at **0026**: `0026_profile_stats`,
-> `0027_tag_families`, `0028_share_cards`. The star sign (formerly 0022) is dropped.
+> migrations start at **0023**: `0023_profile_stats`,
+> `0024_tag_families`, `0025_share_cards`. The star sign (formerly 0022) is dropped.
 > **These are placeholders**: numbers are assigned at merge, so re-check `db/migrations`
 > when work resumes. [Profile v1](#profile-v1-the-smallest-version-worth-shipping) needs only one
 > of them (share cards) and takes the next free number.
